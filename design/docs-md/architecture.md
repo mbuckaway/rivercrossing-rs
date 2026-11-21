@@ -173,3 +173,9 @@ flowchart TB
 After 100% Python parity, expose the `Action` registry via a CLI (`apps/rivercrossing-cli`), a JSON
 control channel, and an MCP server (mirroring ArtCraft's "every button is a command" surface), so
 agents drive every command the GUI can.
+
+- **MCP**: the shared **`craft-mcp-server`** crate (craft-libs) — JSON-RPC 2.0 over stdio, the MCP
+  lifecycle, tools/resources/prompts, tool schemas and argument checks, text/image results. The app
+  implements `Tools`; `Server` speaks the protocol. No third-party MCP SDK.
+- **CLI**: hand-rolled subcommand parsing (no `clap`), dispatching to the `Action` registry with
+  `serde_json` params — the `wordcraft-cli` pattern.

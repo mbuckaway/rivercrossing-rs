@@ -108,8 +108,9 @@ reference for *scope*, not a template.
 - **R-ids:** R-01, R-75.
 
 ### EPIC-13 — CLI + MCP (parity complete)
-- **Scope:** expose the `Action` registry via `apps/rivercrossing-cli`, a JSON control channel, and an
-  MCP server (mirroring ArtCraft's "every button is a command").
+- **Scope:** expose the `Action` registry via `apps/rivercrossing-cli` (hand-rolled subcommands, no
+  `clap`), a JSON control channel, and an MCP server built on the shared **`craft-mcp-server`** crate
+  (craft-libs; JSON-RPC 2.0 over stdio).
 - **Acceptance:** CLI + MCP execute the same commands as the GUI.
 - **R-ids:** none (new Rust feature, beyond the Python app).
 

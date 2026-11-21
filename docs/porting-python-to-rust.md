@@ -204,3 +204,17 @@ Do not port a large app in one agent session. Split it leaf-first into one crate
 split large modules into context-bounded chunks. Run `tdd-rust-writer` agents **sequentially** — one
 uncompilable module test file fails every other module's `cargo test`. The Python test suite is the
 behaviour oracle throughout.
+
+
+## 15. Agent surface — CLI + MCP (ArtCraft pattern)
+
+ArtCraft apps expose every command to agents (one command catalog drives the GUI, the CLI and the MCP
+server). The shared pieces, verified in `storytold/wordcraft`:
+
+- **MCP**: the **`craft-mcp-server`** crate (craft-libs) — JSON-RPC 2.0 over stdio (newline-delimited),
+  the MCP lifecycle, tools/resources/prompts, tool schemas with argument checks, and text/image
+  results. An app implements its `Tools` trait and runs `Server::new(tools).serve(stdin, stdout)`.
+  No third-party MCP SDK.
+- **CLI**: hand-rolled (no `clap`) — a `USAGE` string plus `OptionSpec`/`validate_options` argument
+  parsing that dispatches to the command registry with `serde_json`, exiting 0/1/3.
+- **Control channel**: optional; `craft`'s `automation` feature drives a running app.

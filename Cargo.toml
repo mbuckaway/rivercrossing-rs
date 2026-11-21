@@ -20,6 +20,8 @@ authors = ["Mark Buckaway"]
 # craft-libs / egui / winit dependencies and the [patch.crates-io] forks are
 # pinned by the empty-shell EPIC after the rev is proven by a build.
 [workspace.dependencies]
+# CLI + MCP (EPIC-13): the shared MCP server machinery (JSON-RPC 2.0 over stdio), craft-libs rev.
+# craft-mcp-server = { git = "https://github.com/storytold/craft-libs", rev = "243d68e12d05e89122db6d154924bf1992e10d38", version = "=0.1.0" }
 
 # Source-file header convention: a single SPDX line, per AGENTS.md.
 # `// SPDX-License-Identifier: GPL-3.0-only`
