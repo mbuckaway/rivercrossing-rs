@@ -17,7 +17,7 @@ GPU**, layered Cargo crates, and a command/Action registry in place of XRC froze
 | Errors | `thiserror` (lib) + `anyhow` (bin) |
 | Sound | `rodio` |
 | License | GPL-3.0-only, single SPDX line per file |
-| Platforms | macOS (ARM64) → Windows x64+arm64 → Linux x86_64 (`.deb` + `.rpm`) |
+| Platforms | macOS **ARM64 only** (Apple Silicon; no Intel/x86_64 build) → Windows x64+arm64 → Linux x86_64 (`.deb` + `.rpm`) |
 
 ## 2. System context (C4)
 

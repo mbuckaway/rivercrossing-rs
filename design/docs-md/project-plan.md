@@ -102,7 +102,7 @@ reference for *scope*, not a template.
 - **R-ids:** R-02, R-03, R-04, R-05, R-30..R-38, R-51, R-73, R-76, R-79, R-81, R-82, R-83, R-84, R-85.
 
 ### EPIC-12 — Installers & release
-- **Scope:** macOS ARM64 DMG (`hdiutil`) → Windows x64+arm64 MSI (WiX v5) + portable zip → Linux x86_64
+- **Scope:** macOS **ARM64-only** DMG (`hdiutil`, `aarch64-apple-darwin`; no Intel) → Windows x64+arm64 MSI (WiX v5) + portable zip → Linux x86_64
   `.deb` + `.rpm` (`nfpm`); `SHA256SUMS.txt`; signing/notarization in a release EPIC.
 - **Acceptance:** each installer builds and smoke-installs; release assets + checksums produced.
 - **R-ids:** R-01, R-75.

@@ -191,7 +191,7 @@ the trimmed pattern:
 
 | Platform | Artifact | Toolchain |
 |---|---|---|
-| macOS (ARM64) | `-macos-arm64.dmg` | `cargo build --target aarch64-apple-darwin`, **`hdiutil`** (not create-dmg), `MACOSX_DEPLOYMENT_TARGET=11.0` |
+| macOS (ARM64 only; no Intel) | `-macos-arm64.dmg` | `cargo build --target aarch64-apple-darwin`, **`hdiutil`** (not create-dmg), `MACOSX_DEPLOYMENT_TARGET=11.0` |
 | Windows x64+arm64 | `.msi` + `-portable.zip` | `cargo build --target <arch>-pc-windows-msvc` (`+crt-static`), **WiX v5** MSI (dual-scope), `Compress-Archive` |
 | Linux x86_64 | `.deb` + `.rpm` | `cargo build` on Ubuntu 22.04 (glibc 2.35), **`nfpm`** |
 

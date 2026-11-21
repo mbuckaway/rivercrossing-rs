@@ -20,7 +20,7 @@ reference for branding assets (`packaging/branding/`).
 
 ## Implement
 
-1. macOS ARM64: `cargo build --target aarch64-apple-darwin`, `hdiutil` DMG (`-macos-arm64.dmg`),
+1. macOS **ARM64 only** (no Intel/x86_64 build): `cargo build --target aarch64-apple-darwin`, `hdiutil` DMG (`-macos-arm64.dmg`),
    `MACOSX_DEPLOYMENT_TARGET=11.0`.
 2. Windows x64 + arm64: `cargo build --target <arch>-pc-windows-msvc` (`+crt-static`), WiX v5 MSI
    (dual-scope) + `Compress-Archive` portable zip.
