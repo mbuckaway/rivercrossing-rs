@@ -96,6 +96,9 @@ Source files carry a single SPDX line and no other licence header:
 - **craft-libs pin.** One shared git `rev`; commit `Cargo.lock`; build `--locked`; move the rev only in
   its own PR.
 - **`forbid(unsafe_code)`** per domain-crate root; no `unwrap`/`expect`/`panic` in production.
+- **Agent surface (EPIC-13).** The CLI and the MCP server both dispatch the same `Action` registry; the
+  MCP server uses the shared **`craft-mcp-server`** crate (craft-libs), and the CLI is a hand-rolled
+  parser (no `clap`).
 - Keep functions short and single-purpose.
 
 ## Build & test

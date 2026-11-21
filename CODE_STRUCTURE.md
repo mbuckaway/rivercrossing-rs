@@ -8,6 +8,8 @@ Python code, translated to the Rust layered-crate architecture in `design/docs-m
 
 ```
 apps/rivercrossing                 thin eframe binary (craft facade + ui-egui)
+apps/rivercrossing-cli             thin CLI, hand-rolled parser over the Action registry (EPIC-13)
+crates/rivercrossing-mcp           MCP server over the Action registry on craft-mcp-server (EPIC-13)
 crates/rivercrossing-ui-egui       L6 — egui front end (the only crate allowed egui/eframe/winit)
 crates/rivercrossing-pdfexport     ┐
 crates/rivercrossing-htmlexport    ├ L0–L3 domain crates (UI-agnostic, forbid unsafe)
@@ -111,3 +113,7 @@ Port in dependency order (leaf-first), each crate by a **sequential** `tdd-rust-
 
 The empty-shell EPIC (EPIC-1) creates `rivercrossing-ui-egui` + `apps/rivercrossing` first (an empty
 egui window, no business logic) to prove the egui/craft-libs toolchain before the domain crates land.
+
+EPIC-13 (parity complete) adds `crates/rivercrossing-mcp` — built on the shared **`craft-mcp-server`**
+crate (JSON-RPC 2.0 over stdio; the app implements `Tools`) — and `apps/rivercrossing-cli` (a
+hand-rolled subcommand parser, no `clap`), both dispatching the same `Action` registry.
