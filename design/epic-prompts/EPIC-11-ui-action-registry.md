@@ -21,7 +21,7 @@ The Python oracles: `src/rivercrossing/ui/{app.py,views/*,presenters/*,ids.py}` 
 - `CODE_STRUCTURE.md` (rivercrossing-ui-egui) · `architecture.md` §5, §6
 - `requirements.md` R-02, R-03, R-04, R-05, R-30..R-38, R-51, R-73, R-76, R-79, R-81, R-82, R-83,
   R-84, R-85
-- Python `design/docs-md/xrc-windows.md` (window inventory + frozen names), `spec.md` §15 (menu map)
+- `design/docs-md/xrc-windows.md` (window inventory + frozen names), `spec.md` §15 (menu map)
   and §15b (frozen-name registry), `design/screenshots/`
 
 ## Tests-first (Red)
