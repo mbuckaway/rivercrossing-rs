@@ -1,0 +1,24 @@
+# rivercrossing-rs — third-party notices
+
+This product bundles the following fonts, redistributed under their own licenses. The full
+license text ships alongside each font file; the entries below record the required attribution.
+
+## Barlow, Barlow Condensed
+
+Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow)
+
+Licensed under the SIL Open Font License, Version 1.1.
+
+Full text:
+- `crates/rivercrossing-pdfexport/fonts/OFL-Barlow.txt`
+- `crates/rivercrossing-htmlexport/templates/fonts/OFL.txt`
+
+## DejaVu Sans
+
+Fonts are (c) Bitstream, Inc. DejaVu changes are in the public domain.
+Glyphs imported from Arev fonts are (c) Tavmjong Bah.
+
+Licensed under the Bitstream Vera Fonts Copyright.
+
+Full text:
+- `crates/rivercrossing-pdfexport/fonts/OFL-DejaVu.txt`

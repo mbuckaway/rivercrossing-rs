@@ -1,0 +1,11 @@
+# Clippy thresholds from CODINGSTANDARDS-RUST.md (project tightening).
+too-many-lines-threshold = 50
+too-many-arguments-threshold = 3
+excessive-nesting-threshold = 4
+cognitive-complexity-threshold = 15
+
+# Tests may use unwrap/expect/panic/indexing on fixtures they control.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-panic-in-tests = true

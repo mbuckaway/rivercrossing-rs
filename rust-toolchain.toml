@@ -1,0 +1,8 @@
+# rustup reads this file: `rustup toolchain install` (no args).
+[toolchain]
+channel = "stable"
+profile = "minimal"
+components = ["rustfmt", "clippy", "llvm-tools"]
+
+# The dated nightly (branch coverage + Miri) is pinned by the CI gate and the
+# validate-rust.sh script, e.g. nightly-2026-11-05.

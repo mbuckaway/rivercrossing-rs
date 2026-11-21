@@ -1,0 +1,38 @@
+# Rust / cargo
+/target/
+Cargo.lock.orig
+
+# Node (Tailwind CSS build step, if the HTML export keeps it)
+/node_modules/
+
+# Build / packaging output
+/dist/
+/build/
+/artifacts/
+release/
+
+# Python leftovers — never copied into this repo
+.venv/
+.nox/
+__pycache__/
+*.pyc
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.import_linter_cache/
+.coverage
+coverage.json
+.vm_baseline.log
+
+# Logs
+/logs/
+*.log
+
+# Secrets — never commit
+.env
+.wp-password.txt
+
+# macOS
+.DS_Store

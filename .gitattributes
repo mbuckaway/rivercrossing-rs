@@ -1,0 +1,24 @@
+# Normalise line endings; everything is LF in the repo.
+* text=auto eol=lf
+
+# Byte-frozen fixtures/oracles — never let git rewrite their line endings or
+# merge them. These mirror the Python repo's `.gitattributes` contract.
+*.csv text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.svg text eol=lf
+*.css text eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.wav binary
+*.ttf binary
+*.woff2 binary
+*.icns binary
+*.ico binary
+*.tiff binary
+
+# Lockfile
+Cargo.lock text eol=lf

@@ -1,0 +1,59 @@
+# rivercrossing-rs — Cargo workspace.
+#
+# This is the virtual workspace manifest. Members are added crate-by-crate by
+# the EPIC agents (config-writer): the empty-shell EPIC adds
+# `crates/rivercrossing-ui-egui` + `apps/rivercrossing` first, then the domain
+# crates land in build order (see CODE_STRUCTURE.md).
+
+[workspace]
+resolver = "3"
+members = []
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "GPL-3.0-only"
+repository = "https://github.com/mbuckaway/rivercrossing-rs"
+authors = ["Mark Buckaway"]
+
+# craft-libs / egui / winit dependencies and the [patch.crates-io] forks are
+# pinned by the empty-shell EPIC after the rev is proven by a build.
+[workspace.dependencies]
+
+# Source-file header convention: a single SPDX line, per AGENTS.md.
+# `// SPDX-License-Identifier: GPL-3.0-only`
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+unreachable_pub = "warn"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+indexing_slicing = "deny"
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+mem_forget = "deny"
+allow_attributes_without_reason = "deny"
+cognitive_complexity = "warn"
+
+# storytold's egui/winit forks. `[patch.crates-io]` does not propagate from
+# craft-libs to consumers, so this workspace must repeat it (WordCraft does the
+# same). Enabled by the empty-shell EPIC once the rev is proven:
+#
+# [patch.crates-io]
+# egui        = { git = "https://github.com/storytold/egui.git",   rev = "7e1c30d142bc7879d043e74b5ceb3ecfe7f51329" }
+# eframe      = { git = "https://github.com/storytold/egui.git",   rev = "7e1c30d142bc7879d043e74b5ceb3ecfe7f51329" }
+# egui_extras = { git = "https://github.com/storytold/egui.git",   rev = "7e1c30d142bc7879d043e74b5ceb3ecfe7f51329" }
+# winit       = { git = "https://github.com/storytold/winit.git",  rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }

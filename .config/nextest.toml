@@ -1,0 +1,17 @@
+# cargo-nextest profiles for the four test categories (CODINGSTANDARDS-RUST.md).
+
+[profile.unit]
+# Unit tests: src/**/tests.rs, run by `cargo nextest run -P unit`.
+
+[profile.functional]
+# Functional tests: tests/functional/main.rs, run by hand (never in the sweep).
+
+[profile.integration]
+# Integration tests: tests/integration/main.rs, run by hand (never in the sweep).
+
+[profile.scaling]
+# Scaling tests: tests/scaling/main.rs, run by hand (never in the sweep).
+
+[profile.ci]
+retries = 0
+fail-fast = true
