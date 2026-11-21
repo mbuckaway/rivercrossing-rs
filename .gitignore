@@ -36,3 +36,6 @@ coverage.json
 
 # macOS
 .DS_Store
+
+# Isolated local tooling (mermaid-cli, chromium cache)
+/.tools/
