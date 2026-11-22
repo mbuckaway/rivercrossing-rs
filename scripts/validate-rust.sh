@@ -19,7 +19,9 @@ step "fmt"
 cargo fmt --all -- --check || fail "fmt" "$?"
 
 step "clippy"
-CARGO_BUILD_WARNINGS=deny cargo clippy --workspace --all-targets --locked --keep-going || fail "clippy" "$?"
+# `-D warnings`, not CARGO_BUILD_WARNINGS: that variable only exists on Cargo >= 1.97,
+# so it silently no-ops on the 1.95 MSRV leg below.
+cargo clippy --workspace --all-targets --locked --keep-going -- -D warnings || fail "clippy" "$?"
 
 step "doc"
 cargo doc --workspace --no-deps --locked || fail "doc" "$?"
@@ -38,6 +40,11 @@ cargo machete || fail "machete" "$?"
 step "unit + coverage (line AND branch, 90/90)"
 cargo +"$NIGHTLY" llvm-cov clean --workspace
 cargo +"$NIGHTLY" llvm-cov nextest --workspace --branch --no-report -P unit --locked || fail "llvm-cov nextest" "$?"
-cargo +"$NIGHTLY" llvm-cov report --fail-under-lines 90 --ignore-filename-regex 'src/main\.rs' || fail "line coverage" "$?"
+# The egui view layer and thin entry points are excluded, per CODINGSTANDARDS-RUST.md:
+# the binary's main, the shell app (which owns the untestable eframe entry point), and
+# the view/widget-id modules EPIC-11 adds. Everything else must hold 90% line coverage.
+cargo +"$NIGHTLY" llvm-cov report --fail-under-lines 90 \
+  --ignore-filename-regex 'src/main\.rs|crates/rivercrossing-ui-egui/src/ui/app\.rs|crates/rivercrossing-ui-egui/src/ui/views/|crates/rivercrossing-ui-egui/src/ui/ids\.rs' \
+  || fail "line coverage" "$?"
 
 printf '\nGATE PASSED\n'
