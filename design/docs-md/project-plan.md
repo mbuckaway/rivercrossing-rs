@@ -35,10 +35,13 @@ reference for *scope*, not a template.
 - **R-ids:** R-01 (runs), R-05 (the UI framework that replaces XRC).
 
 ### EPIC-2 — Cards (`rivercrossing-cards`)
-- **Scope:** `Suit`/`Rank`/`Card`, seeded Fisher-Yates `Shoe`, deal/restitute/close/replay,
-  `draw_key`, `high_card_draw`, `seeded_card_codes`.
-- **Acceptance:** deterministic deal reproducible from the seed; empty-shoe reshuffle audit path;
-  card vectors (`vectors/*.csv`) as fixtures.
+- **Scope:** `Suit`/`Rank`/`Card`, seeded CPython-compatible Fisher-Yates `Shoe`,
+  deal/restitute/reshuffle/close/reopen/replay, `JokersMode`, `CardsError`, `draw_key`,
+  `high_card_draw`, `seeded_card_codes`.
+- **Acceptance:** deterministic deal reproducible from the seed; the reshuffle advances to
+  `seed + (cycle - 1)` with the stored seed unchanged; the oracle-generated golden fixture
+  (`crates/rivercrossing-cards/tests/fixtures/shoe-golden.json`) and the raw RNG vectors pass.
+  No card-deal CSV vector set exists — `design/fixtures/vectors/` holds the hands fixtures only.
 - **R-ids:** R-40 (seeded shoe), R-13 (shoe config data shape), R-14 (high-card draw).
 
 ### EPIC-3 — Hands (`rivercrossing-hands`)

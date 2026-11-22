@@ -20,20 +20,32 @@ Python oracle is `/Users/mark/src/rivercrossing/src/rivercrossing/cards.py` (546
 
 ## Tests-first (Red)
 
-Write failing `rstest` tests (in `src/lib.rs` `#[cfg(test)] mod tests;`) for:
-- seeded deal determinism (same seed → same sequence);
-- empty-shoe reshuffle (audit entry) and `restitute`/`close`/`replay`;
+Write failing `rstest` tests (in `src/<module>/tests.rs`) for:
+- seeded deal determinism (same seed → same sequence) against the oracle-generated golden fixture;
+- empty-shoe reshuffle (`cycle + 1`, rebuilt under `seed + (cycle - 1)`) and `restitute`/`close`/`reopen`/`replay`;
 - `draw_key`, `high_card_draw` (rank first, then suit, spades highest);
 - `seeded_card_codes`.
 
 ## Implement (Green → Refactor)
 
-`Suit`/`Rank`/`Card` (serde), `Shoe` (seed, deal, restitute, close, replay, reshuffle audit),
+`Suit`/`Rank`/`Card` (serde), `Shoe` (deal, restitute, close, reopen, replay, reshuffle),
 `draw_key`, `high_card_draw`, `seeded_card_codes`. `thiserror` for the crate error type;
 `#![forbid(unsafe_code)]`; SPDX line.
+
+The shoe carries **no default jokers mode**: `JokersMode` is a required argument, and the ride crate
+supplies the setup default (total) per spec §4 and R-13 — the Python skeleton's
+`jokers_total: bool = False` contradicts both and is not ported.
+
+The shuffle ports **CPython's `random.Random(seed)` and `random.shuffle`** (Mersenne Twister with CPython
+int seeding and the getrandbits-based `_randbelow`), stable from CPython 3.8 through the 3.14 the oracle
+runs. That is what lets the Rust deal reproduce the oracle's card sequences exactly.
+
+The crate writes **no audit entry**; the ride crate records the reshuffle event. `Shoe::reconfigure`
+is not part of this crate — ride adds it with its Edit Ride caller in EPIC-4.
 
 ## Done when
 
 - `cargo nextest run -P unit -p rivercrossing-cards` green; `cargo llvm-cov` ≥90% line and ≥90% branch.
-- The card vectors (`vectors/*.csv`, copied into `tests/fixtures/`) pass.
+- The oracle-generated fixture (`tests/fixtures/shoe-golden.json`, 60 configs) and the raw RNG vectors
+  (`tests/fixtures/mt19937.json`) pass. No card-deal CSV vector set exists; this replaces that clause.
 - `cargo fmt --check` + `cargo check` pass.

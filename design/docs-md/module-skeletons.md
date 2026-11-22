@@ -128,9 +128,11 @@ class Shoe:                   # deterministic multi-deck shoe
     restitute(card: Card) -> None       # Ctrl+Z: the last-dealt card returns to the front (E2.2.1)
     close() -> None                     # ride Finish locks the shoe; deal/reshuffle/restitute
                                         # raise ShoeClosedError afterwards (E2.2.1)
-# jokers_total selects the mode (§4): False (the S4 default) re-deals jokers_per_deck
-#   jokers every cycle; True spends that many jokers once across the ride — the budget
-#   persists across reshuffles, and a spent budget deals naturals only
+# jokers_total selects the mode (§4): False re-deals jokers_per_deck jokers every cycle;
+#   True spends that many jokers once across the ride — the budget persists across
+#   reshuffles, and a spent budget deals naturals only.
+#   The Python default is False, which contradicts spec §4 and R-13 ("total is the default"):
+#   the ride passes the mode explicitly, and the Rust port's JokersMode has no default.
 # invariant: same (config, seed) ⇒ identical deal sequence (R-40)
 ```
 
