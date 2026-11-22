@@ -58,8 +58,10 @@ shuffle; deal / restitute / reshuffle / close / reopen / replay), `CardsError`, 
 owns the default.
 
 ### rivercrossing-hands
-`HandClass`, `EvaluatedHand`, `eval5`, `best_hand`, `compare` (total order), `self_test`. The 7,462-row
-rank sweep and joker vectors ship as test fixtures (`vectors/*.csv`).
+`HandClass`, `EvaluatedHand`, `eval5`, `best_hand`, `compare` (total order: class, then kickers, then
+fewer jokers wins), `self_test` (`SelfTestReport`/`SelfTestCheck`; six checks, five blocking and one
+advisory timing check). The 7,462-row rank sweep and joker vectors ship as `fixtures/*.csv`, embedded
+via `include_str!` and parsed by the crate so the runtime self-test reads the same data the tests do.
 
 ### rivercrossing-standings
 `TieBreak`, `ZeroLapMode`, `EntryResult`, `Placed`, `rank`, `rank_by_kind`, `laps_leaderboard`,

@@ -45,8 +45,8 @@ reference for *scope*, not a template.
 - **R-ids:** R-40 (seeded shoe), R-13 (shoe config data shape), R-14 (high-card draw).
 
 ### EPIC-3 — Hands (`rivercrossing-hands`)
-- **Scope:** `HandClass`, `EvaluatedHand`, natural `eval5`/`classify`, wild/joker layer,
-  five-of-a-kind, `best_hand` (best-5-of-N, cap), `compare` total order, `self_test`.
+- **Scope:** `HandClass`, `EvaluatedHand`, `eval5`, wild/joker layer, five-of-a-kind,
+  `best_hand` (best-5-of-N, cap), `compare` total order, `self_test`.
 - **Acceptance:** six self-test checks pass (7,462-rank sweep + joker vectors + five-of-a-kind +
   total-order sweep + joker-count bound); whole-field 180×12 timing advisory.
 - **R-ids:** R-41, R-42, R-43, R-44, R-45.
