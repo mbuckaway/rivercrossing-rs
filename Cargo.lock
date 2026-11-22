@@ -4935,6 +4935,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rivercrossing"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "rivercrossing-ui-egui",
+]
+
+[[package]]
 name = "rivercrossing-ui-egui"
 version = "0.1.0"
 dependencies = [
