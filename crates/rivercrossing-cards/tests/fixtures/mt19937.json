@@ -1,0 +1,38 @@
+{
+  "note": "Raw CPython random.Random vectors, printed by Python 3.14.8 (the oracle's interpreter). getrandbits32 is four consecutive getrandbits(32) calls; randbelow10 is six consecutive _randbelow(10) calls from a fresh instance. These gate the MT19937 port before any shuffle test runs.",
+  "getrandbits32": [
+    {
+      "seed": 0,
+      "values": [3626764237, 1654615998, 3255389356, 3823568514]
+    },
+    {
+      "seed": 1,
+      "values": [577090037, 2444712010, 3639700191, 3445702192]
+    },
+    {
+      "seed": 42,
+      "values": [2746317213, 478163327, 107420369, 3184935163]
+    },
+    {
+      "seed": 4611686018427387905,
+      "values": [2860182956, 3045448841, 2046821187, 3193287972]
+    }
+  ],
+  "randbelow": [
+    {
+      "seed": 0,
+      "bound": 10,
+      "values": [6, 6, 0, 4, 8, 7]
+    },
+    {
+      "seed": 1,
+      "bound": 10,
+      "values": [2, 9, 1, 4, 1, 7]
+    },
+    {
+      "seed": 42,
+      "bound": 10,
+      "values": [1, 0, 4, 3, 3, 2]
+    }
+  ]
+}

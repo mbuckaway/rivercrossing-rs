@@ -52,8 +52,10 @@ a new Rust design; no such trait exists in the Python code.
 ## Crate public APIs
 
 ### rivercrossing-cards
-`Suit`, `Rank`, `Card`, `Shoe` (seeded Fisher-Yates shuffle; deal / restitute / close / replay),
-`draw_key`, `high_card_draw`, `seeded_card_codes`.
+`Suit`, `Rank`, `Card` (code/parse, serde), `JokersMode`, `Shoe` (seeded CPython-compatible Fisher-Yates
+shuffle; deal / restitute / reshuffle / close / reopen / replay), `CardsError`, `draw_key`,
+`high_card_draw`, `seeded_card_codes`. The shoe takes its jokers mode as a required argument — the ride
+owns the default.
 
 ### rivercrossing-hands
 `HandClass`, `EvaluatedHand`, `eval5`, `best_hand`, `compare` (total order), `self_test`. The 7,462-row

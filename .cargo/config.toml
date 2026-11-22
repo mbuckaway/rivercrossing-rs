@@ -1,0 +1,3 @@
+# The `cargo xtask` alias: run the workspace maintenance binary.
+[alias]
+xtask = "run --package xtask --"
