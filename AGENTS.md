@@ -25,7 +25,7 @@ who was not part of the design conversation should be able to build the Rust por
 |---|---|
 | `design/docs-md/requirements.md` | Numbered **R-ids** — the acceptance authority |
 | `design/docs-md/spec.md` | Engineering spec (§1–§9 behaviour is the Python oracle; §10–§15b rewritten for Rust) |
-| `design/docs-md/gui-windows.md` | The egui command/widget-id registry — **implementation truth for UI** |
+| `design/docs-md/xrc-windows.md` | The Python window inventory and the §15b frozen control-name registry — **implementation truth for UI** |
 | `design/docs-md/architecture.md` | The Rust architecture (layered crates, Action registry, persistence, exports) |
 | `design/docs-md/project-plan.md` · `task-briefs.md` | Rust EPIC plan and per-task briefs |
 | `design/epic-prompts/` | Agent-ready EPIC prompts (load each into a `tdd-rust-writer` agent) |
@@ -94,7 +94,15 @@ Source files carry a single SPDX line and no other licence header:
   registry (stable id, label, shortcut, `enabled()`, target). Menu rows and on-screen buttons dispatch
   the same id; an ids-drift check fails CI on drift.
 - **craft-libs pin.** One shared git `rev`; commit `Cargo.lock`; build `--locked`; move the rev only in
-  its own PR.
+  its own PR. The pinned build is craft-libs `243d68e12d05e89122db6d154924bf1992e10d38` (`version =
+  "=0.1.0"`), egui/eframe `0.37.0` at `7e1c30d142bc7879d043e74b5ceb3ecfe7f51329`, winit `0.30.13` at
+  `a517b3846ee8457d84ee4975110bfda6797c44dc`, wgpu `30.0`. The egui/winit forks are repeated in this
+  workspace's `[patch.crates-io]` because they do not propagate from craft-libs.
+- **Where the build runs.** This repo has no CI workflow: the fleet runners' golden AMI carries no Rust
+  toolchain, and the forge host runner executes as user `git`. Builds and gates run on the forge box
+  (`dev`) and on the Mac over SSH. If this repo is later mirrored to the Forge, the job must target the
+  host runner (`runs-on: [linux, ARM64]`), never a `box`/`fleet` label, and needs a `git`-owned
+  toolchain.
 - **`forbid(unsafe_code)`** per domain-crate root; no `unwrap`/`expect`/`panic` in production.
 - **Agent surface (EPIC-13).** The CLI and the MCP server both dispatch the same `Action` registry; the
   MCP server uses the shared **`craft-mcp-server`** crate (craft-libs), and the CLI is a hand-rolled

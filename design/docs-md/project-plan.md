@@ -93,7 +93,7 @@ reference for *scope*, not a template.
 - **R-ids:** R-86.
 
 ### EPIC-11 — egui UI + Action registry (`rivercrossing-ui-egui`)
-- **Scope:** reproduce the Python screens from `design/screenshots/` + `gui-windows.md`; the
+- **Scope:** reproduce the Python screens from `design/screenshots/` + `xrc-windows.md`; the
   `Action`/command registry (§15 menu map + §15b frozen ids); presenters' decision logic; console,
   riders/teams editors, results, audit, settings, dialogs; sound (rodio).
 - **Acceptance:** every EPIC-1..11 acceptance scenario passes against the Python screens; ids-drift
