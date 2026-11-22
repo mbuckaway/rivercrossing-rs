@@ -30,16 +30,23 @@ wgpu `30` (inherited). eframe 0.37 uses `logic()` + `ui()` (not `update()`).
 
 ## Implement (Green → Refactor)
 
-1. Enable the craft-libs rev + egui/winit `[patch.crates-io]` in `Cargo.toml`; add the crates to
-   `[workspace.dependencies]` and `members`.
-2. `crates/rivercrossing-ui-egui`: an empty `App` (`logic()`/`ui()`) and the app info.
-3. `apps/rivercrossing/src/main.rs`: install logs, build `eframe::NativeOptions` +
-   `egui::ViewportBuilder`, `craft::gpu::configure`, `craft::ui::shell::embed::install`,
-   `eframe::run_native`.
+1. Enable the craft-libs rev + the egui/winit `[patch.crates-io]` block in `Cargo.toml`; add `craft`
+   (`ui`, `ui-app`) and `eframe` to `[workspace.dependencies]`, then grow `members`.
+2. `crates/rivercrossing-ui-egui`: the window identity (`AppSpec::new(APP_ID, APP_NAME,
+   Defaults::new([1100.0, 780.0], [1100.0, 780.0]))`) and an empty `impl ShellApp` (`frame_input`,
+   `ui`, `logic`), launched with **`craft::ui::shell::app::run(spec, make)`**.
+3. `apps/rivercrossing/src/main.rs`: `rivercrossing_ui_egui::run(smoke_quit_after())` — nothing else.
 4. SPDX line on every `.rs`.
+
+> Correction (EPIC-1 execution): the original steps named `craft::gpu::configure` (which takes an
+> `egui_wgpu::WgpuSetupCreateNew`, not `NativeOptions`), a pre-`run_native` `embed::install` (which can
+> only run inside eframe's creator closure) and a hand-built `NativeOptions`. `shell::app::run` performs
+> all of that: it builds the options, installs the runtime in the creator closure, and calls
+> `eframe::run_native`. There is no logger to install — craft-libs has none.
 
 ## Done when
 
-- `cargo run --release -p rivercrossing` opens an empty window on macOS.
-- The smoke test, `cargo fmt --check`, and `cargo check` pass.
-- The pinned rev is recorded in `AGENTS.md`.
+- `cargo run --release -p rivercrossing` opens an empty, titled, resizable window on macOS.
+- The open/quit smoke test, `cargo fmt --check`, `cargo check` and `cargo clippy -D warnings` pass.
+- The pinned rev is recorded in `AGENTS.md`, with the build-location rule (forge box + Mac over SSH;
+  never a fleet runner).

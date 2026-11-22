@@ -18,8 +18,10 @@ the global standard wins unless this file explicitly tightens a rule.
   uncompilable module test file fails every other module's build). Test-first (RS-14).
 - **Coverage gate.** 90% line AND 90% branch, each alone (RS-13), scoped to the domain crates.
   The egui view layer and thin entry points are excluded via `--ignore-filename-regex`
-  (mirroring the Python `[tool.coverage.run] omit` list: `ui/app.rs`, `ui/views/*`, `ui/ids.rs`,
-  `src/main.rs`).
+  (mirroring the Python `[tool.coverage.run] omit` list). The Rust paths, as wired in
+  `scripts/validate-rust.sh`, are `(^|/)src/main\.rs`, `crates/rivercrossing-ui-egui/src/ui/app\.rs`,
+  `crates/rivercrossing-ui-egui/src/ui/views/` and `crates/rivercrossing-ui-egui/src/ui/ids\.rs`;
+  every other file must hold 90%.
 - **craft-libs pin.** One shared git `rev` across all `craft-*` deps; commit `Cargo.lock`; build
   `--locked`. The egui/winit `[patch.crates-io]` forks are repeated in this workspace (they do not
   propagate from craft-libs). Move the rev only in its own PR.

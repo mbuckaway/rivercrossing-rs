@@ -2,6 +2,9 @@
 
 [profile.unit]
 # Unit tests: src/**/tests.rs, run by `cargo nextest run -P unit`.
+# An unfiltered profile inherits `all()`, so filter to the lib and bin targets: the
+# `functional` smoke test spawns the window and must never enter the unit sweep.
+default-filter = "kind(lib) | kind(bin)"
 
 [profile.functional]
 # Functional tests: tests/functional/main.rs, run by hand (never in the sweep).

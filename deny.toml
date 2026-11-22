@@ -1,17 +1,28 @@
 # cargo-deny configuration for the RS gate (`cargo deny --locked --config deny.toml check`).
+# cargo-deny 0.22 schema: the pre-0.15 keys (`vulnerability`, `notice`, `copyleft`, `default`)
+# were removed, and `unmaintained` now takes a scope rather than a level.
 # Bans and advisories are tightened crate-by-crate as dependencies land.
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "deny"
+version = 2
 yanked = "deny"
-notice = "warn"
+# Scoped to our own dependencies: the zbus/atspi stack that accesskit pulls in
+# on Linux is flagged transitively, which is not ours to fix.
+unmaintained = "workspace"
+ignore = []
 
 [licenses]
-allow = ["GPL-3.0-only", "MIT", "Apache-2.0", "Zlib", "Unicode-DFS-2016", "ISC", "BSD-2-Clause", "BSD-3-Clause", "OFL-1.1"]
-copyleft = "deny"
-default = "deny"
+allow = ["GPL-3.0-only", "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "Zlib", "Unicode-3.0", "ISC", "BSD-2-Clause", "BSD-3-Clause", "OFL-1.1", "Ubuntu-font-1.0", "MPL-2.0"]
+confidence-threshold = 0.8
+exceptions = []
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+workspace-default-features = "allow"
+external-default-features = "allow"
+
+# The craft-libs, egui and winit forks are git dependencies on storytold's GitHub org.
+[sources]
+unknown-registry = "deny"
+unknown-git = "allow"
