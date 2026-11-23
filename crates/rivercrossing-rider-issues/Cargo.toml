@@ -1,0 +1,20 @@
+[package]
+name = "rivercrossing-rider-issues"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+rivercrossing-roster = { path = "../rivercrossing-roster", version = "=0.1.0" }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true
