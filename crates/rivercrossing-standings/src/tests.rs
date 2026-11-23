@@ -3,42 +3,22 @@
 //! Tests for the crate-level constants and the spelling seam.
 
 use pretty_assertions::assert_eq;
+use rstest::rstest;
 
 use super::{
     DEFAULT_TIEBREAK_ORDER, DEFAULT_TOP, DRAW_TIE_NOTE, LIVE_TIEBREAK_ORDER, StandingsError,
     TieBreak, tiebreak_order_from_spellings,
 };
 
-#[test]
-fn test_tiebreak_order_from_spellings_high_card_maps_and_round_trips() {
-    let member = TieBreak::HighCard;
-    assert_eq!(
-        tiebreak_order_from_spellings(&["high_card"]),
-        Ok(vec![member])
-    );
-    assert_eq!(
-        tiebreak_order_from_spellings(&[member.as_str()]),
-        Ok(vec![member])
-    );
-}
-
-#[test]
-fn test_tiebreak_order_from_spellings_laps_maps_and_round_trips() {
-    let member = TieBreak::Laps;
-    assert_eq!(tiebreak_order_from_spellings(&["laps"]), Ok(vec![member]));
-    assert_eq!(
-        tiebreak_order_from_spellings(&[member.as_str()]),
-        Ok(vec![member])
-    );
-}
-
-#[test]
-fn test_tiebreak_order_from_spellings_total_time_maps_and_round_trips() {
-    let member = TieBreak::TotalTime;
-    assert_eq!(
-        tiebreak_order_from_spellings(&["total_time"]),
-        Ok(vec![member])
-    );
+#[rstest]
+#[case("high_card", TieBreak::HighCard)]
+#[case("laps", TieBreak::Laps)]
+#[case("total_time", TieBreak::TotalTime)]
+fn test_tiebreak_order_from_spellings_maps_and_round_trips(
+    #[case] spelling: &str,
+    #[case] member: TieBreak,
+) {
+    assert_eq!(tiebreak_order_from_spellings(&[spelling]), Ok(vec![member]));
     assert_eq!(
         tiebreak_order_from_spellings(&[member.as_str()]),
         Ok(vec![member])

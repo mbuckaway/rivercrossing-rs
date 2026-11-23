@@ -5015,6 +5015,7 @@ version = "0.1.0"
 dependencies = [
  "pretty_assertions",
  "rivercrossing-roster",
+ "rstest",
 ]
 
 [[package]]
@@ -5038,6 +5039,7 @@ dependencies = [
  "rivercrossing-cards",
  "rivercrossing-hands",
  "rivercrossing-ride",
+ "rstest",
  "thiserror 2.0.21",
 ]
 
