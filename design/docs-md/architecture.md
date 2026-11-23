@@ -71,7 +71,7 @@ flowchart TB
         store["store"] --> ride
         issues["rider-issues"] --> roster
         standings --> ride
-        standings --> roster
+        standings --> cards
     end
     ui --> pdf
     ui --> csv

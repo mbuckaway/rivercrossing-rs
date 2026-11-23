@@ -169,7 +169,10 @@ class TieBreak(Enum): MOST_LAPS TOTAL_TIME HIGH_CARD_DRAW
                        tiebreak_card: Card | None = None)  # R-14's drawn card
 @dataclass Placed(place: int, result: EntryResult, tie_note: str | None,
                   draw_required: bool)                 # never silently ordered
+class ZeroLapMode(Enum): RANK DNS HIDE   # a 0-lap ACTIVE row: place / append unplaced / drop
 rank(results, order: tuple[TieBreak, ...]) -> list[Placed]
+rank_by_kind(results, order: tuple[TieBreak, ...], *, zero_laps=ZeroLapMode.RANK)
+    -> tuple[list[Placed], list[Placed]]   # teams, then solo; each renumbered from 1
 laps_leaderboard(results, top: int = 10) -> list[Placed]
 time_leaderboard(results, top: int = 10) -> list[Placed]   # most laps, then time
 hand_name(hand: EvaluatedHand) -> str   # title-case em-dash prose (E6.1.1, D1); raises on an empty hand
@@ -264,10 +267,12 @@ team_name_key(name) -> str                     # fuzzy team key; the CSV preview
 rivercrossing.rider_issues — the roster defect report (R-78 · rider_issues_dlg)
 
 ```
+@dataclass RiderIssue: entry: Entry · rider: Rider | None · kind: str · message: str
 rider_issues(roster) -> tuple[RiderIssue, ...]
     # stable report order: team-of-one · missing-name · missing-number · duplicate-name
     #   · duplicate-team-name · near-duplicate-team-name (a ⚠ warning) · duplicate-number
     # team-name checks reuse the CSV importer's identity rules (roster.team_name_key / the normalized name)
+    # advisory only (R-78); R-12's hard start gate is Roster.validate_for_start
 ```
 
 rivercrossing.store — persistence (§2/§9 · R-50…54)

@@ -5010,6 +5010,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rivercrossing-rider-issues"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "rivercrossing-roster",
+]
+
+[[package]]
 name = "rivercrossing-roster"
 version = "0.1.0"
 dependencies = [
@@ -5020,6 +5028,17 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "uuid",
+]
+
+[[package]]
+name = "rivercrossing-standings"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "rivercrossing-cards",
+ "rivercrossing-hands",
+ "rivercrossing-ride",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

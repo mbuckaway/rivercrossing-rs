@@ -70,10 +70,13 @@ reference for *scope*, not a template.
 
 ### EPIC-6 — Standings + rider issues
 - **Crates:** `rivercrossing-standings`, `rivercrossing-rider-issues`.
-- **Scope:** `TieBreak`/`EntryResult`/`Placed`/`rank`/`rank_by_kind`, leaderboards, `hand_name`;
-  `RiderIssue` + `rider_issues(roster)`. Ranking consumes `rivercrossing_ride::SnapshotEntry` and
-  produces its own `EntryResult`/`Placed` — ride must not depend on standings.
-- **Acceptance:** ranking + mixed-ride split (`rank_by_kind`) and the issue report match the oracle.
+- **Scope:** ride's `TieBreak` (re-exported), `ZeroLapMode`, `EntryResult`/`Placed`, `rank`/`rank_by_kind`,
+  the two leaderboards, `hand_name`, the spelling conversion and constants; `IssueKind`, `RiderIssue`
+  and `rider_issues(roster)`. Ranking consumes ride's `SnapshotEntry` through `EntryResult::from` and
+  produces its own rows — ride must not depend on standings.
+- **Acceptance:** ranking, the `ZeroLapMode` DNS/HIDE/RANK partition, the mixed-ride split, the
+  laps-then-time leaderboards and every golden hand name match the oracle; the seven rider-issue kinds
+  match the oracle's messages and order. Both crates ≥90/90 line and branch.
 - **R-ids:** R-60, R-65, R-78.
 
 ### EPIC-7 — Store / persistence (`rivercrossing-store`)

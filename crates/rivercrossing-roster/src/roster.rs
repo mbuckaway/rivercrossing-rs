@@ -23,7 +23,7 @@ use crate::plates;
 use crate::types::{AuditEvent, Entry, Rider};
 
 /// The smallest team that the ride setup accepts (R-12).
-pub(crate) const MIN_TEAM_SIZE: u32 = 2;
+pub const MIN_TEAM_SIZE: u32 = 2;
 /// The largest team that the ride setup accepts (R-12).
 const MAX_TEAM_SIZE_LIMIT: u32 = 10;
 
