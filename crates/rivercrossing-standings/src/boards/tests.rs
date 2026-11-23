@@ -8,6 +8,7 @@
 use pretty_assertions::assert_eq;
 use rivercrossing_hands::best_hand;
 use rivercrossing_ride::{EntryId, SnapshotKind};
+use rstest::rstest;
 
 use super::{laps_leaderboard, time_leaderboard};
 use crate::types::{EntryResult, Placed};
@@ -137,11 +138,18 @@ fn test_laps_leaderboard_equal_keys_keep_input_order() {
 
 // ------------------------------------------------------------ top boundary
 
-#[test]
-fn test_laps_leaderboard_top_zero_returns_no_rows() {
-    let placed = laps_leaderboard(&twelve_lap_field(), 0);
+#[rstest]
+#[case(0, 0)]
+#[case(9, 9)]
+#[case(10, 10)]
+#[case(11, 11)]
+fn test_laps_leaderboard_top_boundary_returns_capped_length(
+    #[case] top: usize,
+    #[case] expected: usize,
+) {
+    let placed = laps_leaderboard(&twelve_lap_field(), top);
 
-    assert_eq!(placed.len(), 0);
+    assert_eq!(placed.len(), expected);
 }
 
 #[test]
@@ -150,27 +158,6 @@ fn test_laps_leaderboard_top_one_returns_the_leader() {
 
     assert_eq!(ids(&placed), vec!["11"]);
     assert_eq!(places(&placed), vec![Some(1)]);
-}
-
-#[test]
-fn test_laps_leaderboard_top_nine_returns_nine_rows() {
-    let placed = laps_leaderboard(&twelve_lap_field(), 9);
-
-    assert_eq!(placed.len(), 9);
-}
-
-#[test]
-fn test_laps_leaderboard_top_ten_returns_ten_rows() {
-    let placed = laps_leaderboard(&twelve_lap_field(), 10);
-
-    assert_eq!(placed.len(), 10);
-}
-
-#[test]
-fn test_laps_leaderboard_top_eleven_returns_eleven_rows() {
-    let placed = laps_leaderboard(&twelve_lap_field(), 11);
-
-    assert_eq!(placed.len(), 11);
 }
 
 #[test]

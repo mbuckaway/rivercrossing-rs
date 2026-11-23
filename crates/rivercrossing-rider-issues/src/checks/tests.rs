@@ -6,6 +6,7 @@ use pretty_assertions::assert_eq;
 use rivercrossing_roster::enums::{EntryMode, EntryStatus, EntryType, PlateModel};
 use rivercrossing_roster::roster::Roster;
 use rivercrossing_roster::types::{Entry, Rider};
+use rstest::rstest;
 
 use super::rider_issues;
 use crate::issue::{IssueKind, RiderIssue};
@@ -80,63 +81,35 @@ fn test_rider_issues_given_an_empty_roster_reports_nothing() {
 
 // ------------------------------------------------------------- team of one
 
-#[test]
-fn test_rider_issues_given_a_zero_rider_team_reports_team_of_one() {
+#[rstest]
+#[case(0, "team size must be at least 2, got 0")]
+#[case(1, "team size must be at least 2, got 1")]
+fn test_rider_issues_given_an_undersized_team_reports_team_of_one(
+    #[case] size: usize,
+    #[case] message: &str,
+) {
     // Arrange
     let mut roster = pooled_roster();
-    roster.load_entries(vec![team("k1", "Lone Wolf", Vec::new())]);
+    roster.load_entries(vec![team("k1", "Lone Wolf", team_riders(size, "1"))]);
 
     // Act
     let issue = single_issue(&roster);
 
     // Assert
     assert_eq!(issue.kind, IssueKind::TeamOfOne);
-    assert_eq!(issue.message, "team size must be at least 2, got 0");
+    assert_eq!(issue.message, message);
     assert_eq!(issue.entry.key, "k1");
     assert_eq!(issue.rider, None);
 }
 
-#[test]
-fn test_rider_issues_given_a_one_rider_team_reports_team_of_one() {
+#[rstest]
+#[case(2)]
+#[case(3)]
+#[case(4)]
+fn test_rider_issues_given_a_valid_size_team_reports_no_team_of_one(#[case] size: usize) {
     // Arrange
     let mut roster = pooled_roster();
-    roster.load_entries(vec![team("k1", "Lone Wolf", team_riders(1, "1"))]);
-
-    // Act
-    let issue = single_issue(&roster);
-
-    // Assert
-    assert_eq!(issue.kind, IssueKind::TeamOfOne);
-    assert_eq!(issue.message, "team size must be at least 2, got 1");
-    assert_eq!(issue.entry.key, "k1");
-    assert_eq!(issue.rider, None);
-}
-
-#[test]
-fn test_rider_issues_given_a_min_size_team_reports_no_team_of_one() {
-    // Arrange
-    let mut roster = pooled_roster();
-    roster.load_entries(vec![team("k1", "Trail Blazers", team_riders(2, "1"))]);
-
-    // Assert
-    assert_eq!(rider_issues(&roster).len(), 0);
-}
-
-#[test]
-fn test_rider_issues_given_a_min_plus_one_team_reports_no_team_of_one() {
-    // Arrange
-    let mut roster = pooled_roster();
-    roster.load_entries(vec![team("k1", "Trail Blazers", team_riders(3, "1"))]);
-
-    // Assert
-    assert_eq!(rider_issues(&roster).len(), 0);
-}
-
-#[test]
-fn test_rider_issues_given_a_max_size_team_reports_no_team_of_one() {
-    // Arrange
-    let mut roster = pooled_roster();
-    roster.load_entries(vec![team("k1", "Trail Blazers", team_riders(4, "1"))]);
+    roster.load_entries(vec![team("k1", "Trail Blazers", team_riders(size, "1"))]);
 
     // Assert
     assert_eq!(rider_issues(&roster).len(), 0);
@@ -144,59 +117,18 @@ fn test_rider_issues_given_a_max_size_team_reports_no_team_of_one() {
 
 // ------------------------------------------------------------ missing name
 
-#[test]
-fn test_rider_issues_given_two_empty_name_parts_reports_missing_name() {
+#[rstest]
+#[case("", "")]
+#[case("   ", "")]
+#[case("", "\t")]
+#[case("  ", "   ")]
+fn test_rider_issues_given_blank_name_parts_reports_missing_name(
+    #[case] first: &str,
+    #[case] last: &str,
+) {
     // Arrange
     let mut roster = pooled_roster();
-    roster.load_entries(vec![solo("k1", "1", rider("", "", Some("1")))]);
-
-    // Act
-    let issue = single_issue(&roster);
-
-    // Assert
-    assert_eq!(issue.kind, IssueKind::MissingName);
-    assert_eq!(issue.message, "missing name");
-    assert_eq!(issue.entry.key, "k1");
-    assert_eq!(issue.rider.map(Rider::full_name), Some(String::new()));
-}
-
-#[test]
-fn test_rider_issues_given_a_whitespace_first_name_reports_missing_name() {
-    // Arrange
-    let mut roster = pooled_roster();
-    roster.load_entries(vec![solo("k1", "1", rider("   ", "", Some("1")))]);
-
-    // Act
-    let issue = single_issue(&roster);
-
-    // Assert
-    assert_eq!(issue.kind, IssueKind::MissingName);
-    assert_eq!(issue.message, "missing name");
-    assert_eq!(issue.entry.key, "k1");
-    assert_eq!(issue.rider.map(Rider::full_name), Some(String::new()));
-}
-
-#[test]
-fn test_rider_issues_given_a_tab_last_name_reports_missing_name() {
-    // Arrange
-    let mut roster = pooled_roster();
-    roster.load_entries(vec![solo("k1", "1", rider("", "\t", Some("1")))]);
-
-    // Act
-    let issue = single_issue(&roster);
-
-    // Assert
-    assert_eq!(issue.kind, IssueKind::MissingName);
-    assert_eq!(issue.message, "missing name");
-    assert_eq!(issue.entry.key, "k1");
-    assert_eq!(issue.rider.map(Rider::full_name), Some(String::new()));
-}
-
-#[test]
-fn test_rider_issues_given_two_whitespace_name_parts_reports_missing_name() {
-    // Arrange
-    let mut roster = pooled_roster();
-    roster.load_entries(vec![solo("k1", "1", rider("  ", "   ", Some("1")))]);
+    roster.load_entries(vec![solo("k1", "1", rider(first, last, Some("1")))]);
 
     // Act
     let issue = single_issue(&roster);
@@ -210,49 +142,16 @@ fn test_rider_issues_given_two_whitespace_name_parts_reports_missing_name() {
 
 // ---------------------------------------------------------- missing number
 
-#[test]
-fn test_rider_issues_given_a_pooled_rider_without_a_plate_reports_missing_number() {
+#[rstest]
+#[case(None)]
+#[case(Some(""))]
+#[case(Some("   "))]
+fn test_rider_issues_given_a_pooled_rider_with_a_blank_plate_reports_missing_number(
+    #[case] plate: Option<&str>,
+) {
     // Arrange
     let mut roster = pooled_roster();
-    roster.load_entries(vec![solo("k1", "", rider("Alex", "Roy", None))]);
-
-    // Act
-    let issue = single_issue(&roster);
-
-    // Assert
-    assert_eq!(issue.kind, IssueKind::MissingNumber);
-    assert_eq!(issue.message, "missing plate");
-    assert_eq!(issue.entry.key, "k1");
-    assert_eq!(
-        issue.rider.map(Rider::full_name),
-        Some("Alex Roy".to_owned())
-    );
-}
-
-#[test]
-fn test_rider_issues_given_a_pooled_rider_with_an_empty_plate_reports_missing_number() {
-    // Arrange
-    let mut roster = pooled_roster();
-    roster.load_entries(vec![solo("k1", "", rider("Alex", "Roy", Some("")))]);
-
-    // Act
-    let issue = single_issue(&roster);
-
-    // Assert
-    assert_eq!(issue.kind, IssueKind::MissingNumber);
-    assert_eq!(issue.message, "missing plate");
-    assert_eq!(issue.entry.key, "k1");
-    assert_eq!(
-        issue.rider.map(Rider::full_name),
-        Some("Alex Roy".to_owned())
-    );
-}
-
-#[test]
-fn test_rider_issues_given_a_pooled_rider_with_a_blank_plate_reports_missing_number() {
-    // Arrange
-    let mut roster = pooled_roster();
-    roster.load_entries(vec![solo("k1", "", rider("Alex", "Roy", Some("   ")))]);
+    roster.load_entries(vec![solo("k1", "", rider("Alex", "Roy", plate))]);
 
     // Act
     let issue = single_issue(&roster);
