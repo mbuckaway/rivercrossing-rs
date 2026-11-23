@@ -94,10 +94,23 @@ seams (`load_entries` / `load_retired_entries`), team logos (`next_team_logo_car
 `rider_issues(&Roster)` — the advisory roster defect report (R-78), not R-12's start gate.
 
 ### rivercrossing-store
-`Store`, `SessionState`, `PreviousSession`, `RideRow`, `default_db_path`, `ensure_schema`,
-`MIGRATIONS`/`run_migrations`, `backup::run/restore/schedule_hourly`. SQLite via **rusqlite (bundled)**:
-WAL, foreign keys, CHECK constraints, partial unique index (`entry_plate_live_unique WHERE retired=0`),
-full-table-rebuild migrations, `uuid`, JSON audit payloads, `wal_checkpoint(TRUNCATE)` before backup.
+`StoreError`; `Store` with `open`, `rides`, `create_ride`, `update_ride_config`, `duplicate_ride`,
+`delete_ride`, `roster_for`, `save_roster`, `append`, `append_roster_event(&AuditEvent)`,
+`load_engine`, `audit_rows`, `session_state`, `previous_session`, `close_session`, `set_active_ride`,
+`clear_active_ride`, `backup_now`; `RideRow`, `AuditRow`, `SessionState`, `PreviousSession`;
+`SCHEMA_VERSION`, `apply_pragmas`, `ensure_schema`, `MIGRATIONS`/`run_migrations`,
+`default_db_path`; `DEFAULT_KEEP`, `backup::{run, restore, schedule_hourly, HourlyBackup}`. SQLite via
+**rusqlite (bundled)**: WAL, foreign keys, the oracle CHECK constraints, partial unique index
+(`entry_plate_live_unique WHERE retired=0`), full-table-rebuild migrations, `uuid`, JSON audit
+payloads, `wal_checkpoint(TRUNCATE)` before backup.
+
+The store is UI-agnostic and synchronous (one connection, caller thread). Timestamps are UTC instants
+(`time::OffsetDateTime`); local rendering belongs to `ui-egui`. `append` updates only `status` and
+`updated_at` (the `actual_start`/`finished_at` columns stay NULL and the event log is authoritative).
+The `crossing`/`card` tables are created for schema parity but nothing writes them; `roster_for`
+derives `has_data` from those rows or the ride's data-bearing audit actions, and marks retired entries
+as data-bearing. `heartbeat_at` is read (the crash `ended_at` fallback) but written by the EPIC-11
+timer, not the store. The schedule name is `schedule_hourly`, matching the earlier contract.
 
 ### rivercrossing-csvio
 `CsvIoError`, `ParsedRider`/`ParsedEntry`, `ImportConflict`/`ImportPreview`/`ImportReport`, `preview`,
