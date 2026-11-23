@@ -1,0 +1,23 @@
+[package]
+name = "rivercrossing-standings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+rivercrossing-cards = { path = "../rivercrossing-cards", version = "=0.1.0" }
+rivercrossing-hands = { path = "../rivercrossing-hands", version = "=0.1.0" }
+rivercrossing-ride = { path = "../rivercrossing-ride", version = "=0.1.0" }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[lints]
+workspace = true
