@@ -181,6 +181,40 @@ impl Shoe {
         Ok(())
     }
 
+    /// Rebuild cycle 1 from the stored seed under new deck settings.
+    ///
+    /// The rebuild reshuffles the same stored seed with the new settings, so
+    /// the edited configuration deals the cards a fresh shoe of that shape
+    /// would deal. The ride config bounds both counts before this call.
+    ///
+    /// # Errors
+    ///
+    /// Return [`CardsError::ShoeClosed`] when the shoe is closed.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the four arguments are the documented shoe configuration"
+    )]
+    pub fn reconfigure(
+        &mut self,
+        decks: u8,
+        jokers_per_deck: u8,
+        mode: JokersMode,
+    ) -> Result<(), CardsError> {
+        if self.closed {
+            return Err(CardsError::ShoeClosed);
+        }
+        self.decks = decks;
+        self.jokers_per_deck = jokers_per_deck;
+        self.mode = mode;
+        self.joker_budget = jokers_per_deck;
+        self.cycle = 1;
+        self.dealt = 0;
+        let mut cards = build_cards(decks, jokers_per_deck, mode);
+        CpRandom::new(self.seed).shuffle(&mut cards);
+        self.cards = cards;
+        Ok(())
+    }
+
     /// Close the shoe and refuse further dealing.
     pub fn close(&mut self) {
         self.closed = true;

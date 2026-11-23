@@ -626,3 +626,140 @@ fn composition_matches_the_rank_major_order() {
     assert_eq!(sorted, deck_sorted);
     assert_eq!(deck_codes.first(), Some(&"2C".to_owned()));
 }
+
+// ----------------------------------------------------------- reconfigure
+
+#[test]
+fn reconfigure_rebuilds_cycle_one_from_the_stored_seed() {
+    // Arrange
+    let mut shoe = Shoe::new(1, 0, 4242, JokersMode::PerDeck).expect("the config is valid");
+    drain(&mut shoe);
+
+    // Act
+    shoe.reconfigure(2, 1, JokersMode::PerDeck)
+        .expect("the shoe is open");
+    let mut fresh = Shoe::new(2, 1, 4242, JokersMode::PerDeck).expect("the config is valid");
+
+    // Assert
+    assert_eq!(shoe.cycle(), 1);
+    assert_eq!(shoe.dealt(), 0);
+    assert_eq!(codes_of(&drain(&mut shoe)), codes_of(&drain(&mut fresh)));
+}
+
+#[test]
+fn reconfigure_keeps_the_stored_seed() {
+    // Arrange
+    let mut shoe = Shoe::new(1, 0, 777, JokersMode::PerDeck).expect("the config is valid");
+
+    // Act
+    shoe.reconfigure(3, 2, JokersMode::PerDeck)
+        .expect("the shoe is open");
+
+    // Assert
+    assert_eq!(shoe.seed(), 777);
+}
+
+#[test]
+fn reconfigure_resets_the_deal_position_and_cycle() {
+    // Arrange
+    let mut shoe = Shoe::new(1, 0, 7, JokersMode::PerDeck).expect("the config is valid");
+    let _first = shoe.deal().expect("the first card");
+    drain(&mut shoe);
+    shoe.reshuffle().expect("the shoe is open");
+    let _second = shoe.deal().expect("the second card");
+
+    // Act
+    shoe.reconfigure(1, 0, JokersMode::PerDeck)
+        .expect("the shoe is open");
+
+    // Assert
+    assert_eq!((shoe.cycle(), shoe.dealt(), shoe.remaining()), (1, 0, 52));
+}
+
+#[test]
+fn reconfigure_restores_the_joker_budget_in_total_mode() {
+    // Arrange
+    let mut shoe = Shoe::new(1, 2, 11, JokersMode::Total).expect("the config is valid");
+    let joker = deal_until_joker(&mut shoe).expect("the cycle holds a joker");
+    let spent = shoe.jokers_in_cycle();
+
+    // Act
+    shoe.reconfigure(1, 2, JokersMode::Total)
+        .expect("the shoe is open");
+    let restored = shoe.jokers_in_cycle();
+    let mut fresh = Shoe::new(1, 2, 11, JokersMode::Total).expect("the config is valid");
+
+    // Assert
+    assert_eq!(joker, Card::Joker);
+    assert_eq!(spent, 1);
+    assert_eq!(restored, 2);
+    assert_eq!(codes_of(&drain(&mut shoe)), codes_of(&drain(&mut fresh)));
+}
+
+#[test]
+fn reconfigure_switches_the_jokers_mode() {
+    // Arrange
+    let mut shoe = Shoe::new(1, 0, 99, JokersMode::Total).expect("the config is valid");
+    drain(&mut shoe);
+
+    // Act
+    shoe.reconfigure(1, 2, JokersMode::PerDeck)
+        .expect("the shoe is open");
+    let cards = drain(&mut shoe);
+    let mut fresh = Shoe::new(1, 2, 99, JokersMode::PerDeck).expect("the config is valid");
+
+    // Assert
+    assert_eq!(shoe.jokers_in_cycle(), 2);
+    assert_eq!(count_jokers(&cards), 2);
+    assert_eq!(cards.len(), 54);
+    assert_eq!(codes_of(&cards), codes_of(&drain(&mut fresh)));
+}
+
+#[test]
+fn reconfigure_shrinks_a_multi_deck_shoe() {
+    // Arrange
+    let mut shoe = Shoe::new(8, 1, 5, JokersMode::PerDeck).expect("the config is valid");
+    drain(&mut shoe);
+
+    // Act
+    shoe.reconfigure(2, 0, JokersMode::PerDeck)
+        .expect("the shoe is open");
+
+    // Assert
+    assert_eq!(shoe.remaining(), 104);
+    assert_eq!(shoe.jokers_in_cycle(), 0);
+}
+
+#[test]
+fn reconfigure_accepts_ten_jokers() {
+    // Arrange
+    let mut shoe = Shoe::new(1, 0, 0, JokersMode::Total).expect("the config is valid");
+
+    // Act
+    shoe.reconfigure(1, 10, JokersMode::Total)
+        .expect("the shoe is open");
+
+    // Assert
+    assert_eq!(shoe.remaining(), 62);
+    assert_eq!(shoe.jokers_in_cycle(), 10);
+}
+
+#[test]
+fn reconfigure_when_closed_is_refused_and_changes_nothing() {
+    // Arrange
+    let mut shoe = Shoe::new(1, 0, 3, JokersMode::PerDeck).expect("the config is valid");
+    let mut reference = Shoe::new(1, 0, 3, JokersMode::PerDeck).expect("the config is valid");
+    let _first = reference.deal().expect("the first card");
+    let expected = reference.deal().expect("the second card");
+    let _first = shoe.deal().expect("the first card");
+    shoe.close();
+
+    // Act
+    let result = shoe.reconfigure(2, 0, JokersMode::PerDeck);
+    shoe.reopen();
+    let actual = shoe.deal().expect("the second card");
+
+    // Assert
+    assert_eq!(result, Err(CardsError::ShoeClosed));
+    assert_eq!(actual, expected);
+}
