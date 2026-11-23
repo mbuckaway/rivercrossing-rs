@@ -30,9 +30,14 @@ equivalence; card-sufficiency (`estimate_cards_needed`, `check_card_sufficiency`
 
 ## Implement (Green → Refactor)
 
-`RideStatus`, `RideConfig`, `RideEngine`, `Event`/`Crossing`/`CrossingResult`/`HeldCrossing`/
-`PendingMiss`/`CardCheck`, `estimate_cards_needed`, `check_card_sufficiency`; **`trait RosterView`**.
-`thiserror`; `#![forbid(unsafe_code)]`; SPDX line.
+`RideStatus`, `RideConfig`, `RideEngine`, `Event`/`EventAction`/`Crossing`/`CrossingResult`/
+`HeldCrossing`/`PendingMiss`/`CardCheck`/`SnapshotEntry`, `estimate_cards_needed`,
+`check_card_sufficiency`, `format_elapsed`; **`trait RosterView`** (reads plus the roster mutations the
+engine performs) and **`trait Clock`**. `thiserror`; `#![forbid(unsafe_code)]`; SPDX line.
+
+The engine depends on `rivercrossing-cards` **and** `rivercrossing-hands` (`best_hand`/`compare` for the
+snapshot and the finish draw), not on `standings`: `snapshot()` returns ride's own `SnapshotEntry`, and
+EPIC-6 ranks it. The 24 event actions are pinned to the oracle's strings (`undo`, `reassign`, `dnf`).
 
 ## Done when
 

@@ -84,7 +84,7 @@ flowchart TB
 **Layering rule** (`cargo xtask layers`): nothing below `rivercrossing-ui-egui` may depend on
 `egui`/`eframe`/`winit`/`rfd`. This makes the front end swappable and the domain testable headless.
 
-**Dependency order (leaf-first):** `cards` → `hands` → `standings` → `ride` → `roster` →
+**Dependency order (leaf-first):** `cards` → `hands` → `ride` → `roster` → `standings` →
 `rider-issues` → `store` → `csvio` → `htmlexport` → `pdfexport` → `wordpress` → `ui-egui`.
 
 The Python `ride`↔`roster` cycle is broken by a **new `trait RosterView`** (declared in

@@ -1677,6 +1677,9 @@ name = "deranged"
 version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e9de72ce2ad1f90dc62fa25f0f430ef85eb4b0d8fa0be4f30373bc40a21d28e"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "diff"
@@ -4990,6 +4993,20 @@ dependencies = [
  "rstest",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "rivercrossing-ride"
+version = "0.1.0"
+dependencies = [
+ "pretty_assertions",
+ "rivercrossing-cards",
+ "rivercrossing-hands",
+ "rstest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "time",
 ]
 
 [[package]]
