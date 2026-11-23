@@ -244,6 +244,8 @@ class EntryMode(StrEnum): SOLO MIXED · class PlateModel(StrEnum): RIDER_POOLED 
                  sex: str | None = None, sort_order=0)
 class Roster:                 # one ride's entries/riders; status set by the E4 engine
     __init__(*, entry_mode=SOLO, max_team_size=4, plate_model=RIDER_POOLED)
+    # Rust port: no defaults — the three settings are required; the ride config owns
+    # R-11's MIXED default (RideConfigParams::base still defaults Solo; ride's to fix)
     create_solo_entry · create_team_entry · create_team_entry_of_one · add_rider_to_team
     move_rider · extract_rider_to_solo · remove_rider · update_entry · delete_entry · mark_has_data
     change_solo_plate · change_pooled_rider_plate · change_team_plate · change_plate   # the model-correct dispatch the editors + fixes share

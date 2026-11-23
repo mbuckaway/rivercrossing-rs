@@ -60,9 +60,12 @@ reference for *scope*, not a template.
 - **R-ids:** R-10..R-18 (config/editing), R-30, R-33, R-34, R-35, R-36 (console state), R-14 (tie-breaks).
 
 ### EPIC-5 — Roster (`rivercrossing-roster`)
-- **Scope:** `EntryMode`/`PlateModel`/`EntryType`/`EntryStatus`, `Rider`/`Entry`/`Roster`/`AuditEvent`/
-  `StartViolation`, `can_*` guards, name keys; **implements `RosterView`**.
-- **Acceptance:** plate dispatch + lock matrix + retired-entry semantics match the Python oracle.
+- **Scope:** `EntryType`/`EntryStatus`, `Rider`/`Entry`/`Roster`/`AuditEvent`, re-exported ride enums,
+  `can_*` lock matrix, name keys, plate dispatch, moves, retirement, team logos, restore seams;
+  **implements `RosterView`**.
+- **Acceptance:** plate dispatch + lock matrix + retired-entry semantics match the Python oracle; the
+  whole-number plate domain, `next_team_logo_card` (strictly after), `random_team_card`, the start gate and
+  `load_entries`/`load_retired_entries` match the oracle tests; roster ≥90/90 line and branch.
 - **R-ids:** R-11, R-12, R-15, R-16, R-17, R-20, R-22, R-23, R-25.
 
 ### EPIC-6 — Standings + rider issues

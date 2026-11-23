@@ -33,7 +33,7 @@ Layering rule (`cargo xtask layers`): nothing below `rivercrossing-ui-egui` may 
 cards          (leaf)
 hands        → cards
 ride         → cards, hands               (declares trait RosterView; owns SnapshotEntry)
-roster       → ride                        (implements RosterView)
+roster       → ride, cards                 (implements RosterView; cards seeds the logo deck)
 standings    → hands, cards, ride          (ranks ride's SnapshotEntry)
 rider_issues → roster
 store        → ride, cards, roster
@@ -75,8 +75,14 @@ ranks), `Timestamp`, `estimate_cards_needed`, `check_card_sufficiency`, `format_
 `trait RosterView`** (reads plus the roster mutations the engine performs) and `trait Clock`.
 
 ### rivercrossing-roster
-`EntryMode`, `PlateModel`, `EntryType`, `EntryStatus`, `Rider`, `Entry`, `Roster`, `AuditEvent`,
-`StartViolation`, `can_*` guards, `rider_name_key` / `canonical_person_name` / `team_name_key`;
+Re-exports ride's `EntryMode`, `PlateModel`, `RideStatus`, `StartViolation`; owns `EntryType`,
+`EntryStatus`, `Rider`, `Entry`, `AuditEvent`, `RosterError`, the `can_*` lock matrix,
+`rider_name_key` / `canonical_person_name` / `team_name_key`. `Roster` covers construction
+(`create_solo_entry` / `create_team_entry` / `create_team_entry_of_one` / `create_empty_team`), edits,
+plate dispatch (`resolve_plate`, `next_free_plate`, `change_*_plate`), moves
+(`move_rider` / `extract_rider_to_solo` / `add_rider_to_team` / `remove_rider`), retirement, the restore
+seams (`load_entries` / `load_retired_entries`), team logos (`next_team_logo_card` / `random_team_card` /
+`set_team_logo_card`), `validate_for_start`, and the audit log (`audit_log` / `take_audit_log`);
 **implements `RosterView`**.
 
 ### rivercrossing-rider-issues

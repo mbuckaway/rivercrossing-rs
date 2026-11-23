@@ -35,6 +35,8 @@ rstest = "0.28"
 pretty_assertions = "1"
 # Wall-clock instants for the ride engine: ISO-8601 payloads (Rfc3339) and epoch seconds.
 time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+# Entry identity: uuid4 hex, minted by the roster and persisted by the store.
+uuid = { version = "1", features = ["v4"] }
 
 # Source-file header convention: a single SPDX line, per AGENTS.md.
 # `// SPDX-License-Identifier: GPL-3.0-only`
