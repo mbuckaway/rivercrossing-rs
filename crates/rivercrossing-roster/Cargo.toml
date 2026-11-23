@@ -1,0 +1,25 @@
+[package]
+name = "rivercrossing-roster"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+rivercrossing-cards = { path = "../rivercrossing-cards", version = "=0.1.0" }
+rivercrossing-ride = { path = "../rivercrossing-ride", version = "=0.1.0" }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+rstest = { workspace = true }
+
+[lints]
+workspace = true
