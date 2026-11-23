@@ -64,9 +64,13 @@ advisory timing check). The 7,462-row rank sweep and joker vectors ship as `fixt
 via `include_str!` and parsed by the crate so the runtime self-test reads the same data the tests do.
 
 ### rivercrossing-standings
-`TieBreak`, `ZeroLapMode`, `EntryResult`, `Placed`, `rank`, `rank_by_kind`, `laps_leaderboard`,
-`time_leaderboard`, `hand_name`, `tiebreak_order_from_spellings`. Ranking consumes ride's
-`SnapshotEntry` and produces its own `EntryResult`/`Placed`.
+Re-exports ride's `TieBreak` (the config and ranking share one type); owns `ZeroLapMode`
+(`Rank`/`Dns`/`Hide`), `EntryResult`, `Placed` (`place: Option<u32>`, `None` = DNS), `StandingsError`,
+`rank`, `rank_by_kind`, `laps_leaderboard`, `time_leaderboard`, `hand_name`,
+`tiebreak_order_from_spellings`, and the constants `DEFAULT_TIEBREAK_ORDER`, `LIVE_TIEBREAK_ORDER`,
+`DRAW_TIE_NOTE`, `DEFAULT_TOP`. Ranking takes `&[EntryResult]`; `EntryResult::from(&SnapshotEntry)` is
+the seam from ride's result row. Both leaderboards share one key — laps DESC, then total ASC — and DNS
+filtering is the caller's.
 
 ### rivercrossing-ride
 `RideStatus`, `RideConfig`, `RideEngine`, `Event`/`EventAction`, `Crossing`, `CrossingResult`,
@@ -86,7 +90,8 @@ seams (`load_entries` / `load_retired_entries`), team logos (`next_team_logo_car
 **implements `RosterView`**.
 
 ### rivercrossing-rider-issues
-`RiderIssue`, `rider_issues(roster)` — the pre-start defect report.
+`IssueKind` (the seven kinds), `RiderIssue<'a>` (borrows the entry and optional rider, plus the message),
+`rider_issues(&Roster)` — the advisory roster defect report (R-78), not R-12's start gate.
 
 ### rivercrossing-store
 `Store`, `SessionState`, `PreviousSession`, `RideRow`, `default_db_path`, `ensure_schema`,
