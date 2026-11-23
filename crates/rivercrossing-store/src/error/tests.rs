@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use pretty_assertions::assert_eq;
 use rivercrossing_cards::CardsError;
 use rivercrossing_ride::RideError;
+use rivercrossing_roster::error::RosterError;
 
 use super::StoreError;
 
@@ -139,14 +140,40 @@ fn test_error_replay_renders_the_row_the_ride_and_the_source() {
     let error = StoreError::Replay {
         row_id: 4,
         ride_id: 1,
-        source: RideError::UnknownEntry {
-            key: "12".to_owned(),
-        },
+        detail: "unknown entry: 12".to_owned(),
     };
 
     assert_eq!(
         error.to_string(),
         "cannot replay audit row 4 for ride 1: unknown entry: 12"
+    );
+}
+
+#[test]
+fn test_error_replay_renders_a_decoded_payload_failure() {
+    let error = StoreError::Replay {
+        row_id: 4,
+        ride_id: 1,
+        detail: "expected value at line 1 column 1".to_owned(),
+    };
+
+    assert_eq!(
+        error.to_string(),
+        "cannot replay audit row 4 for ride 1: expected value at line 1 column 1"
+    );
+}
+
+#[test]
+fn test_error_invalid_roster_renders_the_source() {
+    let error = StoreError::InvalidRoster {
+        source: RosterError::TeamSize {
+            message: "max_team_size must be between 2 and 10, got 1".to_owned(),
+        },
+    };
+
+    assert_eq!(
+        error.to_string(),
+        "invalid roster: max_team_size must be between 2 and 10, got 1"
     );
 }
 

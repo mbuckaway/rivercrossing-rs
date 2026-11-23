@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use rivercrossing_cards::CardsError;
 use rivercrossing_ride::RideError;
+use rivercrossing_roster::error::RosterError;
 
 #[cfg(test)]
 mod tests;
@@ -101,15 +102,25 @@ pub enum StoreError {
         /// The largest value the field accepts.
         max: u32,
     },
+    /// A stored roster row does not build a valid roster.
+    #[error("invalid roster: {source}")]
+    InvalidRoster {
+        /// The roster error.
+        source: RosterError,
+    },
     /// An audit row does not replay.
-    #[error("cannot replay audit row {row_id} for ride {ride_id}: {source}")]
+    #[error("cannot replay audit row {row_id} for ride {ride_id}: {detail}")]
     Replay {
         /// The audit row that failed.
         row_id: i64,
         /// The ride that owns the row.
         ride_id: i64,
-        /// The ride error that the row raised.
-        source: RideError,
+        /// The payload or engine failure, rendered as text.
+        ///
+        /// The text is a string because a payload can fail to decode before
+        /// the ride engine ever sees it, so the failure is not always an
+        /// engine error.
+        detail: String,
     },
     /// An audit row's payload is not a JSON object.
     #[error("cannot replay audit row {row_id}: the payload is not a JSON object")]

@@ -5,9 +5,12 @@
 use pretty_assertions::assert_eq;
 use rivercrossing_ride::RideStatus;
 use rstest::rstest;
-use time::{Date, Month};
+use time::{Date, Month, OffsetDateTime};
 
-use super::{RideRow, event_date_from_str, live_entries_from_i64, ride_status_from_str};
+use super::{
+    AuditRow, RideRow, event_date_from_str, instant_from_epoch, live_entries_from_i64,
+    ride_status_from_str,
+};
 use crate::error::StoreError;
 
 /// Return the fixture event date, 20 September 2026.
@@ -162,6 +165,77 @@ fn test_row_ride_row_clones_equal() {
         event_date: event_date(),
         status: RideStatus::Finished,
         entries: 0,
+    };
+
+    // Act
+    let copy = row.clone();
+
+    // Assert
+    assert_eq!(copy, row);
+}
+
+#[test]
+fn test_row_instant_from_epoch_reads_the_instant() {
+    // Arrange
+    let epoch = OffsetDateTime::UNIX_EPOCH.unix_timestamp() + 3_600;
+
+    // Act
+    let instant = instant_from_epoch("ride", "planned_start", epoch).expect("the epoch converts");
+
+    // Assert
+    assert_eq!(
+        instant,
+        OffsetDateTime::UNIX_EPOCH + time::Duration::hours(1)
+    );
+}
+
+#[test]
+fn test_row_instant_from_epoch_rejects_a_value_out_of_range_with_invalid_row() {
+    // Act
+    let result = instant_from_epoch("audit", "at", i64::MAX);
+
+    // Assert
+    assert!(matches!(
+        result,
+        Err(StoreError::InvalidRow {
+            table: "audit",
+            column: "at",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn test_row_audit_row_holds_every_field() {
+    // Arrange
+    let at = OffsetDateTime::UNIX_EPOCH + time::Duration::hours(10);
+    let row = AuditRow {
+        at,
+        action: "record_crossing".to_owned(),
+        entry: "12".to_owned(),
+        reason: "Alice".to_owned(),
+    };
+
+    // Assert
+    assert_eq!(
+        (
+            row.at,
+            row.action.as_str(),
+            row.entry.as_str(),
+            row.reason.as_str()
+        ),
+        (at, "record_crossing", "12", "Alice")
+    );
+}
+
+#[test]
+fn test_row_audit_row_clones_equal() {
+    // Arrange
+    let row = AuditRow {
+        at: OffsetDateTime::UNIX_EPOCH,
+        action: "start".to_owned(),
+        entry: String::new(),
+        reason: String::new(),
     };
 
     // Act

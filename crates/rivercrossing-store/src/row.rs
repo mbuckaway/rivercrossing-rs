@@ -2,7 +2,7 @@
 
 //! The row types that the store returns.
 
-use rivercrossing_ride::RideStatus;
+use rivercrossing_ride::{RideStatus, Timestamp};
 use time::Date;
 use time::format_description::well_known::Iso8601;
 
@@ -25,6 +25,22 @@ pub struct RideRow {
     pub status: RideStatus,
     /// The number of live entries; retired rows are not counted.
     pub entries: u32,
+}
+
+/// One audit trail row for the audit viewer.
+///
+/// The store returns the stored instant and the projected cells. The viewer
+/// formats the instant in the operator's local time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditRow {
+    /// The instant the event happened, from the stored epoch second.
+    pub at: Timestamp,
+    /// The stored action spelling.
+    pub action: String,
+    /// The entry cell: a plate, a display name or a summary.
+    pub entry: String,
+    /// The payload's reason, or an empty string when it carries none.
+    pub reason: String,
 }
 
 /// Read the stored `ride.event_date` text.
@@ -67,5 +83,23 @@ pub(crate) fn live_entries_from_i64(value: i64) -> Result<u32, StoreError> {
         field: "entry_count",
         value,
         max: u32::MAX,
+    })
+}
+
+/// Read a stored epoch second as one UTC instant.
+///
+/// # Errors
+///
+/// Return [`StoreError::InvalidRow`] when the value is outside the range that
+/// [`Timestamp`] can hold.
+pub(crate) fn instant_from_epoch(
+    table: &'static str,
+    column: &'static str,
+    value: i64,
+) -> Result<Timestamp, StoreError> {
+    Timestamp::from_unix_timestamp(value).map_err(|_| StoreError::InvalidRow {
+        table,
+        column,
+        stored: value.to_string(),
     })
 }

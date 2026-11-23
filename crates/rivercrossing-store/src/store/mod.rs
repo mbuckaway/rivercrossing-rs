@@ -7,16 +7,24 @@
 //! launch, and exposes the ride library, the config writes, the delete guard
 //! and the session reading.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use rivercrossing_cards::JokersMode;
-use rivercrossing_ride::{Clock, RideConfig, RideStatus, SystemClock};
+use rivercrossing_ride::{Clock, Event, RideConfig, RideEngine, RideStatus, SystemClock};
+use rivercrossing_roster::roster::Roster;
+use rivercrossing_roster::types::{AuditEvent, Entry, Rider};
 use rusqlite::{Connection, OptionalExtension, params};
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::backup::{self, DEFAULT_KEEP};
+use crate::engine_load;
 use crate::error::StoreError;
-use crate::row::{RideRow, event_date_from_str, live_entries_from_i64, ride_status_from_str};
+use crate::row::{
+    AuditRow, RideRow, event_date_from_str, instant_from_epoch, live_entries_from_i64,
+    ride_status_from_str,
+};
 use crate::session::{PreviousSession, SessionRow, SessionState, previous_session_from_row};
 
 #[cfg(test)]
@@ -390,6 +398,162 @@ impl Store {
         Ok(())
     }
 
+    /// Return one ride's roster rebuilt from its entry and rider rows.
+    ///
+    /// The ride's own shape columns build the roster's settings, each entry's
+    /// stored key survives, and a live entry's `has_data` is derived from its
+    /// recorded rows. A retired entry rebuilds into the retired list with no
+    /// riders and `has_data` set, because the retired flag is that fact.
+    ///
+    /// # Errors
+    ///
+    /// Return [`StoreError::RideNotFound`] when no ride holds `ride_id`,
+    /// [`StoreError::InvalidRow`] for an unreadable stored value,
+    /// [`StoreError::OutOfRange`] for a count that does not fit, and
+    /// [`StoreError::InvalidRoster`] when the ride's shape is refused.
+    pub fn roster_for(&self, ride_id: i64) -> Result<Roster, StoreError> {
+        engine_load::load_roster(&self.conn, ride_id)
+    }
+
+    /// Replace one ride's persisted roster with *roster*.
+    ///
+    /// A save is a snapshot, never an append: the ride's previous entry and
+    /// rider rows are removed first, then the live entries are written in list
+    /// order, then the retired ones. Each entry's key is written verbatim and
+    /// each rider's `sort_order` comes from the rider, so a reload reproduces
+    /// the same roster.
+    ///
+    /// # Errors
+    ///
+    /// Return [`StoreError::RideNotFound`] when no ride holds `ride_id`, and
+    /// [`StoreError::Sqlite`] when a write fails, including the live-plate
+    /// partial index's refusal of two live entries on one plate.
+    pub fn save_roster(&mut self, ride_id: i64, roster: &Roster) -> Result<(), StoreError> {
+        if !self.ride_exists(ride_id)? {
+            return Err(StoreError::RideNotFound { id: ride_id });
+        }
+        let transaction = self.conn.transaction()?;
+        transaction.execute(
+            "DELETE FROM rider WHERE entry_id IN (SELECT id FROM entry WHERE ride_id = ?1)",
+            [ride_id],
+        )?;
+        transaction.execute("DELETE FROM entry WHERE ride_id = ?1", [ride_id])?;
+        for entry in roster.entries() {
+            insert_roster_entry(&transaction, ride_id, entry, false)?;
+        }
+        for entry in roster.retired_entries() {
+            insert_roster_entry(&transaction, ride_id, entry, true)?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Persist one ride event as one audit row and sync the ride lifecycle.
+    ///
+    /// The stored `at` is the payload's own instant when it carries one of the
+    /// event keys, else the clock. `start` and `continue` write RUNNING,
+    /// `finish` FINISHED and `reopen` REOPENED, each also stamping
+    /// `updated_at`. Every other action, `stop` and `record_crossing`
+    /// included, appends the audit row alone: the timing columns stay NULL and
+    /// the event log is authoritative.
+    ///
+    /// # Errors
+    ///
+    /// Return [`StoreError::Sqlite`] when the insert fails, including the
+    /// foreign-key refusal of a ride that does not exist, and
+    /// [`StoreError::Json`] when the payload or action cannot be encoded.
+    pub fn append(&mut self, ride_id: i64, event: &Event) -> Result<(), StoreError> {
+        let action = engine_load::action_text(event.action)?;
+        let payload_json = serde_json::to_string(&event.payload)?;
+        let now = SystemClock.now();
+        let at = engine_load::event_timestamp(&event.payload).unwrap_or(now);
+        let transaction = self.conn.transaction()?;
+        transaction.execute(
+            "INSERT INTO audit (ride_id, at, action, payload_json) VALUES (?1, ?2, ?3, ?4)",
+            params![ride_id, at.unix_timestamp(), action, payload_json],
+        )?;
+        if let Some(status) = engine_load::lifecycle_status(event.action) {
+            transaction.execute(
+                "UPDATE ride SET status = ?1, updated_at = ?2 WHERE id = ?3",
+                params![status.as_str(), now.unix_timestamp(), ride_id],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Persist one roster audit event as one audit row.
+    ///
+    /// A roster event is never a ride mutation, so the ride's status and
+    /// `updated_at` stay exactly as they were. The stored `at` is the append
+    /// time.
+    ///
+    /// # Errors
+    ///
+    /// Return [`StoreError::RideNotFound`] when no ride holds `ride_id`,
+    /// [`StoreError::Json`] when the payload cannot be encoded, and
+    /// [`StoreError::Sqlite`] when the insert fails.
+    pub fn append_roster_event(
+        &mut self,
+        ride_id: i64,
+        event: &AuditEvent,
+    ) -> Result<(), StoreError> {
+        if !self.ride_exists(ride_id)? {
+            return Err(StoreError::RideNotFound { id: ride_id });
+        }
+        let payload_json = serde_json::to_string(&event.payload)?;
+        let now = SystemClock.now().unix_timestamp();
+        self.conn.execute(
+            "INSERT INTO audit (ride_id, at, action, payload_json) VALUES (?1, ?2, ?3, ?4)",
+            params![ride_id, now, event.action, payload_json],
+        )?;
+        Ok(())
+    }
+
+    /// Rebuild one ride's engine by replaying its audit log.
+    ///
+    /// The config comes from the ride row, the shoe from the stored seed, and
+    /// the roster from the entry and rider rows. Every audit row whose action
+    /// is a ride action is applied in append order; a row whose action text is
+    /// not a ride action is skipped, so a roster plate change never reaches
+    /// the engine.
+    ///
+    /// # Errors
+    ///
+    /// Return [`StoreError::RideNotFound`] when no ride holds `ride_id`, the
+    /// config, shoe, roster or payload conversion failures, and
+    /// [`StoreError::Replay`] when a known action's payload does not decode or
+    /// the engine refuses it.
+    pub fn load_engine(&self, ride_id: i64) -> Result<RideEngine<Roster, SystemClock>, StoreError> {
+        engine_load::load_engine(&self.conn, ride_id)
+    }
+
+    /// Return one ride's audit trail, newest first.
+    ///
+    /// `entry` is the payload's `dnf` display, else its `tiebreak_draw`
+    /// summary, else its `entry_id` key mapped to the entry's plate (or the
+    /// raw key), else a plate or name column, else an empty string. `reason`
+    /// is the payload's `reason` text or an empty string.
+    ///
+    /// # Errors
+    ///
+    /// Return [`StoreError::RideNotFound`] when no ride holds `ride_id`,
+    /// [`StoreError::InvalidPayload`] when a row's payload does not decode to
+    /// a JSON object, [`StoreError::InvalidRow`] for an instant that does not
+    /// convert, and [`StoreError::Sqlite`] when a query fails.
+    pub fn audit_rows(&self, ride_id: i64) -> Result<Vec<AuditRow>, StoreError> {
+        if !self.ride_exists(ride_id)? {
+            return Err(StoreError::RideNotFound { id: ride_id });
+        }
+        let plates = live_plate_map(&self.conn, ride_id)?;
+        let stored = read_audit_rows(&self.conn, ride_id)?;
+        let mut audit = Vec::new();
+        for row in stored {
+            audit.push(project_audit_row(row, &plates)?);
+        }
+        Ok(audit)
+    }
+
     /// Return the previous session's resume record.
     ///
     /// The reading is the second-newest row, the session that this launch's
@@ -655,4 +819,210 @@ fn seed_to_sql(seed: u64) -> Result<i64, StoreError> {
 )]
 pub(crate) fn random_63_bit() -> u64 {
     Uuid::new_v4().as_u128() as u64 & ((1_u64 << 63) - 1)
+}
+
+/// One audit row as it is read, before it is projected for the viewer.
+struct StoredAudit {
+    /// The row's id, for the failure messages.
+    row_id: i64,
+    /// The stored epoch second.
+    at: i64,
+    /// The stored action spelling.
+    action: String,
+    /// The stored payload text.
+    payload_json: String,
+}
+
+/// Write one entry row and its riders for a roster snapshot.
+///
+/// A retired entry is written with `retired = 1`, a team size of zero and no
+/// rider rows: a dissolve only ever fires on an emptied entry.
+///
+/// # Errors
+///
+/// Return [`StoreError::Sqlite`] when a write fails, and
+/// [`StoreError::OutOfRange`] in the unreachable case where the rider count
+/// does not fit the column.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the write needs the connection, the ride, the entry and its retired flag"
+)]
+fn insert_roster_entry(
+    conn: &Connection,
+    ride_id: i64,
+    entry: &Entry,
+    retired: bool,
+) -> Result<(), StoreError> {
+    let team_size = if retired {
+        0
+    } else {
+        team_size_param(entry.riders.len())?
+    };
+    conn.execute(
+        "INSERT INTO entry (ride_id, plate, key, display_name, type, team_size, status, dnf_at, \
+         notes, logo_card, retired) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, ?10)",
+        params![
+            ride_id,
+            entry.plate,
+            entry.key,
+            entry.display_name,
+            entry.kind.as_str(),
+            team_size,
+            entry.status.as_str(),
+            entry.notes,
+            entry.logo_card,
+            retired,
+        ],
+    )?;
+    if retired {
+        return Ok(());
+    }
+    let entry_id = conn.last_insert_rowid();
+    for rider in &entry.riders {
+        insert_roster_rider(conn, entry_id, rider)?;
+    }
+    Ok(())
+}
+
+/// Write one rider row for a roster snapshot.
+///
+/// The optional contact, waiver and registration columns stay NULL: the
+/// in-memory model carries no such fields.
+///
+/// # Errors
+///
+/// Return [`StoreError::Sqlite`] when the insert fails.
+fn insert_roster_rider(conn: &Connection, entry_id: i64, rider: &Rider) -> Result<(), StoreError> {
+    conn.execute(
+        "INSERT INTO rider (entry_id, first_name, last_name, plate, sex, sort_order, \
+         emergency_contact, waiver_signed, ccn_reg_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, \
+         NULL, NULL)",
+        params![
+            entry_id,
+            rider.first_name,
+            rider.last_name,
+            rider.plate,
+            rider.sex,
+            rider.sort_order
+        ],
+    )?;
+    Ok(())
+}
+
+/// Convert a rider count for the `team_size` column.
+///
+/// The branch that refuses a count above `u32` is unreachable for a roster the
+/// engine accepts; it keeps the write free of a truncating cast.
+fn team_size_param(count: usize) -> Result<u32, StoreError> {
+    u32::try_from(count).map_err(|_| StoreError::OutOfRange {
+        field: "team_size",
+        value: i64::MAX,
+        max: u32::MAX,
+    })
+}
+
+/// Read one ride's audit rows, newest first.
+fn read_audit_rows(conn: &Connection, ride_id: i64) -> Result<Vec<StoredAudit>, StoreError> {
+    let mut statement = conn.prepare(
+        "SELECT id, at, action, payload_json FROM audit WHERE ride_id = ?1 ORDER BY id DESC",
+    )?;
+    let rows = statement.query_map([ride_id], |row| {
+        Ok(StoredAudit {
+            row_id: row.get(0)?,
+            at: row.get(1)?,
+            action: row.get(2)?,
+            payload_json: row.get(3)?,
+        })
+    })?;
+    let mut stored = Vec::new();
+    for row in rows {
+        stored.push(row?);
+    }
+    Ok(stored)
+}
+
+/// Project one stored audit row onto the viewer's columns.
+///
+/// # Errors
+///
+/// Return [`StoreError::InvalidPayload`] when the payload is not a JSON
+/// object, and [`StoreError::InvalidRow`] when the stored instant does not
+/// convert.
+fn project_audit_row(
+    stored: StoredAudit,
+    plates: &HashMap<String, String>,
+) -> Result<AuditRow, StoreError> {
+    let payload = serde_json::from_str::<Value>(&stored.payload_json).map_err(|_| {
+        StoreError::InvalidPayload {
+            row_id: stored.row_id,
+        }
+    })?;
+    if !payload.is_object() {
+        return Err(StoreError::InvalidPayload {
+            row_id: stored.row_id,
+        });
+    }
+    let entry = audit_entry(&stored.action, &payload, plates);
+    Ok(AuditRow {
+        at: instant_from_epoch("audit", "at", stored.at)?,
+        action: stored.action,
+        entry,
+        reason: payload
+            .get("reason")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned(),
+    })
+}
+
+/// Return one ride's live entry keys mapped to their plates.
+fn live_plate_map(conn: &Connection, ride_id: i64) -> Result<HashMap<String, String>, StoreError> {
+    let mut statement =
+        conn.prepare("SELECT key, plate FROM entry WHERE ride_id = ?1 AND retired = 0")?;
+    let rows = statement.query_map([ride_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut plates = HashMap::new();
+    for row in rows {
+        let (key, plate) = row?;
+        plates.insert(key, plate);
+    }
+    Ok(plates)
+}
+
+/// Return one audit row's entry cell.
+///
+/// The precedence is the viewer's: a `dnf` row's carried display, a
+/// `tiebreak_draw` row's summary, the `entry_id` key as its plate (or as
+/// itself when the map does not know it), then a plate or name column, then an
+/// empty string.
+fn audit_entry(action: &str, payload: &Value, plates: &HashMap<String, String>) -> String {
+    if action == "dnf"
+        && let Some(display) = text_at(payload, "display")
+    {
+        return display;
+    }
+    if action == "tiebreak_draw"
+        && let Some(summary) = text_at(payload, "summary")
+    {
+        return summary;
+    }
+    if let Some(key) = text_at(payload, "entry_id") {
+        return plates.get(&key).cloned().unwrap_or(key);
+    }
+    for field in ["plate", "old_plate", "new_plate", "display_name"] {
+        if let Some(text) = text_at(payload, field) {
+            return text;
+        }
+    }
+    String::new()
+}
+
+/// Return one payload value as non-empty text, if it carries any.
+fn text_at(payload: &Value, key: &str) -> Option<String> {
+    let text = match payload.get(key)? {
+        Value::String(text) => text.clone(),
+        other => other.to_string(),
+    };
+    if text.is_empty() { None } else { Some(text) }
 }
