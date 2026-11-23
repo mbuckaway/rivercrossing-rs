@@ -32,9 +32,9 @@ Layering rule (`cargo xtask layers`): nothing below `rivercrossing-ui-egui` may 
 ```
 cards          (leaf)
 hands        → cards
-standings    → hands, cards
-ride         → cards                       (declares trait RosterView)
+ride         → cards, hands               (declares trait RosterView; owns SnapshotEntry)
 roster       → ride                        (implements RosterView)
+standings    → hands, cards, ride          (ranks ride's SnapshotEntry)
 rider_issues → roster
 store        → ride, cards, roster
 csvio        → roster, standings, ride, cards
@@ -65,12 +65,14 @@ via `include_str!` and parsed by the crate so the runtime self-test reads the sa
 
 ### rivercrossing-standings
 `TieBreak`, `ZeroLapMode`, `EntryResult`, `Placed`, `rank`, `rank_by_kind`, `laps_leaderboard`,
-`time_leaderboard`, `hand_name`, `tiebreak_order_from_spellings`.
+`time_leaderboard`, `hand_name`, `tiebreak_order_from_spellings`. Ranking consumes ride's
+`SnapshotEntry` and produces its own `EntryResult`/`Placed`.
 
 ### rivercrossing-ride
-`RideStatus`, `RideConfig`, `RideEngine`, `Event`, `Crossing`, `CrossingResult`, `HeldCrossing`,
-`PendingMiss`, `CardCheck`, `estimate_cards_needed`, `check_card_sufficiency`; **declares
-`trait RosterView`**.
+`RideStatus`, `RideConfig`, `RideEngine`, `Event`/`EventAction`, `Crossing`, `CrossingResult`,
+`HeldCrossing`, `PendingMiss`, `CardCheck`, `Sufficiency`, `SnapshotEntry` (the result row standings
+ranks), `Timestamp`, `estimate_cards_needed`, `check_card_sufficiency`, `format_elapsed`; **declares
+`trait RosterView`** (reads plus the roster mutations the engine performs) and `trait Clock`.
 
 ### rivercrossing-roster
 `EntryMode`, `PlateModel`, `EntryType`, `EntryStatus`, `Rider`, `Entry`, `Roster`, `AuditEvent`,
@@ -112,7 +114,7 @@ The egui front end: panels/dialogs for the Python window inventory, the `Action`
 
 Port in dependency order (leaf-first), each crate by a **sequential** `tdd-rust-writer` agent:
 
-`cards` → `hands` → `standings` → `ride` → `roster` → `rider-issues` → `store` → `csvio` →
+`cards` → `hands` → `ride` → `roster` → `standings` → `rider-issues` → `store` → `csvio` →
 `htmlexport` → `pdfexport` → `wordpress` → `ui-egui` → `apps/rivercrossing`.
 
 The empty-shell EPIC (EPIC-1) creates `rivercrossing-ui-egui` + `apps/rivercrossing` first (an empty

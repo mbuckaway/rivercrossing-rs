@@ -9,8 +9,8 @@ reference for *scope*, not a template.
 
 - **TDD, always.** Each EPIC is executed by the `tdd-rust-writer` agent, test-first (RS-14), one crate
   at a time, **sequentially** (concurrent whole-crate test compiles collide).
-- **Order** is the crate dependency order (leaf-first): `cards` → `hands` → `standings` → `ride` →
-  `roster` → `rider-issues` → `store` → `csvio` → `htmlexport` → `pdfexport` → `wordpress` → `ui-egui`.
+- **Order** is the crate dependency order (leaf-first): `cards` → `hands` → `ride` → `roster` →
+  `standings` → `rider-issues` → `store` → `csvio` → `htmlexport` → `pdfexport` → `wordpress` → `ui-egui`.
 - **Gates** per EPIC: `scripts/validate-rust.sh` green; ≥90% line and ≥90% branch on the delivered
   crate(s); the crate's public API matches `CODE_STRUCTURE.md`.
 - **EPIC-1 (empty egui shell) is the de-risk gate** — it proves the egui/craft-libs toolchain before
@@ -68,7 +68,8 @@ reference for *scope*, not a template.
 ### EPIC-6 — Standings + rider issues
 - **Crates:** `rivercrossing-standings`, `rivercrossing-rider-issues`.
 - **Scope:** `TieBreak`/`EntryResult`/`Placed`/`rank`/`rank_by_kind`, leaderboards, `hand_name`;
-  `RiderIssue` + `rider_issues(roster)`.
+  `RiderIssue` + `rider_issues(roster)`. Ranking consumes `rivercrossing_ride::SnapshotEntry` and
+  produces its own `EntryResult`/`Placed` — ride must not depend on standings.
 - **Acceptance:** ranking + mixed-ride split (`rank_by_kind`) and the issue report match the oracle.
 - **R-ids:** R-60, R-65, R-78.
 
