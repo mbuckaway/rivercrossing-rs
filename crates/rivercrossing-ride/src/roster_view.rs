@@ -53,14 +53,26 @@ pub struct StartViolation {
 }
 
 /// The roster operations that the ride engine calls.
+///
+/// The roster is the source of truth. The engine writes through the mutators
+/// and never rolls the roster back when a later step fails: a refused write
+/// returns its error and leaves the roster as it was; a write that succeeds
+/// stays written.
 pub trait RosterView {
-    /// Return a snapshot of every entry.
+    /// Return a snapshot of every **live** entry, in creation order.
+    ///
+    /// A retired entry is excluded. A dissolved entry no longer races even
+    /// though [`RosterView::entry`] still resolves its id, so standings and
+    /// the start gate do not see it.
     fn entries(&self) -> Vec<EntrySnapshot>;
 
-    /// Return the entry that *plate* resolves to, when one exists.
+    /// Return the live entry that *plate* resolves to, when one exists.
     fn resolve_plate(&self, plate: &str) -> Option<EntrySnapshot>;
 
-    /// Return the entry that *id* names, when one exists.
+    /// Return the live or retired entry that *id* names, when one exists.
+    ///
+    /// Unlike [`RosterView::entries`], this includes retired entries: replay
+    /// may still name the id that a pre-move crossing was filed under.
     fn entry(&self, id: &EntryId) -> Option<EntrySnapshot>;
 
     /// Return every reason that the roster is not ready to start.
@@ -70,12 +82,19 @@ pub trait RosterView {
     fn set_ride_status(&mut self, status: RideStatus);
 
     /// Mark the entry as carrying recorded data.
+    ///
+    /// The live or retired entry gains the mark; an unknown *id* is a silent
+    /// no-op.
     fn mark_has_data(&mut self, id: &EntryId);
 
     /// Mark as DNF either one rider of the entry or the whole entry.
     ///
-    /// When *rider* is true, *plate* names the rider to mark. When it is
-    /// false, the whole entry is marked and *plate* is recorded in the audit.
+    /// This method is infallible. An unknown *id* is a silent no-op.
+    ///
+    /// The ride engine never passes `rider = true`: it keeps the per-rider DNF
+    /// set itself and rebuilds it from the event payload, so every call marks
+    /// the whole entry. *plate* and *rider* are audit-only — implementations
+    /// record them and never use them to choose the rider.
     #[expect(
         clippy::too_many_arguments,
         reason = "the trait keeps the roster method's explicit identity, plate, flag and reason"
