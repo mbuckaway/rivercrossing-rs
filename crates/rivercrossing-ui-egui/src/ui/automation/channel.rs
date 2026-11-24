@@ -40,6 +40,7 @@ pub struct ControlConfig {
 #[derive(Debug, Default)]
 pub(crate) struct ProbeState {
     /// How many times the probe button was clicked.
+    #[cfg(debug_assertions)]
     pub(crate) clicks: u64,
     /// The value the probe label shows.
     pub(crate) echo: Option<String>,
