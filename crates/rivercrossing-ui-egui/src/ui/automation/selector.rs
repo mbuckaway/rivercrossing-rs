@@ -3,10 +3,10 @@
 //! The `Selector` contract and its resolution to an on-screen rectangle.
 
 use craft::egui::Rect;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A stable handle on one UI node: a frozen action id first, an AccessKit role and label second.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Selector {
     /// A frozen action id, such as `probe_echo`.
@@ -77,7 +77,7 @@ pub fn resolve(selector: &Selector, candidates: &[Candidate]) -> Result<Rect, St
 }
 
 /// The role and label of each probe action id at EPIC-10.
-fn action_target(action: &str) -> Option<(&'static str, &'static str)> {
+pub(crate) fn action_target(action: &str) -> Option<(&'static str, &'static str)> {
     match action {
         "probe_echo" => Some(("Button", "Probe Echo")),
         "probe_input" => Some(("TextInput", "Probe Input")),

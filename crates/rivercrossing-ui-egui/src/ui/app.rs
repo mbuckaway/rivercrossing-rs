@@ -6,9 +6,9 @@ use std::fmt;
 use std::io::Write;
 use std::time::{Duration, Instant};
 
-#[cfg(debug_assertions)]
-use craft::egui::TextEdit;
 use craft::egui::{Context, Ui, ViewportCommand};
+#[cfg(debug_assertions)]
+use craft::egui::{Label, TextEdit};
 use craft::ui::runtime::env::RootEnv;
 use craft::ui::runtime::frame::FrameInput;
 use craft::ui::shell::app::{ShellApp, run as run_shell};
@@ -61,7 +61,8 @@ impl RiverCrossingApp {
                 .accessible_name("Probe Input");
         });
         if let Some(echo) = &self.probe.echo {
-            ui.label(echo);
+            // A selectable label senses clicks and has no accessible name, which `access::violations` flags.
+            ui.add(Label::new(echo).selectable(false));
         }
     }
 }

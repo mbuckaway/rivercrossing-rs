@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The automation surface: pure selector, path and command helpers over the live craft channel.
+//! The automation surface: the selector and scenario models plus the pure path and command helpers.
 
+pub mod scenario;
 pub mod selector;
 
 pub(crate) mod channel;
