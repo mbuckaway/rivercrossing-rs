@@ -25,6 +25,22 @@ mod format;
     not(test),
     expect(
         dead_code,
+        reason = "the preview path calls this module in a later task"
+    )
+)]
+mod header;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the preview path calls this module in a later task"
+    )
+)]
+mod normalize;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
         reason = "the preview, commit and export paths call this module in a later task"
     )
 )]
