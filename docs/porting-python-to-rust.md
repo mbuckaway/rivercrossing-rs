@@ -88,6 +88,9 @@ abstraction with one implementation.
   I/O boundaries. `#[tokio::test(start_paused = true)]` for async (needs tokio `test-util`).
 - **Placement:** unit tests in `src/<module>/tests.rs` (declared `#[cfg(test)] mod tests;`),
   functional in `tests/functional/main.rs`, CLI-spawn in `tests/integration/main.rs` (by hand).
+- **GUI apps:** use the craft-libs automation tiers (§12.1) instead of the Python wx harness.
+  Semantic tests stay in the unit sweep; snapshots are a separate `ui` nextest profile on one golden
+  host; only two real-window smokes run, by hand.
 - **Coverage:** `cargo llvm-cov` line + branch; branch needs the dated nightly. Target 95/95 if the
   project requires it; exclude `src/main.rs` with `--ignore-filename-regex 'src/main\.rs'`.
 - **Formal verification: Kani** on pure leaf logic (parsers, validators, config resolution,
@@ -155,6 +158,8 @@ uncompilable test file fails every other module's `cargo test`.
 6. Add `tests/functional/main.rs` against the real system.
 7. Convert CI; add the release asset + one-line installer.
 8. Rewrite the docs and `CODE_STRUCTURE.md`; delete the Python tree; open the PR.
+9. GUI apps: before the first screen, add the automation harness (§12.1) — semantic `Fixture`
+   tests, the `ui` snapshot profile, the debug control channel, and the two real-window smokes.
 
 
 ---
@@ -164,7 +169,7 @@ uncompilable test file fails every other module's `cargo test`.
 For a desktop GUI port, do not reuse the CLI crate choices in §4/§5. The ArtCraft suite
 (`github.com/storytold`, official site `getartcraft.com`) is the reference: pure Rust, **native egui
 on the GPU** (eframe + wgpu + winit), "no Electron, no Tauri". Copy the **WordCraft** app's shape
-(`storytold/wordcraft`), not its code.
+(`storytold/wordcraft`), not its code. Build the automation harness before the screens — see §12.1.
 
 - **UI stack**: `egui`/`eframe` + `egui_extras` (declared `0.37`, overridden by the storytold egui
   fork), `winit` (storytold winit fork), `wgpu` `30` (inherited via craft-libs). `eframe` features:
@@ -181,6 +186,52 @@ on the GPU** (eframe + wgpu + winit), "no Electron, no Tauri". Copy the **WordCr
   `eframe::NativeOptions` + `egui::ViewportBuilder`, `craft::gpu::configure` on `WgpuSetup::CreateNew`,
   `craft::host::Host` + `craft::ui::InstallSpec` + `craft::ui::shell::embed::install`, then
   `eframe::run_native`.
+
+### 12.1 Automation before screens
+
+Build the automation harness before the first screen. A craft app is agent-drivable only if the
+widgets carry stable names and the app owns a method table; retrofitting either after the screens
+exist is expensive. `design/docs-md/automation.md` and the RiverCrossing EPIC-10 prompt are the
+worked example.
+
+- **Two in-process tiers.**
+  - **Semantic** — `craft::ui::testing::{Fixture, Frames}` behind the `craft` `ui-testing` feature.
+    `Fixture::new` takes a move-only `FnMut(&mut Ui)`, so share the app as `Rc<RefCell<App>>`; run
+    it under `cargo nextest -P unit`, with no display or GPU.
+  - **Snapshot** — `egui_kittest` `0.37` (`snapshot` + `wgpu`) from the same egui fork patch. Use
+    `Harness::new_ui`, install the craft runtime with `embed::install` (build
+    `InstallSpec::new(ShellInfo::default(), Arc::new(NoWindows))`; do not reuse `install_spec()`,
+    which loads story command sets), then run `embed::before_input`, `embed::logic` and `app.ui(ui)`
+    per frame. Put it in `tests/ui/main.rs`, add `[[test]] name = "ui"`, a `[profile.ui]
+    default-filter = "kind(test) & binary(ui)"` nextest profile, and a `kittest.toml`.
+- **Selector contract.** Action id first (the frozen command id), AccessKit role + accessible name
+  second with an optional window scope; never a bare node id. Give every input widget an accessible
+  name (`labelled_by`/`accessible_name`); kittest's accessibility check is on by default and should
+  stay on. Labels are unique only within a top-level window, so the selector carries the window
+  scope.
+- **Live control channel.** Enable `craft`'s `automation` feature (the channel half also needs the
+  facade's `ui` feature). The app owns the method table and the `ControlChannel`; call `poll_input`
+  after injected input and `poll_access_trees` after the UI pass, keep `Listening` alive for the
+  window's lifetime, and call `ctx.enable_accesskit()` once at install — do not rely on the eframe
+  build to do it. `craft-automation` supplies `ui.click/move/key/type/ime`, the `Captures` queue
+  behind `ui.screenshot`, `ui.accessTree` and `ui.dialog.set/confirm/cancel`; the app adds
+  `ui.command` (dispatch the Action registry), `ui.resize`, `ui.screenshot` (token plus a bounded
+  writer), and any `ui.inspect`/`ui.set` it needs. Gate the whole acquisition (flags **and**
+  `<APP>_CONTROL_*` environment) behind `#[cfg(debug_assertions)]`; bind loopback only; token file
+  `0600`; confine writes to a canonicalised root. The consented release surface is an `AgentSettings`
+  decision, not the debug channel.
+- **Snapshots.** One golden host and per-OS thresholds — never per-OS goldens or skips. Keep the
+  golden host's OS threshold tight (`0.6`) and the other OSes loose (`2.0`); in the RiverCrossing
+  example the golden host is Linux. Keep `tests/snapshots` package-relative, install the app fonts
+  (missing glyphs panic), and regenerate only on the golden host with
+  `UPDATE_SNAPSHOTS=force cargo nextest -P ui --locked`.
+- **Gate.** Add the `ui` profile stage and a release `cargo check` to `scripts/validate-rust.sh`;
+  keep exactly two real-window smokes (open/quit and the control channel) and run them by hand under
+  `xvfb-run` on Linux. Do not add a second windowed suite.
+- **Order.** Land the harness, one probe test/golden, the control smoke and the gate first; then
+  build each screen with one semantic test and one golden. For a Python port, share one scenario JSON
+  schema between the Rust harness and an in-process Python driver, and run the parity comparison at
+  the end of the UI EPIC, on the machine that can launch the Python app.
 
 ## 13. Single-app installer methodology (ArtCraft-style)
 
@@ -217,4 +268,9 @@ server). The shared pieces, verified in `storytold/wordcraft`:
   No third-party MCP SDK.
 - **CLI**: hand-rolled (no `clap`) — a `USAGE` string plus `OptionSpec`/`validate_options` argument
   parsing that dispatches to the command registry with `serde_json`, exiting 0/1/3.
-- **Control channel**: optional; `craft`'s `automation` feature drives a running app.
+- **Control channel**: `craft`'s `automation` feature drives a running app over loopback JSON lines
+  with a token and a bounded screenshot queue. The app owns the method table that dispatches the
+  command registry; `craft-control::agents::Live` resolves the open window so an MCP `Tools` impl can
+  forward to it through the shared `craft-mcp-server`. Gate the whole acquisition (flags and
+  `<APP>_CONTROL_*` environment) behind `#[cfg(debug_assertions)]`; the consented release surface is
+  an `AgentSettings` decision. The in-process harness in §12.1 is the test-side counterpart.
