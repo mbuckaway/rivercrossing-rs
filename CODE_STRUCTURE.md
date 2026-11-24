@@ -38,8 +38,8 @@ standings    → hands, cards, ride          (ranks ride's SnapshotEntry)
 rider_issues → roster
 store        → ride, cards, roster
 csvio        → roster, standings, ride, cards
-htmlexport   → standings, cards, hands
-pdfexport    → htmlexport, standings, hands
+htmlexport   → cards, standings             (renders the standings rows; no ride/roster edge)
+pdfexport    → htmlexport                  (consumes the payload; no standings/hands/cards edge)
 wordpress    (leaf)
 ui-egui      → every domain crate
 ```
@@ -118,9 +118,22 @@ timer, not the store. The schedule name is `schedule_hourly`, matching the earli
 
 ### rivercrossing-htmlexport
 Shared results model (`ExportOptions`, `EventInfo`, `ResultRow`, `LapsBoardRow`, `TimeBoardRow`,
-`RacePayload`, `Sections`) + `build_payload`, `sections`, `format_generated`, `render`,
-`render_poster`, `render_wordpress`, `render_poster_wordpress`. Jinja2 → **minijinja/askama**; vendored
-Tailwind CSS and woff2 fonts ship with the crate.
+`RacePayload`, `Sections`, `CardPair`, `RideInfo`, `ExportInput`) + `build_payload`, `sections`,
+`format_generated`, `png_data_uri`, `render`, `render_poster`, `render_wordpress`,
+`render_poster_wordpress`. Jinja2 → **minijinja** (a custom formatter reproduces MarkupSafe escaping
+and the integral-float `finalize`); vendored `compiled_css`/`compiled_css_wp`/`fonts_css`/woff2 fonts
+ship with the crate. HTML output is byte-identical to the Python production goldens
+(`fixtures/epic-2026-results*.html`).
+
+Deviation notes (EPIC-9): `build_payload`/`render` take a caller-built `ExportInput`/`RideInfo`
+rather than a ride aggregate (the documented layer has no ride/roster edge — this is a contract
+choice, not a `xtask layers` rule); `generated` is required (the crate never reads a clock); team
+logos are caller-supplied data URIs keyed by plate; `tie = draw_required`, `drawn = the engine-capped
+cards` (R-61's drawing-rider clause is dropped — see the R-61 amendment); durations use
+`round_ties_even`; the time board is empty unless `time_board && show_times`; DNF rows are appended
+by the caller and DNS rows come from `ZeroLapMode::Dns`; CSS/fonts are the frozen committed artifacts
+(no Tailwind build step); the `dev` template branch ships verbatim but is unreachable; two template
+lines were rewritten output-identically for minijinja (`.append()` → `{% set %}`).
 
 ### rivercrossing-pdfexport
 `render`, `podium_poster`, deterministic-byte stream helpers. fpdf2 → **printpdf/lopdf** (or craft-pdf);

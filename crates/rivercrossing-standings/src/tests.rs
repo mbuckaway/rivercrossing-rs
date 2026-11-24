@@ -85,3 +85,13 @@ fn test_draw_tie_note_is_the_oracle_sentence() {
 fn test_default_top_is_ten() {
     assert_eq!(DEFAULT_TOP, 10);
 }
+
+#[test]
+fn test_snapshot_kind_reexport_spells_the_team_kind_team() {
+    assert_eq!(crate::SnapshotKind::Team.as_str(), "team");
+}
+
+#[test]
+fn test_snapshot_kind_reexport_spells_the_solo_kind_solo() {
+    assert_eq!(crate::SnapshotKind::Solo.as_str(), "solo");
+}
