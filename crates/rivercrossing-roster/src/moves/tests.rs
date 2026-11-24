@@ -1410,3 +1410,270 @@ fn test_remove_rider_frees_the_plate_for_a_new_entry() {
 
     assert_eq!(stored(&roster, &solo).plate, "1");
 }
+
+// ---------------------------------------------------------- move_rider_at
+
+#[test]
+fn test_move_rider_at_moves_a_plateless_relay_rider_in_draft() {
+    let mut roster = relay();
+    let team_a = relay_team(&mut roster, "Team A", "1");
+    let team_b = relay_team(&mut roster, "Team B", "2");
+
+    roster
+        .move_rider_at(&team_a, 1, &team_b, "relay swap")
+        .expect("a draft relay ride allows the move");
+
+    let source = stored(&roster, &team_a);
+    let destination = stored(&roster, &team_b);
+    assert_eq!(
+        (
+            source.riders.len(),
+            source.plate.as_str(),
+            destination.riders.len(),
+            destination.riders[2].plate.clone(),
+            destination.plate.as_str(),
+        ),
+        (1, "1", 3, None, "2")
+    );
+}
+
+#[test]
+fn test_move_rider_at_after_start_on_a_relay_ride_refuses_locked() {
+    let mut roster = relay();
+    let team_a = relay_team(&mut roster, "Team A", "1");
+    let team_b = relay_team(&mut roster, "Team B", "2");
+    roster.set_status(RideStatus::Running);
+
+    let error = roster
+        .move_rider_at(&team_a, 0, &team_b, "relay swap")
+        .expect_err("a relay ride keeps the start lock");
+
+    assert_eq!(
+        error,
+        RosterError::Locked {
+            message: "rider moves are locked for a team_relay ride once running".to_owned(),
+        }
+    );
+    assert_eq!(stored(&roster, &team_a).riders.len(), 2);
+}
+
+#[test]
+fn test_move_rider_at_pooled_recomputes_both_teams() {
+    let mut roster = pooled();
+    let team_a = team(
+        &mut roster,
+        "Team A",
+        &[("Alex", "1"), ("Bo", "2"), ("El", "3")],
+    );
+    let team_b = team(&mut roster, "Team B", &[("Cy", "10"), ("Do", "11")]);
+
+    roster
+        .move_rider_at(&team_a, 0, &team_b, "rider swapped teams")
+        .expect("the move is allowed");
+
+    assert_eq!(
+        (
+            stored(&roster, &team_a).plate.as_str(),
+            stored(&roster, &team_b).plate.as_str(),
+        ),
+        ("2", "1")
+    );
+}
+
+#[test]
+fn test_move_rider_at_of_the_last_member_dissolves_the_source_team() {
+    let mut roster = pooled();
+    let team_a = team_of_one(&mut roster, "Team A");
+    let team_b = team(&mut roster, "Team B", &[("Cy", "3"), ("Do", "4")]);
+    roster.take_audit_log();
+
+    roster
+        .move_rider_at(&team_a, 0, &team_b, "rider swapped teams")
+        .expect("the move is allowed");
+
+    assert_eq!(
+        (
+            roster.entry_by_key(&team_a.0).is_some(),
+            roster.audit_log().last().map(|event| event.action.as_str()),
+        ),
+        (false, Some("dissolve_team_entry"))
+    );
+}
+
+#[test]
+fn test_move_rider_at_appends_one_move_rider_event() {
+    let mut roster = pooled();
+    let team_a = team(
+        &mut roster,
+        "Team A",
+        &[("Alex", "1"), ("Bo", "2"), ("El", "3")],
+    );
+    let team_b = team(&mut roster, "Team B", &[("Cy", "10"), ("Do", "11")]);
+    roster.take_audit_log();
+
+    roster
+        .move_rider_at(&team_a, 0, &team_b, "rider swapped teams")
+        .expect("the move is allowed");
+
+    assert_eq!(
+        roster.audit_log(),
+        [log(
+            "move_rider",
+            serde_json::json!({"rider_name": "Alex", "from_plate": "2", "to_plate": "1"})
+        )]
+    );
+}
+
+#[test]
+fn test_move_rider_at_given_an_unknown_destination_refuses() {
+    let mut roster = pooled();
+    let team_a = team(&mut roster, "Team A", &[("Alex", "1"), ("Bo", "2")]);
+
+    let error = roster
+        .move_rider_at(
+            &team_a,
+            0,
+            &EntryId("ghost".to_owned()),
+            "rider swapped teams",
+        )
+        .expect_err("a foreign destination is refused");
+
+    assert_eq!(
+        error,
+        RosterError::EntryNotFound {
+            key: "ghost".to_owned(),
+        }
+    );
+    assert_eq!(stored(&roster, &team_a).riders.len(), 2);
+}
+
+#[test]
+fn test_move_rider_at_given_an_unknown_source_refuses() {
+    let mut roster = pooled();
+    let team_b = team(&mut roster, "Team B", &[("Cy", "3"), ("Do", "4")]);
+
+    let error = roster
+        .move_rider_at(
+            &EntryId("ghost".to_owned()),
+            0,
+            &team_b,
+            "rider swapped teams",
+        )
+        .expect_err("a foreign source is refused");
+
+    assert_eq!(
+        error,
+        RosterError::EntryNotFound {
+            key: "ghost".to_owned(),
+        }
+    );
+}
+
+#[test]
+fn test_move_rider_at_given_an_index_out_of_range_refuses() {
+    let mut roster = pooled();
+    let team_a = team(&mut roster, "Team A", &[("Alex", "1"), ("Bo", "2")]);
+    let team_b = team(&mut roster, "Team B", &[("Cy", "3"), ("Do", "4")]);
+    roster.take_audit_log();
+
+    let error = roster
+        .move_rider_at(&team_a, 2, &team_b, "rider swapped teams")
+        .expect_err("the team has no third rider");
+
+    assert_eq!(
+        error,
+        RosterError::InvalidMove {
+            message: format!("entry {} has no rider at index 2", team_a.0),
+        }
+    );
+    assert_eq!(
+        (
+            stored(&roster, &team_a).riders.len(),
+            roster.audit_log().len()
+        ),
+        (2, 0)
+    );
+}
+
+#[test]
+fn test_move_rider_at_given_the_same_entry_succeeds() {
+    let mut roster = pooled();
+    let team_a = team(&mut roster, "Team A", &[("Alex", "1"), ("Bo", "2")]);
+    roster.take_audit_log();
+
+    roster
+        .move_rider_at(&team_a, 0, &team_a, "rider swapped teams")
+        .expect("a same-entry move is a take and re-place");
+
+    let entry = stored(&roster, &team_a);
+    assert_eq!(
+        (
+            entry.riders.len(),
+            entry
+                .riders
+                .iter()
+                .map(Rider::full_name)
+                .collect::<Vec<_>>(),
+            entry.plate.as_str(),
+        ),
+        (2, vec!["Bo".to_owned(), "Alex".to_owned()], "1")
+    );
+    assert_eq!(
+        roster.audit_log(),
+        [log(
+            "move_rider",
+            serde_json::json!({"rider_name": "Alex", "from_plate": "1", "to_plate": "1"})
+        )]
+    );
+}
+
+#[test]
+fn test_move_rider_given_the_same_entry_succeeds() {
+    let mut roster = pooled();
+    let team_a = team(&mut roster, "Team A", &[("Alex", "1"), ("Bo", "2")]);
+    roster.take_audit_log();
+
+    roster
+        .move_rider("1", &team_a, "rider swapped teams")
+        .expect("a same-entry move is a take and re-place");
+
+    let entry = stored(&roster, &team_a);
+    assert_eq!(
+        (
+            entry.riders.len(),
+            entry
+                .riders
+                .iter()
+                .map(Rider::full_name)
+                .collect::<Vec<_>>(),
+            roster
+                .audit_log()
+                .first()
+                .map(|event| event.action.as_str()),
+        ),
+        (
+            2,
+            vec!["Bo".to_owned(), "Alex".to_owned()],
+            Some("move_rider")
+        )
+    );
+}
+
+#[test]
+fn test_move_rider_still_resolves_by_plate() {
+    let mut roster = pooled();
+    let team_a = team(&mut roster, "Team A", &[("Alex", "1"), ("Bo", "2")]);
+    let team_b = team(&mut roster, "Team B", &[("Cy", "3"), ("Do", "4")]);
+
+    roster
+        .move_rider("1", &team_b, "rider swapped teams")
+        .expect("the plate path still resolves the rider");
+
+    assert_eq!(
+        (
+            stored(&roster, &team_a).plate.as_str(),
+            stored(&roster, &team_b).riders.len(),
+        ),
+        ("2", 3)
+    );
+}
