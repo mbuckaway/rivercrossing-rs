@@ -159,7 +159,7 @@ fn whole_file_conflict(source: &Path, roster: &Roster, problem: ImportProblem) -
 }
 
 /// Return the roster state that a commit must still match.
-fn fingerprint(roster: &Roster) -> PreviewFingerprint {
+pub(crate) fn fingerprint(roster: &Roster) -> PreviewFingerprint {
     PreviewFingerprint {
         audit_len: roster.audit_log().len(),
         entries: roster.entries().len(),
@@ -783,7 +783,7 @@ fn relay_structural_problem(roster: &Roster, plate: &str, parsed: &ParsedEntry) 
 }
 
 /// Return whether *parsed* changes the matched entry's kind or team roster.
-fn relay_composition_changed(existing: &Entry, parsed: &ParsedEntry) -> bool {
+pub(crate) fn relay_composition_changed(existing: &Entry, parsed: &ParsedEntry) -> bool {
     if existing.kind != parsed.kind {
         return true;
     }

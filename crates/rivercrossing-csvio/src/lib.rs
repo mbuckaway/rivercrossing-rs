@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod commit;
 pub mod error;
 pub mod model;
 pub mod preview;
@@ -26,6 +27,7 @@ mod header;
 mod normalize;
 mod wire;
 
+pub use commit::commit;
 pub use error::CsvIoError;
 pub use model::{
     ImportOptions, ImportPreview, ImportProblem, ImportReport, ParsedEntry, ParsedRider,
