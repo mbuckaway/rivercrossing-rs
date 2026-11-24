@@ -53,6 +53,10 @@ impl Roster {
     /// *reason* in its own event; this roster's audit keeps the oracle's
     /// payload.
     ///
+    /// The plate names the rider, so this path cannot move a `team_relay`
+    /// rider: those riders carry no plate. Use [`Self::move_rider_at`] for
+    /// them.
+    ///
     /// # Errors
     ///
     /// Return [`RosterError::Locked`] when the lock matrix forbids a move in
@@ -69,29 +73,74 @@ impl Roster {
         &mut self,
         rider_plate: &str,
         to: &EntryId,
-        _reason: &str,
+        reason: &str,
     ) -> Result<(), RosterError> {
-        let destination = self.move_destination(to)?;
+        // The destination is refused before the rider, as this path always has.
+        self.move_destination(to)?;
         let Some((source_index, rider_index, _kind)) = self.rider_position(rider_plate) else {
             return Err(rider_not_found());
         };
+        let source = EntryId(self.entry_key(source_index));
+        self.move_rider_at(&source, rider_index, to, reason)
+    }
+
+    /// Move the rider at *index* on *from* onto the team that *to* names.
+    ///
+    /// This is the index-addressed move: a `team_relay` rider carries no plate,
+    /// so a caller cannot name them the way [`Self::move_rider`] does. DRAFT
+    /// admits the move on both plate models. The destination is a team, live or
+    /// retired. A `rider_pooled` ride re-derives both entries' plates from
+    /// their riders; a solo source empties at once, and a source that loses its
+    /// last rider dissolves. The ride engine records *reason* in its own event;
+    /// this roster's audit keeps the oracle's payload.
+    ///
+    /// Moving a rider onto their own entry is a take and re-place: the rider
+    /// lands at the end of that entry's rider list, and the move is still
+    /// audited once.
+    ///
+    /// # Errors
+    ///
+    /// Return [`RosterError::Locked`] when the lock matrix forbids a move in
+    /// the ride's current state and plate model,
+    /// [`RosterError::EntryNotFound`] when *from* or *to* names no entry here,
+    /// and [`RosterError::InvalidMove`] when *from* has no rider at *index*,
+    /// the destination is not a team, or the move would exceed its max size.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the seam fixes the source entry, the rider index, the destination and the audit reason; a parameter struct would force every caller to unpack it"
+    )]
+    pub fn move_rider_at(
+        &mut self,
+        from: &EntryId,
+        index: usize,
+        to: &EntryId,
+        _reason: &str,
+    ) -> Result<(), RosterError> {
+        let destination = self.move_destination(to)?;
+        let Some((source_index, _, _, size)) = self.live_entry_facts(from) else {
+            return Err(entry_not_found(from));
+        };
+        if index >= size {
+            return Err(RosterError::InvalidMove {
+                message: format!("entry {} has no rider at index {index}", from.0),
+            });
+        }
         let model = self.plate_model();
-        let source_key = self.entry_key(source_index);
-        let rider = self.take_rider(source_index, rider_index);
+        let rider = self.take_rider(source_index, index);
         let rider_name = rider.full_name();
         let to_plate = self.place_rider(destination.slot, rider);
         if !self.source_is_empty(source_index) {
             recompute(model, self.entry_at(Slot::Live(source_index)));
         }
         let from_plate = self
-            .entry_by_key(&source_key)
+            .entry_by_key(&from.0)
             .map_or_else(String::new, |entry| entry.plate.clone());
         self.log(
             "move_rider",
             json!({"rider_name": rider_name, "from_plate": from_plate, "to_plate": to_plate}),
         );
         if self.source_is_empty(source_index) {
-            self.dissolve_emptied(&EntryId(source_key));
+            self.dissolve_emptied(from);
         }
         Ok(())
     }

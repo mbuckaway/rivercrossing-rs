@@ -80,14 +80,15 @@ ranks), `Timestamp`, `estimate_cards_needed`, `check_card_sufficiency`, `format_
 
 ### rivercrossing-roster
 Re-exports ride's `EntryMode`, `PlateModel`, `RideStatus`, `StartViolation`; owns `EntryType`,
-`EntryStatus`, `Rider`, `Entry`, `AuditEvent`, `RosterError`, the `can_*` lock matrix,
-`rider_name_key` / `canonical_person_name` / `team_name_key`. `Roster` covers construction
-(`create_solo_entry` / `create_team_entry` / `create_team_entry_of_one` / `create_empty_team`), edits,
-plate dispatch (`resolve_plate`, `next_free_plate`, `change_*_plate`), moves
-(`move_rider` / `extract_rider_to_solo` / `add_rider_to_team` / `remove_rider`), retirement, the restore
-seams (`load_entries` / `load_retired_entries`), team logos (`next_team_logo_card` / `random_team_card` /
-`set_team_logo_card`), `validate_for_start`, and the audit log (`audit_log` / `take_audit_log`);
-**implements `RosterView`**.
+`EntryStatus`, `Rider`, `Entry`, `AuditEvent`, `RosterError`, `RiderEdit`, the `can_*` lock matrix,
+`rider_name_key` / `canonical_person_name` / `team_name_key`. `Roster` (`Clone` for stage-and-swap
+imports) covers construction (`create_solo_entry` / `create_team_entry` /
+`create_team_entry_of_one` / `create_empty_team`), edits (`update_entry` / `update_rider`), plate
+dispatch (`resolve_plate`, `next_free_plate`, `next_free_plate_skipping`, `change_*_plate`), moves
+(`move_rider` / `move_rider_at` / `extract_rider_to_solo` / `add_rider_to_team` / `remove_rider`),
+retirement, the restore seams (`load_entries` / `load_retired_entries`), team logos
+(`next_team_logo_card` / `random_team_card` / `set_team_logo_card`), `validate_for_start`, and the
+audit log (`audit_log` / `take_audit_log`); **implements `RosterView`**.
 
 ### rivercrossing-rider-issues
 `IssueKind` (the seven kinds), `RiderIssue<'a>` (borrows the entry and optional rider, plus the message),
@@ -113,8 +114,24 @@ as data-bearing. `heartbeat_at` is read (the crash `ended_at` fallback) but writ
 timer, not the store. The schedule name is `schedule_hourly`, matching the earlier contract.
 
 ### rivercrossing-csvio
-`CsvIoError`, `ParsedRider`/`ParsedEntry`, `ImportConflict`/`ImportPreview`/`ImportReport`, `preview`,
-`commit`, `export`, `export_standings`.
+`CsvIoError` (including `Roster`/`Standings` sources, `NotUtf8`, `Malformed`, `Header`,
+`ConflictsPresent`, `Blocked`, `StalePreview`, `NotFinished`, `MissingStandings`), `ImportOptions`
+(`map_unknown_sex_to_male`, `convert_teams_of_one_to_solo`, both off by default), `ParsedRider`
+(`first_name`, `last_name`, `plate`, `sex`), `ParsedEntry` (`plate`, `display_name`,
+`kind: EntryType`, `riders`, `notes`), `ProblemCode`/`ImportProblem` (`row`, `code`, `message`),
+`ImportPreview` (`source_path`, `riders`, `teams`, `entries`, `conflicts`, `warnings`),
+`ImportReport` (`inserted`, `updated`, `moved`, `extracted`, `joined`, `audit_events`),
+`preview(path, roster, options)`, `commit(&mut roster, preview)`,
+`export(roster, path, Option<&[Placed]>)`, `export_standings(placed, path, show_times)`. The crate
+never touches the store; the caller persists the mutated `Roster`.
+
+Deviation notes (EPIC-8): the writer emits CRLF (`Terminator::CRLF`, the Python `excel` dialect with
+`QUOTE_MINIMAL`); a one-rider team is a DRAFT warning and a later conflict (R-78, correcting §7's
+older wording); an unrecognised non-blank sex is a conflict, not NULL; pooled entry plates use the
+roster's numeric-lowest rule, not the oracle's lexicographic `min`; a DNS row's `hand` is blank
+rather than raising; `commit` refuses a stale preview and stages on a clone, so a failed mutation
+leaves the roster untouched; both writers stage a same-directory temp file and rename over the
+destination.
 
 ### rivercrossing-htmlexport
 Shared results model (`ExportOptions`, `EventInfo`, `ResultRow`, `LapsBoardRow`, `TimeBoardRow`,

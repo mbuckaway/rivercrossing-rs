@@ -126,10 +126,21 @@ pub(crate) fn plates_in_use_owned(entries: &[Entry]) -> BTreeSet<String> {
 /// A non-numeric plate is ignored; a roster with no numeric plate returns
 /// `"1"`.
 pub(crate) fn next_free_plate(entries: &[Entry]) -> String {
+    next_free_plate_skipping(entries, &BTreeSet::new())
+}
+
+/// Return one past the highest numeric plate in use or in *reserved*.
+///
+/// The namespace is the entries' own plates and their riders' plates, plus
+/// every reserved plate. A reserved plate counts even when no entry carries
+/// it, so an import can keep a plate for a staged entry. A non-numeric plate
+/// is ignored; an empty namespace returns `"1"`.
+pub(crate) fn next_free_plate_skipping(entries: &[Entry], reserved: &BTreeSet<String>) -> String {
     let in_use = plates_in_use(entries);
     in_use
         .iter()
         .copied()
+        .chain(reserved.iter().map(String::as_str))
         .filter(|plate| is_whole_number(plate))
         .max_by(|left, right| compare_numeric(left, right))
         .map_or_else(|| "1".to_owned(), increment_decimal)

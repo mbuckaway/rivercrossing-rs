@@ -8,9 +8,9 @@ use rstest::rstest;
 
 use super::{
     compare_numeric, empty_team_plate, increment_decimal, is_whole_number, next_free_plate,
-    plates_in_use, plates_in_use_owned, recompute_pooled_plate, require_plate_change_free,
-    require_plate_free, require_plate_nonempty, require_plates_free, require_whole_plate,
-    resolve_plate, shape_entry_plate,
+    next_free_plate_skipping, plates_in_use, plates_in_use_owned, recompute_pooled_plate,
+    require_plate_change_free, require_plate_free, require_plate_nonempty, require_plates_free,
+    require_whole_plate, resolve_plate, shape_entry_plate,
 };
 use crate::enums::{EntryType, PlateModel};
 use crate::error::RosterError;
@@ -254,6 +254,35 @@ fn test_next_free_plate_counts_a_rider_plate() {
     let entries = vec![team("3", &[Some("3"), Some("50")])];
 
     assert_eq!(next_free_plate(&entries), "51");
+}
+
+// ------------------------------------------------- next_free_plate_skipping
+
+use std::collections::BTreeSet;
+
+#[test]
+fn test_next_free_plate_skipping_given_no_reserved_equals_next_free_plate() {
+    let entries = vec![solo("3"), team("7", &[Some("7"), Some("50")])];
+
+    assert_eq!(
+        next_free_plate_skipping(&entries, &BTreeSet::new()),
+        next_free_plate(&entries)
+    );
+}
+
+#[test]
+fn test_next_free_plate_skipping_given_a_reserved_higher_plate_skips_it() {
+    let entries = vec![solo("3")];
+    let reserved = BTreeSet::from(["4".to_owned()]);
+
+    assert_eq!(next_free_plate_skipping(&entries, &reserved), "5");
+}
+
+#[test]
+fn test_next_free_plate_skipping_ignores_a_non_numeric_reserved_plate() {
+    let reserved = BTreeSet::from(["A1".to_owned()]);
+
+    assert_eq!(next_free_plate_skipping(&[], &reserved), "1");
 }
 
 // ----------------------------------------------------------- resolve_plate

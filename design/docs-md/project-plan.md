@@ -81,7 +81,7 @@ Rust-added R-87…R-92). The Python plan is a reference for *scope*, not a templ
 - **Acceptance:** ranking, the `ZeroLapMode` DNS/HIDE/RANK partition, the mixed-ride split, the
   laps-then-time leaderboards and every golden hand name match the oracle; the seven rider-issue kinds
   match the oracle's messages and order. Both crates ≥90/90 line and branch.
-- **R-ids:** R-60, R-65, R-78.
+- **R-ids:** R-60, R-65 (ranking/split clause), R-78.
 
 ### EPIC-7 — Store / persistence (`rivercrossing-store`)
 - **Scope:** schema + migrations (v1→v2→v3), `Store` facade + session state, backup (hourly, rotate 20).
@@ -90,9 +90,14 @@ Rust-added R-87…R-92). The Python plan is a reference for *scope*, not a templ
 - **R-ids:** R-50, R-51, R-52, R-54, R-55, R-10, R-18.
 
 ### EPIC-8 — CSV (`rivercrossing-csvio`)
-- **Scope:** header-mapped roster CSV preview/commit/export + standings export.
-- **Acceptance:** the R-24 header resolution, conflicts/warnings, and plate assignment match the oracle.
-- **R-ids:** R-21, R-24.
+- **Scope:** header-mapped roster CSV preview/commit/export + the §15 standings export; the two
+  explicit import options (map unknown sex, convert teams of one) and the atomic writers. Shipped
+  after EPIC-9; it has no dependency on the exporters.
+- **Acceptance:** the R-24 header resolution, conflicts/warnings and plate assignment match the
+  oracle; team-of-one is a DRAFT warning and a later conflict; both opt-ins behave on both plate
+  models; `export` appends the finished columns and the standings CSV is
+  `place,plate,entry,type,sex,laps,hand,draw[,total_time]`; both writers are atomic.
+- **R-ids:** R-21, R-24, R-65 (standings-CSV clause), R-78.
 
 ### EPIC-9 — Exports (`rivercrossing-htmlexport` + `rivercrossing-pdfexport`)
 - **Scope:** results payload model; HTML (minijinja + vendored Tailwind CSS + woff2 fonts);
@@ -100,7 +105,7 @@ Rust-added R-87…R-92). The Python plan is a reference for *scope*, not a templ
 - **Acceptance:** HTML byte-identical to the committed production goldens; `race-data` JSON
   round-trips; PDF deterministic (same input ⇒ same bytes) with section-keyed content parity; times
   opt-in.
-- **R-ids:** R-61, R-62, R-63, R-65, R-86.
+- **R-ids:** R-61, R-62, R-63, R-65 (HTML/PDF clause), R-86.
 
 ### EPIC-10 — UI automation & Python-parity harness
 - **Crates:** none new — no new crate, binary or cargo feature; the harness lives in

@@ -20,8 +20,8 @@ The Python oracles: `src/rivercrossing/ui/{app.py,views/*,presenters/*,ids.py}` 
 ## Refs
 
 - `CODE_STRUCTURE.md` (rivercrossing-ui-egui) · `architecture.md` §5, §6
-- `requirements.md` R-02, R-03, R-04, R-05, R-30..R-38, R-51, R-73, R-76, R-79, R-81, R-82, R-83,
-  R-84, R-85
+- `requirements.md` R-02, R-03, R-04, R-05, R-21, R-24, R-30..R-38, R-51, R-65, R-73, R-76, R-79,
+  R-81, R-82, R-83, R-84, R-85
 - `design/docs-md/xrc-windows.md` (window inventory + frozen names), `spec.md` §15 (menu map)
   and §15b (frozen-name registry), `design/screenshots/`
 
@@ -38,9 +38,13 @@ dialog/destructive semantics (Esc/Enter/focus, confirm-or-undo).
    `xrc-windows.md` + §15/§15b + screenshots (settle the 23-vs-27 window count).
 2. Build the `Action`/command registry and the panel/dialog map (console, riders/teams editors,
    results, audit, settings, simulator, about, publish).
-3. Port `ui/presenters/*` decision logic; wire panels to the domain crates; sound via `rodio`;
+3. Wire the CSV surface: File ▸ Import Riders CSV… and Export Riders CSV…, `csv_preview_dlg`
+   (summary label, `Row | Problem` list, both opt-in checkboxes with *Convert teams of 1* unchecked,
+   Import disabled while conflicts > 0), and Results ▸ Export Standings CSV…; dispatch
+   `rivercrossing-csvio` and persist the mutated roster through the store.
+4. Port `ui/presenters/*` decision logic; wire panels to the domain crates; sound via `rodio`;
    settings via `craft-settings`; native dialogs via `craft-dialogs`.
-4. SPDX line on every `.rs`.
+5. SPDX line on every `.rs`.
 
 ## Done when
 

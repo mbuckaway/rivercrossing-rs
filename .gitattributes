@@ -9,6 +9,10 @@
 *.svg text eol=lf
 *.css text eol=lf
 
+# The CSV exporter goldens are CRLF by contract (the Python excel dialect);
+# keep their bytes raw so a fresh clone compares identically.
+crates/rivercrossing-csvio/fixtures/golden/** -text
+
 # Binary assets
 *.png binary
 *.jpg binary

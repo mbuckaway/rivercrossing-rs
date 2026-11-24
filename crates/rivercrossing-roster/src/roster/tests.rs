@@ -2600,3 +2600,385 @@ fn test_dissolve_emptied_given_an_unknown_key_leaves_both_lists_alone() {
         (1, 0, 0)
     );
 }
+
+// =====================================================================
+// Phase 3: the stage-and-swap snapshot, reserved plates and rider edits.
+// =====================================================================
+
+use std::collections::BTreeSet;
+
+use super::RiderEdit;
+
+// ------------------------------------------------------------------- clone
+
+#[test]
+fn test_roster_clone_copies_the_entries_the_audit_log_and_the_status() {
+    let mut roster = mixed();
+    let id = roster
+        .create_solo_entry(named_rider("Alex", None), "1")
+        .expect("a fresh plate is accepted");
+
+    let snapshot = roster.clone();
+
+    assert_eq!(
+        (
+            snapshot
+                .entry_by_key(&id.0)
+                .map(|entry| entry.plate.clone()),
+            snapshot.audit_log().to_vec(),
+            snapshot.status(),
+        ),
+        (
+            Some("1".to_owned()),
+            vec![log(
+                "create_solo_entry",
+                serde_json::json!({"plate": "1", "name": "Alex"})
+            )],
+            RideStatus::Draft,
+        )
+    );
+}
+
+#[test]
+fn test_roster_clone_has_its_own_audit_log() {
+    let mut roster = mixed();
+    roster
+        .create_solo_entry(named_rider("Alex", None), "1")
+        .expect("a fresh plate is accepted");
+    let mut snapshot = roster.clone();
+
+    snapshot.take_audit_log();
+
+    assert_eq!(
+        (snapshot.audit_log().len(), roster.audit_log().len()),
+        (0, 1)
+    );
+}
+
+// ------------------------------------------------ next_free_plate_skipping
+
+#[test]
+fn test_next_free_plate_skipping_given_no_reserved_equals_next_free_plate() {
+    let mut roster = mixed();
+    roster
+        .create_team_entry(team_fields("Team A", riders(&["3", "50"])))
+        .expect("a valid team is accepted");
+
+    assert_eq!(
+        roster.next_free_plate_skipping(&BTreeSet::new()),
+        roster.next_free_plate()
+    );
+}
+
+#[test]
+fn test_next_free_plate_skipping_skips_the_named_next_plate() {
+    let mut roster = mixed();
+    roster
+        .create_solo_entry(rider(None), "3")
+        .expect("a fresh plate is accepted");
+
+    assert_eq!(
+        roster.next_free_plate_skipping(&BTreeSet::from(["4".to_owned()])),
+        "5"
+    );
+}
+
+#[test]
+fn test_next_free_plate_skipping_skips_a_run_of_reserved_plates() {
+    let mut roster = mixed();
+    roster
+        .create_solo_entry(rider(None), "3")
+        .expect("a fresh plate is accepted");
+    let reserved = BTreeSet::from(["4".to_owned(), "5".to_owned(), "6".to_owned()]);
+
+    assert_eq!(roster.next_free_plate_skipping(&reserved), "7");
+}
+
+#[test]
+fn test_next_free_plate_skipping_ignores_a_reserved_plate_below_the_highest() {
+    let mut roster = mixed();
+    roster
+        .create_solo_entry(rider(None), "3")
+        .expect("a fresh plate is accepted");
+
+    assert_eq!(
+        roster.next_free_plate_skipping(&BTreeSet::from(["1".to_owned()])),
+        "4"
+    );
+}
+
+#[test]
+fn test_next_free_plate_skipping_counts_rider_plates_as_used() {
+    let mut roster = mixed();
+    roster
+        .create_team_entry(team_fields("Team A", riders(&["3", "50"])))
+        .expect("a valid team is accepted");
+
+    assert_eq!(roster.next_free_plate_skipping(&BTreeSet::new()), "51");
+}
+
+#[test]
+fn test_next_free_plate_skipping_ignores_a_non_numeric_reserved_plate() {
+    let roster = mixed();
+
+    assert_eq!(
+        roster.next_free_plate_skipping(&BTreeSet::from(["77A".to_owned()])),
+        "1"
+    );
+}
+
+// -------------------------------------------------------------- update_rider
+
+#[test]
+fn test_update_rider_renames_a_solo_rider_and_mirrors_the_display_name() {
+    let mut roster = mixed();
+    let id = roster
+        .create_solo_entry(named_rider("Alex", None), "1")
+        .expect("a fresh plate is accepted");
+
+    roster
+        .update_rider(
+            &id,
+            0,
+            RiderEdit {
+                first_name: "Alexandra",
+                last_name: "Roy",
+                sex: None,
+            },
+        )
+        .expect("the entry holds one rider");
+
+    let entry = created(&roster, &id);
+    assert_eq!(
+        (
+            entry.display_name.as_str(),
+            entry.riders[0].first_name.as_str(),
+            entry.riders[0].last_name.as_str(),
+        ),
+        ("Alexandra Roy", "Alexandra", "Roy")
+    );
+}
+
+#[test]
+fn test_update_rider_renames_only_the_named_team_member() {
+    let mut roster = mixed();
+    let id = roster
+        .create_team_entry(team_fields("Team A", riders(&["1", "2"])))
+        .expect("a valid team is accepted");
+
+    roster
+        .update_rider(
+            &id,
+            1,
+            RiderEdit {
+                first_name: "Bo",
+                last_name: "",
+                sex: None,
+            },
+        )
+        .expect("the team holds two riders");
+
+    let entry = created(&roster, &id);
+    assert_eq!(
+        (
+            entry.display_name.as_str(),
+            entry
+                .riders
+                .iter()
+                .map(Rider::full_name)
+                .collect::<Vec<_>>(),
+        ),
+        ("Team A", vec!["Sam".to_owned(), "Bo".to_owned()])
+    );
+}
+
+#[test]
+fn test_update_rider_given_a_sex_sets_it() {
+    let mut roster = mixed();
+    let id = roster
+        .create_solo_entry(named_rider("Alex", None), "1")
+        .expect("a fresh plate is accepted");
+
+    roster
+        .update_rider(
+            &id,
+            0,
+            RiderEdit {
+                first_name: "Alex",
+                last_name: "",
+                sex: Some("F"),
+            },
+        )
+        .expect("the entry holds one rider");
+
+    assert_eq!(created(&roster, &id).riders[0].sex.as_deref(), Some("F"));
+}
+
+#[test]
+fn test_update_rider_given_no_sex_clears_the_stored_sex() {
+    let mut roster = mixed();
+    let alex = Rider {
+        first_name: "Alex".to_owned(),
+        sex: Some("F".to_owned()),
+        ..Rider::default()
+    };
+    let id = roster
+        .create_solo_entry(alex, "1")
+        .expect("a fresh plate is accepted");
+
+    roster
+        .update_rider(
+            &id,
+            0,
+            RiderEdit {
+                first_name: "Alex",
+                last_name: "",
+                sex: None,
+            },
+        )
+        .expect("the entry holds one rider");
+
+    assert_eq!(created(&roster, &id).riders[0].sex, None);
+}
+
+#[test]
+fn test_update_rider_given_the_ride_finished_still_renames() {
+    let mut roster = mixed();
+    let id = roster
+        .create_solo_entry(named_rider("Alex", None), "1")
+        .expect("a fresh plate is accepted");
+    roster.set_status(RideStatus::Finished);
+
+    roster
+        .update_rider(
+            &id,
+            0,
+            RiderEdit {
+                first_name: "Alexandra",
+                last_name: "",
+                sex: None,
+            },
+        )
+        .expect("a name fix is open in every ride state");
+
+    assert_eq!(created(&roster, &id).riders[0].first_name, "Alexandra");
+}
+
+#[test]
+fn test_update_rider_given_an_index_out_of_range_refuses() {
+    let mut roster = mixed();
+    let id = roster
+        .create_solo_entry(named_rider("Alex", None), "1")
+        .expect("a fresh plate is accepted");
+    roster.take_audit_log();
+
+    let error = roster
+        .update_rider(
+            &id,
+            1,
+            RiderEdit {
+                first_name: "Nope",
+                last_name: "",
+                sex: None,
+            },
+        )
+        .expect_err("the entry holds one rider");
+
+    assert_eq!(
+        error,
+        RosterError::InvalidMove {
+            message: format!("entry {} has no rider at index 1", id.0),
+        }
+    );
+    assert_eq!(
+        (
+            created(&roster, &id).riders[0].first_name.as_str(),
+            roster.audit_log().len(),
+        ),
+        ("Alex", 0)
+    );
+}
+
+#[test]
+fn test_update_rider_appends_one_audit_event() {
+    let mut roster = mixed();
+    let id = roster
+        .create_solo_entry(named_rider("Alex", None), "1")
+        .expect("a fresh plate is accepted");
+    roster.take_audit_log();
+
+    roster
+        .update_rider(
+            &id,
+            0,
+            RiderEdit {
+                first_name: "Alexandra",
+                last_name: "Roy",
+                sex: None,
+            },
+        )
+        .expect("the entry holds one rider");
+
+    assert_eq!(
+        roster.audit_log(),
+        [log(
+            "update_rider",
+            serde_json::json!({"entry_key": id.0.clone(), "full_name": "Alexandra Roy"})
+        )]
+    );
+}
+
+#[test]
+fn test_update_rider_given_an_unknown_entry_refuses() {
+    let mut roster = mixed();
+    let stranger = Entry::restored("ghost", "999", "Ghost", EntryType::Solo, Vec::new());
+
+    let error = roster
+        .update_rider(
+            &stranger.id(),
+            0,
+            RiderEdit {
+                first_name: "Nope",
+                last_name: "",
+                sex: None,
+            },
+        )
+        .expect_err("a foreign entry is refused");
+
+    assert_eq!(
+        error,
+        RosterError::EntryNotFound {
+            key: "ghost".to_owned(),
+        }
+    );
+}
+
+#[test]
+fn test_update_rider_given_a_retired_entry_renames_it() {
+    let mut roster = mixed();
+    let retired = Entry::restored(
+        "retired1",
+        "88",
+        "Old Team",
+        EntryType::Team,
+        vec![named_rider("Alex", None)],
+    );
+    roster.retired.push(retired.clone());
+
+    roster
+        .update_rider(
+            &retired.id(),
+            0,
+            RiderEdit {
+                first_name: "Alexandra",
+                last_name: "",
+                sex: None,
+            },
+        )
+        .expect("a retired entry is a member");
+
+    assert_eq!(
+        roster.retired_entries()[0].riders[0].first_name,
+        "Alexandra"
+    );
+}

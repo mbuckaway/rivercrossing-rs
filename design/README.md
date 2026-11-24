@@ -33,4 +33,7 @@ from. Every path the EPIC prompts reference resolves inside this repository.
 | `README-python.md`, `REVIEW.md` | The Python design index + final audit (historical) |
 
 The Python source tree itself (`/Users/mark/src/rivercrossing/src/`) stays outside this repo as the
-behaviour oracle; the Rust port mirrors its unit tests as fixtures.
+behaviour oracle; the Rust port mirrors its unit tests as fixtures. The CSV fixture corpus lives with
+its crate at `crates/rivercrossing-csvio/fixtures/`; its README records the provenance, hashes and
+pins, including the scrubbed GORBA derivative (the real registration export stays on the oracle
+machine).

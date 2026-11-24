@@ -11,6 +11,8 @@
 //! to an entry the roster owns, so a caller can hold an id across a mutation.
 //! A plate change names the member rider by its own plate, for the same reason.
 
+use std::collections::BTreeSet;
+
 use rivercrossing_cards::seeded_card_codes;
 use rivercrossing_ride::EntryId;
 use serde_json::{Value, json};
@@ -54,6 +56,21 @@ pub struct EntryEdit<'a> {
     pub notes: Option<&'a str>,
 }
 
+/// The fields that a rider editor can change.
+///
+/// The names always take the supplied value. A `None` sex clears the stored
+/// one, so a blank registration field written back through an editor removes
+/// a stale `"M"` or `"F"`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RiderEdit<'a> {
+    /// The rider's new first name.
+    pub first_name: &'a str,
+    /// The rider's new last name.
+    pub last_name: &'a str,
+    /// The rider's new sex spelling, or `None` to clear it.
+    pub sex: Option<&'a str>,
+}
+
 /// One plate change through the model-correct dispatcher.
 #[derive(Debug, Clone, Copy)]
 pub struct PlateChange<'a> {
@@ -70,7 +87,12 @@ pub struct PlateChange<'a> {
 /// The constructor refuses a team size outside 2..10 and builds the team-logo
 /// card deck when the ride has a shuffle seed. Every later mutation validates
 /// against the stored settings and appends one [`AuditEvent`].
-#[derive(Debug)]
+///
+/// A clone is a stage-and-swap snapshot for an atomic import: build the
+/// replacement roster to the side, then swap it in. The clone carries the audit
+/// log, so it must replace the roster outright and never merge into it, because
+/// a merge would duplicate the events the original already recorded.
+#[derive(Debug, Clone)]
 pub struct Roster {
     /// Every entry, in creation order.
     entries: Vec<Entry>,
@@ -234,6 +256,18 @@ impl Roster {
     #[must_use]
     pub fn next_free_plate(&self) -> String {
         plates::next_free_plate(&self.entries)
+    }
+
+    /// Return one past the highest numeric plate in use or in *reserved*.
+    ///
+    /// The namespace is the same one that [`Self::next_free_plate`] scans:
+    /// every entry's plate and every rider's plate. A reserved plate counts
+    /// even when no entry carries it, so a stage-and-swap import can keep a
+    /// plate for an entry it has not inserted yet. A non-numeric plate is
+    /// ignored, and an empty namespace returns `"1"`.
+    #[must_use]
+    pub fn next_free_plate_skipping(&self, reserved: &BTreeSet<String>) -> String {
+        plates::next_free_plate_skipping(&self.entries, reserved)
     }
 
     /// Return the next unused seeded logo card, scanning just past *after*.
@@ -485,6 +519,49 @@ impl Roster {
             payload.insert("notes".to_owned(), Value::String(notes.to_owned()));
         }
         self.log("update_entry", Value::Object(payload));
+        Ok(())
+    }
+
+    /// Rename one rider, and set or clear their sex.
+    ///
+    /// A name fix is open in every ride state, because spec S3 keeps it so: the
+    /// method never consults the lock matrix. A solo entry mirrors the rider's
+    /// new full name into its display name. A retired entry is editable too,
+    /// because replay may still name it.
+    ///
+    /// # Errors
+    ///
+    /// Return [`RosterError::EntryNotFound`] when *entry* names no entry here,
+    /// and [`RosterError::InvalidMove`] when the entry has no rider at *index*.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the seam fixes the entry, the rider index and the edit; a parameter struct would force every caller to unpack it"
+    )]
+    pub fn update_rider(
+        &mut self,
+        entry: &EntryId,
+        index: usize,
+        edit: RiderEdit<'_>,
+    ) -> Result<(), RosterError> {
+        let Some(target) = self.entry_mut(entry) else {
+            return Err(entry_not_found(entry));
+        };
+        let Some(rider) = target.riders.get_mut(index) else {
+            return Err(RosterError::InvalidMove {
+                message: format!("entry {} has no rider at index {index}", entry.0),
+            });
+        };
+        edit.first_name.clone_into(&mut rider.first_name);
+        edit.last_name.clone_into(&mut rider.last_name);
+        rider.sex = edit.sex.map(str::to_owned);
+        let full_name = rider.full_name();
+        if target.kind == EntryType::Solo {
+            full_name.clone_into(&mut target.display_name);
+        }
+        self.log(
+            "update_rider",
+            json!({"entry_key": entry.0.as_str(), "full_name": full_name}),
+        );
         Ok(())
     }
 
