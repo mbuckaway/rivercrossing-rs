@@ -340,3 +340,22 @@ fn test_temp_path_of_a_root_path_returns_err() {
         Err(std::io::ErrorKind::InvalidInput)
     );
 }
+
+/// The frozen, Rust-owned golden report.
+const GOLDEN_RESULTS: &[u8] = include_bytes!("../../fixtures/golden-results.pdf");
+
+#[test]
+fn test_render_matches_the_committed_golden() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let dir = TempDir::new()?;
+    let path = dir.path().join("report.pdf");
+    let input = crate::fixtures::golden_input();
+
+    // Act
+    render(&input, &path)?;
+    let bytes = std::fs::read(&path)?;
+
+    // Assert
+    assert_eq!(bytes, GOLDEN_RESULTS);
+    Ok(())
+}

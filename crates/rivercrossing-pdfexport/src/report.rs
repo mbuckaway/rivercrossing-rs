@@ -50,7 +50,7 @@ pub fn render(input: &PdfInput, path: &Path) -> Result<(), PdfError> {
 }
 
 /// Write *bytes* to *path* through a same-directory temporary file.
-fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     write_bytes_atomic_with(path, bytes, |from, to| std::fs::rename(from, to))
 }
 
@@ -59,7 +59,7 @@ fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// The rename is the seam: a test injects a failing one and proves that a
 /// pre-existing report survives untouched. It is not a test-only exemption —
 /// production passes the real rename — so one implementation serves both.
-fn write_bytes_atomic_with(
+pub(crate) fn write_bytes_atomic_with(
     path: &Path,
     bytes: &[u8],
     rename: impl Fn(&Path, &Path) -> std::io::Result<()>,

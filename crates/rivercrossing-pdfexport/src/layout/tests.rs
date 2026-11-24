@@ -1633,3 +1633,66 @@ fn test_layout_boxed_cards_draws_a_face_that_fits() {
         .count();
     assert_eq!(filled, 1);
 }
+
+// ------------------------------------------------------- content oracle parity
+
+/// Return the fixed strings that the content oracle lists under *key*.
+fn oracle_strings(key: &str) -> Vec<String> {
+    let oracle: serde_json::Value =
+        serde_json::from_str(include_str!("../../fixtures/content-oracle.json"))
+            .expect("the content oracle is valid JSON");
+    oracle
+        .get(key)
+        .and_then(serde_json::Value::as_array)
+        .expect("the oracle key is an array")
+        .iter()
+        .map(|value| value.as_str().expect("an oracle entry is a string"))
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn test_layout_report_content_matches_the_oracle() {
+    // Arrange
+    let (payload, plan) =
+        crate::fixtures::golden_payload_and_plan().expect("the golden payload builds");
+    let pages = report_pages(&payload, &plan, true, None).expect("the report builds");
+    let rendered = joined(&pages);
+    let expected = oracle_strings("report");
+
+    // Act
+    let missing: Vec<&str> = expected
+        .iter()
+        .map(String::as_str)
+        .filter(|needle| !rendered.contains(*needle))
+        .collect();
+
+    // Assert
+    assert!(
+        missing.is_empty(),
+        "the report is missing the oracle strings: {missing:?}"
+    );
+}
+
+#[test]
+fn test_layout_poster_content_matches_the_oracle() {
+    // Arrange
+    let (payload, _plan) =
+        crate::fixtures::golden_payload_and_plan().expect("the golden payload builds");
+    let pages = poster_pages(&payload, true, None).expect("the poster builds");
+    let rendered = joined(&pages);
+    let expected = oracle_strings("poster");
+
+    // Act
+    let missing: Vec<&str> = expected
+        .iter()
+        .map(String::as_str)
+        .filter(|needle| !rendered.contains(*needle))
+        .collect();
+
+    // Assert
+    assert!(
+        missing.is_empty(),
+        "the poster is missing the oracle strings: {missing:?}"
+    );
+}

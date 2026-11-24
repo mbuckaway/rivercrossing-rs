@@ -10,10 +10,13 @@
 #![forbid(unsafe_code)]
 
 pub mod error;
+#[cfg(test)]
+pub(crate) mod fixtures;
 pub mod fonts;
 pub mod geometry;
 pub mod layout;
 #[cfg(test)]
 pub(crate) mod pdf_read;
+pub mod poster;
 pub mod report;
 pub mod writer;
