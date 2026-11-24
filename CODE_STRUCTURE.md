@@ -22,6 +22,7 @@ crates/rivercrossing-ride          │
 crates/rivercrossing-standings     │
 crates/rivercrossing-hands         │
 crates/rivercrossing-cards         ┘
+tools/parity                       cross-language parity schema + Python driver stub (no crate)
 ```
 
 Layering rule (`cargo xtask layers`): nothing below `rivercrossing-ui-egui` may depend on

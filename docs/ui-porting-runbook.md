@@ -69,17 +69,18 @@ the scenario JSON is the cross-language contract.
   repeat (`plate_input`, `reason_input`, `continue_btn`, `message_lbl`; names are unique only within a
   top-level window, `spec.md` §15b). Multiple matches without a `window` are an error, never an
   arbitrary pick. No `NodeId` (per-run, not reproducible) and no bare label lookup.
-- **Scenario model.** `Scenario`/`Step`/`Selector`/`Observation`/`Node` live in
-  `crates/rivercrossing-ui-egui/tests/ui/scenario.rs` — test-support only, versioned JSON
-  (`"version": 1`) mirrored by `tools/parity/schema.json` for the Python driver. `Step::Expect` is
-  the only assertion mechanism.
+- **Scenario model.** `Scenario`/`Step`/`Selector`/`Observation`/`WireTree`/`Node` live in
+  `crates/rivercrossing-ui-egui/src/ui/automation/scenario.rs` (public automation API), versioned
+  JSON (`"version": 1`) mirrored by `tools/parity/schema.json` for the Python driver. `Step::Expect`
+  is the only assertion mechanism; `Observation.tree` mirrors craft's flat `accessTree` reply.
 - **Snapshots.** One golden host (Linux / lavapipe); `kittest.toml` sets `output_path =
   "tests/snapshots"` (package-relative) with `[linux] threshold = 0.6` and `[mac] threshold = 2.0`.
   Missing glyphs panic, so the app fonts (`craft::ui::fonts::UiFonts`) are installed. Regenerate
-  deliberately on the golden host only: `UPDATE_SNAPSHOTS=force cargo nextest run -P ui --locked`.
+  deliberately on the golden host only:
+  `UPDATE_SNAPSHOTS=force WGPU_BACKEND=vulkan cargo nextest run -P ui -p rivercrossing-ui-egui --locked`.
 - **Artifacts.** Tier B writes `target/gate/control-smoke.log` and PNGs under `target/control/`;
   Tier C writes `Observation` JSON + PNGs under `target/gate/parity/<scenario>/`, or
-  `target/gate/parity/SKIP.md` naming the missing prerequisite.
+  `docs/parity/SKIP.md` naming the missing prerequisite.
 
 ## Keep unchanged (product contract)
 
@@ -95,7 +96,23 @@ the scenario JSON is the cross-language contract.
 - **Resolved — snapshot rendering and OS normalisation (EPIC-10):** one golden set from one golden
   host (Linux / lavapipe), with per-OS thresholds instead of per-OS goldens or skips —
   `[linux] 0.6` (the golden host) and `[mac] 2.0` in `kittest.toml`. Goldens are regenerated only on
-  the golden host with `UPDATE_SNAPSHOTS=force cargo nextest run -P ui --locked`; there is no second
-  golden set and no skip path.
+  the golden host with
+  `UPDATE_SNAPSHOTS=force WGPU_BACKEND=vulkan cargo nextest run -P ui -p rivercrossing-ui-egui --locked`;
+  there is no second golden set and no skip path.
 - WordPress credential storage: parity (plaintext settings JSON) vs OS keychain.
 - Tailwind/Node CSS build: keep the Node step as an xtask, or vendor the already-compiled CSS.
+
+## EPIC-12 handoff (from EPIC-10)
+
+- Call `ctx.enable_accesskit()` once in `run`'s `make`; the live tree is empty without it.
+- Give every input widget an explicit `.accessible_name`; `hint_text` is only a placeholder.
+- Register every §15/§15b id in the `ActionRegistry` and keep the ids-drift check green.
+- Add one semantic `Fixture` test and one snapshot golden per screen state; call
+  `craft::ui::testing::access::violations` on every settled frame.
+- Replace the EPIC-10 probe panel with the real console and regenerate
+  `crates/rivercrossing-ui-egui/tests/snapshots/shell.png` on the golden host.
+- Add real `ui.inspect`/`ui.set` fields and wire `ui.dialog.*` to the dialogs; R-88's dialog clause
+  completes here.
+- Run Tier C on the Mac at exit and remove `docs/parity/SKIP.md` when the parity run is green.
+- Keep exactly the two Tier B smokes (open/quit and control channel); do not add a third real-window
+  test.
