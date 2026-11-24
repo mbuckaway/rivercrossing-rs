@@ -10,6 +10,7 @@ autotests = false
 
 [dependencies]
 rivercrossing-ui-egui = { path = "../../crates/rivercrossing-ui-egui", version = "=0.1.0" }
+craft = { workspace = true, features = ["automation"] }
 eframe = { workspace = true }
 
 [lints]

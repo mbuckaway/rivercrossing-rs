@@ -6,6 +6,10 @@
 # `functional` smoke test spawns the window and must never enter the unit sweep.
 default-filter = "kind(lib) | kind(bin)"
 
+[profile.ui]
+# The egui_kittest snapshot harness: the UI crate's `tests/ui/main.rs` target only.
+default-filter = "binary_id(=rivercrossing-ui-egui::ui)"
+
 [profile.functional]
 # Functional tests: tests/functional/main.rs, run by hand (never in the sweep).
 

@@ -24,6 +24,8 @@ craft = { git = "https://github.com/storytold/craft-libs", rev = "243d68e12d05e8
 # Named for `eframe::Result`: the façade re-exports egui but not eframe. The craft
 # shell enables eframe's wgpu/x11/default_fonts features for the whole graph.
 eframe = { version = "0.37", default-features = false }
+# Offscreen snapshot renderer for the UI harness (dev-only; patched to the storytold fork below).
+egui_kittest = { version = "0.37", default-features = false }
 # CLI + MCP (EPIC-13): the shared MCP server machinery (JSON-RPC 2.0 over stdio), craft-libs rev.
 craft-mcp-server = { git = "https://github.com/storytold/craft-libs", rev = "243d68e12d05e89122db6d154924bf1992e10d38", version = "=0.1.0" }
 

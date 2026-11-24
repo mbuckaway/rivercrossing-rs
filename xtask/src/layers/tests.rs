@@ -109,8 +109,20 @@ const SIMILAR_NAMES: &str = r#"{
       "manifest_path": "/work/crates/rivercrossing-cards/Cargo.toml",
       "dependencies": [
         { "name": "egui_extras", "kind": null },
-        { "name": "egui_kittest", "kind": "dev" },
         { "name": "egui-winit", "kind": null }
+      ]
+    }
+  ]
+}"#;
+
+/// A domain crate that dev-depends on the snapshot renderer.
+const DOMAIN_WITH_KITTEST: &str = r#"{
+  "packages": [
+    {
+      "name": "cards",
+      "manifest_path": "/work/crates/rivercrossing-cards/Cargo.toml",
+      "dependencies": [
+        { "name": "egui_kittest", "kind": "dev" }
       ]
     }
   ]
@@ -261,6 +273,18 @@ fn test_layers_similar_dependency_names_are_not_flagged() {
 
     // Assert
     assert_eq!(result, Ok(Vec::new()));
+}
+
+#[test]
+fn test_layers_egui_kittest_dev_dependency_is_a_violation() {
+    // Arrange
+    let metadata = DOMAIN_WITH_KITTEST;
+
+    // Act
+    let result = violations(metadata);
+
+    // Assert
+    assert_eq!(result, Ok(vec!["cards -> egui_kittest".to_owned()]));
 }
 
 #[test]

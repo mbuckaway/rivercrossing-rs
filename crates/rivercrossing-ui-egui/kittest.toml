@@ -1,0 +1,11 @@
+# egui_kittest snapshot policy. Goldens are generated only on the Linux golden host
+# (forge box + lavapipe) and committed; other hosts compare within the threshold.
+output_path = "tests/snapshots"
+threshold = 0.6
+max_failed_pixels = 0
+
+[linux]
+threshold = 0.6
+
+[mac]
+threshold = 2.0
