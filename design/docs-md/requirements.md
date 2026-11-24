@@ -124,7 +124,7 @@ is R-87…R-92 (spec §16, `automation.md`, `test-plan.md`).
 | ID | Level | Requirement | Trace |
 |---|---|---|---|
 | R-87 | MUST | Every UI surface is drivable headlessly by a stable selector — Action id first, AccessKit role+accessible name second, coordinates only for command-less targets. Partial at EPIC-10, complete at EPIC-12. | §16 |
-| R-88 | MUST | The app exposes an opt-in, token-authenticated, loopback-only JSON control channel (`ui.command`, `ui.accessTree`, `ui.click`, `ui.key`, `ui.type`, `ui.resize`, `ui.screenshot`, dialog methods); acquisition is debug-only; writes are confined to a canonicalised root. | §16 |
+| R-88 | MUST | The app exposes an opt-in, token-authenticated, loopback-only JSON control channel (`ui.command`, `ui.accessTree`, `ui.click`, `ui.key`, `ui.type`, `ui.resize`, `ui.screenshot`, dialog methods); acquisition is debug-only; writes are confined to a canonicalised root. The dialog methods are mechanism-only at EPIC-10 (typed "no hosted dialog") and complete at EPIC-12. | §16 |
 | R-89 | MUST | Every input widget carries an accessible name; the harness accessibility check runs on every settled frame and fails the suite. | §16 |
 | R-90 | MUST | Offscreen PNG goldens exist for every screen/dialog state, generated on one golden host; other hosts use per-OS thresholds, never skips. Partial at EPIC-10 (shell golden), complete at EPIC-12. | §16 |
 | R-91 | MUST | One shared scenario schema drives Python and Rust; parity compares structured trees and screenshots. Schema at EPIC-10; parity run at EPIC-12 exit. | §16 |

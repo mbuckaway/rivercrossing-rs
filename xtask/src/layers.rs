@@ -6,7 +6,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 /// The dependencies that only the UI layer may declare.
-const FORBIDDEN: [&str; 4] = ["egui", "eframe", "winit", "rfd"];
+const FORBIDDEN: [&str; 5] = ["egui", "eframe", "winit", "rfd", "egui_kittest"];
 
 /// The package that may always declare a forbidden dependency.
 const UI_PACKAGE: &str = "rivercrossing-ui-egui";

@@ -30,6 +30,15 @@ coverage.json
 /logs/
 *.log
 
+# egui_kittest failure artifacts (goldens are committed)
+*.diff.png
+*.new.png
+*.old.png
+
+# Automation scratch (already under /target/; kept explicit for discoverability)
+/target/control/
+/target/gate/parity/
+
 # Secrets — never commit
 .env
 .wp-password.txt

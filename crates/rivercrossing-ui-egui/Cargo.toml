@@ -8,8 +8,21 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-craft = { workspace = true }
+craft = { workspace = true, features = ["automation"] }
 eframe = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+craft = { workspace = true, features = ["ui-testing"] }
+egui_kittest = { workspace = true, features = ["snapshot", "wgpu"] }
+pretty_assertions = { workspace = true }
+rstest = { workspace = true }
 
 [lints]
 workspace = true
+
+# The snapshot harness target; `[profile.ui]` selects it.
+[[test]]
+name = "ui"
+path = "tests/ui/main.rs"

@@ -11,7 +11,7 @@ use super::RiverCrossingApp;
 #[test]
 fn app_ui_renders_one_frame_without_panicking() {
     // Arrange
-    let mut app = RiverCrossingApp::new(None);
+    let mut app = RiverCrossingApp::new(None, None);
     let ctx = Context::default();
 
     // Act
@@ -26,7 +26,7 @@ fn app_ui_renders_one_frame_without_panicking() {
 #[test]
 fn app_close_request_is_close() {
     // Arrange
-    let mut app = RiverCrossingApp::new(None);
+    let mut app = RiverCrossingApp::new(None, None);
 
     // Act
     let decision = app.close_requested();
@@ -38,7 +38,7 @@ fn app_close_request_is_close() {
 #[test]
 fn app_logic_emits_viewport_close_when_the_quit_deadline_passes() {
     // Arrange
-    let mut app = RiverCrossingApp::new(Some(Duration::ZERO));
+    let mut app = RiverCrossingApp::new(Some(Duration::ZERO), None);
     let ctx = Context::default();
 
     // Act
@@ -55,7 +55,7 @@ fn app_logic_emits_viewport_close_when_the_quit_deadline_passes() {
 #[test]
 fn app_logic_emits_no_close_before_the_deadline() {
     // Arrange
-    let mut app = RiverCrossingApp::new(None);
+    let mut app = RiverCrossingApp::new(None, None);
     let ctx = Context::default();
 
     // Act
@@ -75,7 +75,7 @@ fn app_logic_emits_no_close_before_the_deadline() {
 #[test]
 fn app_logic_emits_no_close_when_the_quit_deadline_is_in_the_future() {
     // Arrange
-    let mut app = RiverCrossingApp::new(Some(Duration::from_secs(3600)));
+    let mut app = RiverCrossingApp::new(Some(Duration::from_secs(3600)), None);
     let ctx = Context::default();
 
     // Act
@@ -95,7 +95,7 @@ fn app_logic_emits_no_close_when_the_quit_deadline_is_in_the_future() {
 #[test]
 fn app_new_tolerates_a_duration_too_large_for_the_clock() {
     // Arrange
-    let mut app = RiverCrossingApp::new(Some(Duration::MAX));
+    let mut app = RiverCrossingApp::new(Some(Duration::MAX), None);
     let ctx = Context::default();
 
     // Act

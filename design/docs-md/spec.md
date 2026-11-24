@@ -420,28 +420,34 @@ Architecture: [architecture](architecture.md) §12; matrix: [test plan](test-pla
   window, and multiple matches without one are an error (R-87).
 
 - **Control channel.** Opt-in, loopback-only, token-authenticated JSON lines over a local TCP socket
-  of the live app. Methods: craft-provided `ui.click`, `ui.move`, `ui.wheel`, `ui.key`, `ui.release`,
-  `ui.type`, `ui.ime`, `ui.capsLock`, `ui.accessTree`, `ui.dialog.set`/`confirm`/`cancel`; app-owned
-  `ui.command` (debug probes), `ui.resize`, `ui.screenshot` (token plus the bounded writer), and later
-  `ui.inspect`/`ui.set`. Writes are confined to a canonicalised automation root; the token file is
-  `0600`; replies bound to injected input settle after the pass that consumed it, with a 60 s
-  `REPLY_DEADLINE`. The channel is debug-build only until EPIC-14 adds the consented `AgentSettings`
-  surface (R-88).
+  of the live app. Craft's `synthetic::input_method` provides the coordinate/text primitives
+  (`ui.click`/`move`/`wheel`/`key`/`release`/`type`/`ime`/`capsLock`) and `dialogs::dialog_method`
+  the dialog trio; the app owns `ui.command` (debug probes), `ui.resize`, `ui.screenshot`,
+  `ui.accessTree` (craft's flat ROOT tree) and the selector-aware `ui.click`/`ui.type` that resolve
+  a selector to AccessKit bounds before injecting. The acquisition is `resolve` → `check` →
+  `server_token`; `ctx.enable_accesskit()` runs in `run`'s `make`. Writes are confined to a
+  canonicalised `<cwd>/target/control` root; a caller-supplied token file is read; replies bound to
+  injected input settle after the pass that consumed it, with a 60 s `REPLY_DEADLINE`. The channel
+  is debug-build only until EPIC-14 adds the consented `AgentSettings` surface (R-88); the three
+  `ui.dialog.*` methods return a typed "no hosted dialog" until EPIC-12.
 
 - **Snapshot policy.** One golden host (Linux + lavapipe); `kittest.toml` sets
   `output_path = "tests/snapshots"` (package-relative) with `[linux] 0.6` and `[mac] 2.0`; app fonts
   are installed so a missing glyph fails; a platform difference is a threshold, never a skip (R-90).
 
-- **Parity schema.** Versioned `Scenario`/`Step`/`Observation`/`Node` JSON (`"version": 1`) in
-  `tools/parity/schema.json`, structurally checked against the Rust serde derive by a unit test.
-  Tier C compares structured trees exactly and PNGs within threshold, writing artifacts under
-  `target/gate/parity/<scenario>/`; a missing Python prerequisite is a recorded `SKIP`, not a pass
-  (R-91).
+- **Parity schema.** Versioned `Scenario`/`Step`/`Observation`/`WireTree`/`Node` JSON
+  (`"version": 1`) in `tools/parity/schema.json`, structurally checked against the Rust serde
+  derive by a unit test. `Observation.tree` mirrors craft's flat `accessTree` reply (`nodes`,
+  `focus`, `root`); `Node` is flat. Tier C compares structured trees exactly and PNGs within
+  threshold, writing artifacts under `target/gate/parity/<scenario>/`; a missing Python prerequisite
+  is a committed `docs/parity/SKIP.md`, not a pass (R-91).
 
 - **Gate.** Semantic UI tests join the unit sweep; the `ui` profile runs the snapshot suite; exactly
   two real-window smokes are authorized; `scripts/validate-rust.sh` is the gate (R-92, amending
-  R-74). EPIC-10 satisfies the mechanism, the shell and a debug probe surface; R-87, R-90 and R-91
+  R-74). The control smoke must pass under `xvfb-run` on the forge box and record
+  `target/gate/control-smoke.log`; the release build must ignore `--control` and the env vars.
+  EPIC-10 satisfies the mechanism, the shell and a debug probe surface; R-87, R-90 and R-91
   complete at EPIC-12, which inherits the per-screen tests, goldens, frozen-id manifest, real
-  `ui.inspect`/`ui.set` fields and the parity report.
+  `ui.inspect`/`ui.set` fields and the parity report. R-88's dialog clause is also partial here.
 
 Companions: [requirements](requirements.md) · [XRC window designs (implementation truth)](xrc-windows.md) · [module skeletons](module-skeletons.md) · [project plan](project-plan.md) · [task briefs](task-briefs.md) · [hi-fi designs (retired — flow reference)](ui-designs-retired.md) · [automation](automation.md) · [test plan](test-plan.md) · [results sample](../exports/epic-2026-results.html) / [no-times](../exports/epic-2026-results-no-times.html) / [solo](../exports/epic-2026-results-solo.html). Event facts from gorba.ca; hand-evaluation approach per standard evaluators (7,462-rank tables, best-5-of-N).
