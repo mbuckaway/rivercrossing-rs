@@ -41,9 +41,15 @@ cargo deny --locked --config deny.toml check || fail "deny" "$?"
 cargo machete || fail "machete" "$?"
 
 step "layers"
-# Nothing below rivercrossing-ui-egui may depend on egui/eframe/winit/rfd
+# Nothing below rivercrossing-ui-egui may depend on egui/eframe/winit/rfd/egui_kittest
 # (AGENTS.md, CODINGSTANDARDS-RUST.md). The check reads direct deps only.
 cargo xtask layers || fail "layers" "$?"
+
+step "ui (egui_kittest snapshots)"
+WGPU_BACKEND=vulkan cargo nextest run -P ui -p rivercrossing-ui-egui --locked || fail "ui" "$?"
+
+step "release check (debug-gated control path inert)"
+cargo check -p rivercrossing --release --locked || fail "release check" "$?"
 
 step "unit + coverage (line AND branch, 90/90)"
 cargo +"$NIGHTLY" llvm-cov clean --workspace
