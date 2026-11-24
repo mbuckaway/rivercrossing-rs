@@ -2,6 +2,11 @@
 
 //! Tests for the shared payload builder.
 
+#![expect(
+    clippy::too_many_arguments,
+    reason = "the fixture builder names each field of an entry separately"
+)]
+
 use std::collections::BTreeMap;
 
 use pretty_assertions::assert_eq;

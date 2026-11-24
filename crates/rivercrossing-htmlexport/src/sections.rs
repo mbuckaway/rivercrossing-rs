@@ -88,7 +88,7 @@ fn recomputed_laps(
 }
 
 /// Plan the sections that only the payload's own rows decide.
-fn sections_from_payload(payload: &RacePayload) -> Sections {
+pub(crate) fn sections_from_payload(payload: &RacePayload) -> Sections {
     let teams: Vec<ResultRow> = payload
         .results
         .iter()

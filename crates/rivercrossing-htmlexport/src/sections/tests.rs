@@ -2,6 +2,11 @@
 
 //! Tests for the page's per-kind section plan and the poster's plan.
 
+#![expect(
+    clippy::too_many_arguments,
+    reason = "the fixture builders name each field of an entry separately"
+)]
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use pretty_assertions::assert_eq;

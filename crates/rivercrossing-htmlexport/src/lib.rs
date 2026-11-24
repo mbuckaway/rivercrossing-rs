@@ -11,12 +11,11 @@
 
 #![forbid(unsafe_code)]
 
+pub mod env;
 pub mod error;
 pub mod format;
 pub mod payload;
 pub mod record;
+pub mod render;
 pub mod sections;
 pub mod types;
-
-#[cfg(test)]
-mod parity;

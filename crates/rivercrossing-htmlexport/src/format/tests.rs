@@ -7,12 +7,13 @@
     reason = "a case table and a fixture name each calendar field separately"
 )]
 
+use base64::Engine as _;
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 use time::{Date, Month, OffsetDateTime, Time};
 
-use super::{format_duration, format_event_date, format_generated, format_meta};
-use crate::types::RideInfo;
+use super::{format_duration, format_event_date, format_generated, format_meta, png_data_uri};
+use crate::types::{RideInfo, TRANSPARENT_PNG};
 
 fn date(year: i32, month: Month, day: u8) -> Date {
     Date::from_calendar_date(year, month, day).expect("the fixture date is valid")
@@ -204,4 +205,21 @@ fn test_format_meta_given_a_fractional_lap_keeps_the_fraction() {
         meta,
         "Sunday September 20, 2026 · Guelph Lake MTB Trails · 6.5 km loop"
     );
+}
+
+#[test]
+fn test_png_data_uri_given_the_transparent_png_bytes_reads_the_oracle_data_uri() {
+    // Arrange
+    let encoded = TRANSPARENT_PNG
+        .strip_prefix("data:image/png;base64,")
+        .expect("the oracle URI carries the PNG prefix");
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .expect("the oracle URI decodes");
+
+    // Act
+    let uri = png_data_uri(&bytes);
+
+    // Assert
+    assert_eq!(uri, TRANSPARENT_PNG);
 }

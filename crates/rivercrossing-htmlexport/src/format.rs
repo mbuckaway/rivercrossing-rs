@@ -6,6 +6,7 @@
 //! timezone conversion. English names are hard-coded, so a pinned instant
 //! renders byte-identically on every machine (R-62).
 
+use base64::Engine as _;
 use time::{Date, Month, OffsetDateTime, Weekday};
 
 use crate::types::RideInfo;
@@ -76,6 +77,13 @@ pub fn format_meta(ride: &RideInfo) -> String {
     let event_date = format_event_date(ride.event_date);
     let lap_km = ride.lap_km;
     format!("{event_date} · {} · {lap_km} km loop", ride.venue)
+}
+
+/// Return *bytes* as the `data:image/png;base64,` URI the page embeds.
+#[must_use]
+pub fn png_data_uri(bytes: &[u8]) -> String {
+    let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+    format!("data:image/png;base64,{encoded}")
 }
 
 /// Return the samples' month abbreviation of *month*.
