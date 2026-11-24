@@ -1,0 +1,31 @@
+[package]
+name = "rivercrossing-pdfexport"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+rivercrossing-htmlexport = { path = "../rivercrossing-htmlexport", version = "=0.1.0" }
+thiserror = { workspace = true }
+time = { workspace = true }
+craft-pdf = { workspace = true }
+skrifa = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+rstest = { workspace = true }
+serde_json = { workspace = true }
+tempfile = "3"
+rivercrossing-cards = { path = "../rivercrossing-cards", version = "=0.1.0" }
+rivercrossing-hands = { path = "../rivercrossing-hands", version = "=0.1.0" }
+rivercrossing-ride = { path = "../rivercrossing-ride", version = "=0.1.0" }
+rivercrossing-standings = { path = "../rivercrossing-standings", version = "=0.1.0" }
+
+[lints]
+workspace = true
