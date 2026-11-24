@@ -264,6 +264,8 @@ Core modules are pure Python with **zero wx imports** — every one imports and 
 
 ### 12 · TDD & the testing system
 
+*Rust note (EPIC-10): this section is the Python oracle. The Rust mechanism is §16 and its gate is `scripts/validate-rust.sh` (R-92).*
+
 - **Process:** tests are written first by the `tdd-python-writer` agent (red), implementation follows (green), then refactor — per module, in the dependency order above. pytest + pytest-asyncio + coverage; gate ≥ 90% on core modules; ruff + mypy strict as "good pythoning" guardrails.
 
 - **Simulation suite (card algorithm):** seeded whole-ride simulations — e.g. 180 entries × 6 h with random lap distributions, solo-only and mixed, **both plate models** (relay and rider-pooled incl. mid-ride team moves), 0–10 jokers (spin default 1, Total/Per Deck mode), with and without cap X, shoe exhaustion mid-ride. Invariants asserted: cards dealt = non-voided crossings − held; standings are a total order; identical hands resolve exactly by the configured rule; replaying the seed reproduces every deal and the final standings byte-for-byte.
@@ -295,6 +297,8 @@ Grounded in platform dialog guidelines (Windows ContentDialog, Carbon/Primer acc
 - **Buttons:** one primary per surface; destructive actions never the default; three-button dialogs order Ghost · Secondary · Primary left→right.
 
 ### 14 · CI — building & testing a GUI app
+
+*Rust note (EPIC-10): this section is the Python CI oracle. The Rust gate is §16 and `scripts/validate-rust.sh`; the Rust repo has no CI workflow.*
 
 GitHub Actions, matrix `macos-latest + windows-latest + windows-11-arm` — all runners have a real desktop session, so wx windows open without a virtual display (no Xvfb; that's only needed if a Linux target is ever added). `windows-11-arm` builds the native Windows ARM64 installer (PyInstaller cannot cross-compile), and `macos-latest` is Apple Silicon, so the macOS artifact is arm64-native. GUI suites are kept lean by design: logic lives in the sync core modules (§11), so the bulk of the pyramid runs headless-fast.
 
@@ -393,4 +397,49 @@ Every window and dialog is defined in **wxWidgets XRC** (sizer-based, resizable,
 
 - **Further code-side items, all measured:** `<checked>` is a no-op on **radio** menu items (the handler applies it only to `wxITEM_CHECK`), so the zoom default — `mi_zoom_100` — is checked in code after `LoadMenuBar` via the loaded settings (the W13-removed `mi_theme_system` default went with the theme trio); `<value>` on a `wxRadioButton` does work, so the in-window radios keep their XRC defaults · XRC has **no window-level `minsize`** (only sizeritem and wxSplitterWindow), so window minimums are declared as `<size>` and re-applied with `SetMinSize()` · `wxStdDialogButtonSizer` positions only OK/Yes/Save/Apply/No/Cancel/Close/Help — `wxID_OPEN`, `wxID_NEW`, `wxID_DELETE` and every custom button (`finish_first_btn`, `continue_btn`, `library_btn`, `void_btn`, `rerun_btn` — `create_ride_btn`/`open_library_btn` went with the retired `no_ride_dlg`, and `archive_new_btn` with `continue_or_new_dlg`, both ux-polish) are created and resolve by name but are left unpositioned at `(-1,-1)`, so they belong in a sibling `wxBoxSizer` · a bare `&` in a label is a mnemonic and is stripped on macOS — author `&&`, and read labels back with `GetLabelText()` · one control cannot carry both a frozen name and a stock id, since the id comes *from* the name, so `continue_btn` (annotated wxID_OK in `resume_dlg`) keeps its name and the affirmative behaviour is wired in code with `SetAffirmativeId()`.
 
-Companions: [requirements](requirements.md) · [XRC window designs (implementation truth)](xrc-windows.md) · [module skeletons](module-skeletons.md) · [project plan](project-plan.md) · [task briefs](task-briefs.md) · [hi-fi designs (retired — flow reference)](ui-designs-retired.md) · [results sample](../exports/epic-2026-results.html) / [no-times](../exports/epic-2026-results-no-times.html) / [solo](../exports/epic-2026-results-solo.html). Event facts from gorba.ca; hand-evaluation approach per standard evaluators (7,462-rank tables, best-5-of-N).
+### 16 · Rust UI automation & parity harness
+
+Added for the Rust port (EPIC-10; requirements §10 R-87…R-92). §12 and §14 above remain the Python
+oracle and are not rewritten — the Rust mechanism that stands in for them is this section.
+Architecture: [architecture](architecture.md) §12; matrix: [test plan](test-plan.md); decision record:
+[automation](automation.md).
+
+- **Tiers.** **A — semantic:** `craft::ui::testing::Fixture` over the app in `src/ui/**/tests.rs`,
+  run by `cargo nextest -P unit`; no display, no GPU. **A-snapshot:** `egui_kittest` 0.37
+  (`snapshot` + `wgpu`) in `crates/rivercrossing-ui-egui/tests/ui/main.rs`, run by
+  `cargo nextest -P ui`; Linux + lavapipe. **B — real window:** exactly two smokes, the existing
+  open/quit and one control-channel smoke, run by hand under `xvfb-run` on the forge box.
+  **C — Python parity:** shared JSON scenarios, in-process pytest in the Python oracle repo plus the
+  Rust scenario runner, on the Mac at EPIC-12 exit.
+
+- **Selector contract.** Action id first (the frozen §15b handle), AccessKit role + name second with
+  an optional window scope; no `NodeId`; a bare label is a test-side convenience only; bounds/point
+  selection is the last resort for a command-less canvas target. A repeated label is scoped by its
+  window, and multiple matches without one are an error (R-87).
+
+- **Control channel.** Opt-in, loopback-only, token-authenticated JSON lines over a local TCP socket
+  of the live app. Methods: craft-provided `ui.click`, `ui.move`, `ui.wheel`, `ui.key`, `ui.release`,
+  `ui.type`, `ui.ime`, `ui.capsLock`, `ui.accessTree`, `ui.dialog.set`/`confirm`/`cancel`; app-owned
+  `ui.command` (debug probes), `ui.resize`, `ui.screenshot` (token plus the bounded writer), and later
+  `ui.inspect`/`ui.set`. Writes are confined to a canonicalised automation root; the token file is
+  `0600`; replies bound to injected input settle after the pass that consumed it, with a 60 s
+  `REPLY_DEADLINE`. The channel is debug-build only until EPIC-14 adds the consented `AgentSettings`
+  surface (R-88).
+
+- **Snapshot policy.** One golden host (Linux + lavapipe); `kittest.toml` sets
+  `output_path = "tests/snapshots"` (package-relative) with `[linux] 0.6` and `[mac] 2.0`; app fonts
+  are installed so a missing glyph fails; a platform difference is a threshold, never a skip (R-90).
+
+- **Parity schema.** Versioned `Scenario`/`Step`/`Observation`/`Node` JSON (`"version": 1`) in
+  `tools/parity/schema.json`, structurally checked against the Rust serde derive by a unit test.
+  Tier C compares structured trees exactly and PNGs within threshold, writing artifacts under
+  `target/gate/parity/<scenario>/`; a missing Python prerequisite is a recorded `SKIP`, not a pass
+  (R-91).
+
+- **Gate.** Semantic UI tests join the unit sweep; the `ui` profile runs the snapshot suite; exactly
+  two real-window smokes are authorized; `scripts/validate-rust.sh` is the gate (R-92, amending
+  R-74). EPIC-10 satisfies the mechanism, the shell and a debug probe surface; R-87, R-90 and R-91
+  complete at EPIC-12, which inherits the per-screen tests, goldens, frozen-id manifest, real
+  `ui.inspect`/`ui.set` fields and the parity report.
+
+Companions: [requirements](requirements.md) · [XRC window designs (implementation truth)](xrc-windows.md) · [module skeletons](module-skeletons.md) · [project plan](project-plan.md) · [task briefs](task-briefs.md) · [hi-fi designs (retired — flow reference)](ui-designs-retired.md) · [automation](automation.md) · [test plan](test-plan.md) · [results sample](../exports/epic-2026-results.html) / [no-times](../exports/epic-2026-results-no-times.html) / [solo](../exports/epic-2026-results-solo.html). Event facts from gorba.ca; hand-evaluation approach per standard evaluators (7,462-rank tables, best-5-of-N).

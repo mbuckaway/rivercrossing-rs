@@ -8,8 +8,10 @@ from. Every path the EPIC prompts reference resolves inside this repository.
 | Path | Role |
 |---|---|
 | `docs-md/architecture.md` | Rust architecture: layered crates, Action registry, persistence, exports, installer |
-| `docs-md/project-plan.md` | Rust EPIC plan (EPIC-0…13) with R-id traceability |
-| `epic-prompts/` | Agent-ready prompts (EPIC-1…13) + README |
+| `docs-md/project-plan.md` | Rust EPIC plan (EPIC-0…14) with R-id traceability |
+| `docs-md/automation.md` | UI automation decision, live control channel, selector and parity contract |
+| `docs-md/test-plan.md` | Test tiers, flow → mechanism → assertion matrix, golden policy |
+| `epic-prompts/` | Agent-ready prompts (EPIC-1…14) + README |
 | `diagrams/` | Rendered Mermaid diagrams (SVG + PNG) |
 | `README.md` | This index |
 

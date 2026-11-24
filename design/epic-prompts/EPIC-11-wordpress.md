@@ -1,4 +1,4 @@
-# EPIC-10 — WordPress (`rivercrossing-wordpress`)
+# EPIC-11 — WordPress (`rivercrossing-wordpress`)
 
 Load into a `tdd-rust-writer` agent. TDD (RS-14). Run after EPIC-9.
 

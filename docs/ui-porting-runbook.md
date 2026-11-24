@@ -6,8 +6,9 @@ accumulated knowledge instead of re-learning it.
 
 ## Status
 
-- [ ] EPIC-1 empty egui shell (not started — Phase 2 of the repo setup)
-- [ ] EPIC-11 egui UI panels + Action registry (not started)
+- [x] EPIC-1 empty egui shell — done
+- [ ] EPIC-10 UI automation & Python-parity harness — next (the mechanism first; no screens)
+- [ ] EPIC-12 egui UI panels + Action registry — not started (inherits the EPIC-10 harness)
 
 ## The translation one-liner
 
@@ -45,8 +46,37 @@ The wx "frozen XRC name + `FindWindowByName` + accelerator table" triple becomes
   platform-relocation flags.
 - "Never restyle standard controls" — egui is fully custom-drawn; the rule becomes "follow host
   platform conventions and honour the a11y floor".
-- wx test harness mechanics (`SetValue()` fires `EVT_TEXT`, posted `wx.CommandEvent`, `Destroy()`/
-  stale-window contamination) — remap to `egui_kittest` / command-id assertions.
+
+## Rust automation harness
+
+The wx harness mechanics do not port — `SetValue()` firing `EVT_TEXT`, posted `wx.CommandEvent`,
+`Destroy()`/stale-window contamination have no egui analogue. The Rust harness (R-87…R-92,
+`design/docs-md/automation.md`, `design/docs-md/test-plan.md`) drives the real widgets instead, and
+the scenario JSON is the cross-language contract.
+
+| Tier | Surface | Runner | Needs |
+|---|---|---|---|
+| **A — semantic** | `craft::ui::testing::Fixture` over `Rc<RefCell<RiverCrossingApp>>` in `src/**/tests.rs` | `cargo nextest run -P unit --locked` | no display, no GPU |
+| **A-snapshot** | `egui_kittest` `Harness::new_ui` + craft `embed::install`, then per frame `embed::before_input`/`embed::logic`/`app.ui(ui)`, asserted with `snapshot` in `tests/ui/main.rs` | `cargo nextest run -P ui --locked` | lavapipe; goldens are written on the Linux golden host only |
+| **B — real window** | `open_and_quit_smoke` + `control_channel_smoke` (spawns `rivercrossing --control 0`) | by hand under `xvfb-run -a -s "-screen 0 1400x900x24"` | Xvfb; no WM |
+| **C — Python parity** | shared JSON scenarios; in-process pytest driver in the oracle repo (`FindWindowByName`/`SetValue`/posted `wx.CommandEvent` are in-process calls, `spec.md:273`) | on demand at EPIC-12 exit, never in the gate; runs on the Mac | Python 3.14 / wxPython 4.3.1 |
+
+- **Selector contract.** `Selector::Action { id }` — a frozen §15b id — first;
+  `Selector::RoleAndLabel { role, label, window }` second. `window` scopes labels that legitimately
+  repeat (`plate_input`, `reason_input`, `continue_btn`, `message_lbl`; names are unique only within a
+  top-level window, `spec.md:376`). Multiple matches without a `window` are an error, never an
+  arbitrary pick. No `NodeId` (per-run, not reproducible) and no bare label lookup.
+- **Scenario model.** `Scenario`/`Step`/`Selector`/`Observation`/`Node` live in
+  `crates/rivercrossing-ui-egui/tests/ui/scenario.rs` — test-support only, versioned JSON
+  (`"version": 1`) mirrored by `tools/parity/schema.json` for the Python driver. `Step::Expect` is
+  the only assertion mechanism.
+- **Snapshots.** One golden host (Linux / lavapipe); `kittest.toml` sets `output_path =
+  "tests/snapshots"` (package-relative) with `[linux] threshold = 0.6` and `[mac] threshold = 2.0`.
+  Missing glyphs panic, so the app fonts (`craft::ui::fonts::UiFonts`) are installed. Regenerate
+  deliberately on the golden host only: `UPDATE_SNAPSHOTS=force cargo nextest run -P ui --locked`.
+- **Artifacts.** Tier B writes `target/gate/control-smoke.log` and PNGs under `target/control/`;
+  Tier C writes `Observation` JSON + PNGs under `target/gate/parity/<scenario>/`, or
+  `target/gate/parity/SKIP.md` naming the missing prerequisite.
 
 ## Keep unchanged (product contract)
 
@@ -59,5 +89,10 @@ The wx "frozen XRC name + `FindWindowByName` + accelerator table" triple becomes
 
 ## Open decisions
 
+- **Resolved — snapshot rendering and OS normalisation (EPIC-10):** one golden set from one golden
+  host (Linux / lavapipe), with per-OS thresholds instead of per-OS goldens or skips —
+  `[linux] 0.6` (the golden host) and `[mac] 2.0` in `kittest.toml`. Goldens are regenerated only on
+  the golden host with `UPDATE_SNAPSHOTS=force cargo nextest run -P ui --locked`; there is no second
+  golden set and no skip path.
 - WordPress credential storage: parity (plaintext settings JSON) vs OS keychain.
 - Tailwind/Node CSS build: keep the Node step as an xtask, or vendor the already-compiled CSS.

@@ -24,7 +24,7 @@ reference for the Rust fixtures.
 The build contract lives in [`design/`](design/):
 
 - [`design/docs-md/architecture.md`](design/docs-md/architecture.md) — the Rust architecture
-- [`design/docs-md/project-plan.md`](design/docs-md/project-plan.md) — the EPIC plan (EPIC-0…13)
+- [`design/docs-md/project-plan.md`](design/docs-md/project-plan.md) — the EPIC plan (EPIC-0…14)
 - [`design/epic-prompts/`](design/epic-prompts/) — agent-ready prompts for each EPIC
 - [`design/docs-md/requirements.md`](design/docs-md/requirements.md) — the numbered R-ids
 - [`CODE_STRUCTURE.md`](CODE_STRUCTURE.md) — the crate layout and build order
