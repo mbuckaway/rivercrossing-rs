@@ -39,6 +39,10 @@ pretty_assertions = "1"
 time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
 # Entry identity: uuid4 hex, minted by the roster and persisted by the store.
 uuid = { version = "1", features = ["v4"] }
+# HTML export: Jinja2-compatible templates (the MarkupSafe-style formatter is our own).
+minijinja = { version = "3.1", features = ["serde"] }
+# Data-URI encoding for the organizer logo.
+base64 = { version = "0.23", default-features = false, features = ["std"] }
 
 # Source-file header convention: a single SPDX line, per AGENTS.md.
 # `// SPDX-License-Identifier: GPL-3.0-only`
