@@ -7,15 +7,29 @@
 //! installs the two oracle extras: a `MarkupSafe`-compatible formatter and the
 //! `racejson` filter that keeps a record from closing its own `<script>`
 //! element. [`page_context`] maps the typed [`RacePayload`] and [`Sections`] to
-//! the template names the page reads.
+//! the template names the page reads; [`wordpress_page_context`],
+//! [`poster_context`] and [`wordpress_poster_context`] map them to the two
+//! `WordPress` fragments and the poster, which inline the scoped stylesheet or
+//! carry the poster's own plan instead.
 
 use minijinja::value::{Serde, Value, ValueKind};
 use minijinja::{AutoEscape, Environment, Error, Output, State, UndefinedBehavior};
 
 use crate::record;
+use crate::sections::poster_sections;
 use crate::types::{
-    CardPair, ExportOptions, LapsBoardRow, RacePayload, ResultRow, Sections, TimeBoardRow,
+    CardPair, ExportOptions, LapsBoardRow, RacePayload, ResultRow, Sections, TRANSPARENT_PNG,
+    TimeBoardRow,
 };
+
+/// The vendored stylesheet that the standalone pages inline.
+const COMPILED_CSS: &str = include_str!("../templates/compiled_css");
+
+/// The vendored stylesheet whose selectors are scoped under `.rc-results`.
+const COMPILED_CSS_WP: &str = include_str!("../templates/compiled_css_wp");
+
+/// The vendored `@font-face` subsets that every template inlines.
+const FONTS_CSS: &str = include_str!("../templates/fonts_css");
 
 /// Return the environment that renders the vendored templates.
 #[must_use]
@@ -109,40 +123,97 @@ pub(crate) fn page_context(
     sections: &Sections,
     logo_src: Option<&str>,
 ) -> Value {
-    let mut context = serde_json::Map::new();
-    context.insert("event".to_owned(), event_value(payload));
-    context.insert("options".to_owned(), options_value(&payload.options));
+    let mut context = shared_context(payload, logo_src, "compiled_css", COMPILED_CSS);
     context.insert("sections".to_owned(), sections_value(sections));
     context.insert(
         "tie_note".to_owned(),
         optional_text(payload.tie_note.as_deref()),
     );
+    context.insert("dev".to_owned(), serde_json::Value::from(false));
+    context.insert(
+        "payload".to_owned(),
+        serde_json::Value::from(record::to_json(payload)),
+    );
+    Value::from(Serde(serde_json::Value::Object(context)))
+}
+
+/// Return the context for the `WordPress` results fragment.
+///
+/// The fragment renders the same plan as the page but inlines the scoped
+/// stylesheet, and it carries neither the `race-data` record nor the dev flag
+/// because `wordpress.html.j2` reads neither.
+#[must_use]
+pub(crate) fn wordpress_page_context(
+    payload: &RacePayload,
+    sections: &Sections,
+    logo_src: Option<&str>,
+) -> Value {
+    let mut context = shared_context(payload, logo_src, "compiled_css_wp", COMPILED_CSS_WP);
+    context.insert("sections".to_owned(), sections_value(sections));
+    context.insert(
+        "tie_note".to_owned(),
+        optional_text(payload.tie_note.as_deref()),
+    );
+    Value::from(Serde(serde_json::Value::Object(context)))
+}
+
+/// Return the context for the podium poster page.
+///
+/// The poster reads its own `(heading, rows)` plan and no page sections, no
+/// residual-tie note and no record.
+#[must_use]
+pub(crate) fn poster_context(payload: &RacePayload, logo_src: Option<&str>) -> Value {
+    let mut context = shared_context(payload, logo_src, "compiled_css", COMPILED_CSS);
+    context.insert("poster_sections".to_owned(), poster_sections_value(payload));
+    Value::from(Serde(serde_json::Value::Object(context)))
+}
+
+/// Return the context for the `WordPress` poster fragment.
+///
+/// The same poster keys as [`poster_context`], inlining the scoped stylesheet
+/// so publishing the poster cannot restyle the site it lands in.
+#[must_use]
+pub(crate) fn wordpress_poster_context(payload: &RacePayload, logo_src: Option<&str>) -> Value {
+    let mut context = shared_context(payload, logo_src, "compiled_css_wp", COMPILED_CSS_WP);
+    context.insert("poster_sections".to_owned(), poster_sections_value(payload));
+    Value::from(Serde(serde_json::Value::Object(context)))
+}
+
+/// Return the keys that every page and fragment context carries.
+///
+/// `stylesheet_key` names the CSS artifact under the template's own key, so
+/// neither template can inline the other's; `stylesheet` is that artifact.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the four inputs name the payload, the logo seam and the stylesheet pair"
+)]
+fn shared_context(
+    payload: &RacePayload,
+    logo_src: Option<&str>,
+    stylesheet_key: &str,
+    stylesheet: &'static str,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut context = serde_json::Map::new();
+    context.insert("event".to_owned(), event_value(payload));
+    context.insert("options".to_owned(), options_value(&payload.options));
     context.insert(
         "self_test_note".to_owned(),
         optional_text(payload.self_test_note.as_deref()),
     );
     context.insert(
         "logo_src".to_owned(),
-        serde_json::Value::from(logo_src.unwrap_or(crate::types::TRANSPARENT_PNG)),
+        serde_json::Value::from(logo_src.unwrap_or(TRANSPARENT_PNG)),
     );
     context.insert(
         "logo_alt".to_owned(),
         serde_json::Value::from(payload.event.organizer.as_str()),
     );
-    context.insert("dev".to_owned(), serde_json::Value::from(false));
     context.insert(
-        "compiled_css".to_owned(),
-        serde_json::Value::from(include_str!("../templates/compiled_css")),
+        stylesheet_key.to_owned(),
+        serde_json::Value::from(stylesheet),
     );
-    context.insert(
-        "fonts_css".to_owned(),
-        serde_json::Value::from(include_str!("../templates/fonts_css")),
-    );
-    context.insert(
-        "payload".to_owned(),
-        serde_json::Value::from(record::to_json(payload)),
-    );
-    Value::from(Serde(serde_json::Value::Object(context)))
+    context.insert("fonts_css".to_owned(), serde_json::Value::from(FONTS_CSS));
+    context
 }
 
 /// Return *payload*'s event block for the header macro.
@@ -188,6 +259,21 @@ fn sections_value(sections: &Sections) -> serde_json::Value {
         "solo": rows_value(&sections.solo),
         "team_plates": sections.team_plates.iter().copied().collect::<Vec<i64>>(),
     })
+}
+
+/// Return *payload*'s poster plan as template `(heading, rows)` pairs.
+fn poster_sections_value(payload: &RacePayload) -> serde_json::Value {
+    serde_json::Value::Array(
+        poster_sections(payload)
+            .iter()
+            .map(|(heading, rows)| {
+                serde_json::Value::from(vec![
+                    serde_json::Value::from(heading.as_str()),
+                    rows_value(rows),
+                ])
+            })
+            .collect(),
+    )
 }
 
 /// Return *rows* as an array of result-row objects.
