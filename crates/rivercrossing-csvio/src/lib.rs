@@ -12,38 +12,18 @@
 
 pub mod error;
 pub mod model;
+pub mod preview;
 
 #[cfg_attr(
     not(test),
     expect(
         dead_code,
-        reason = "the preview, commit and export paths call this module in a later task"
+        reason = "the export path calls this module in a later task"
     )
 )]
 mod format;
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the preview path calls this module in a later task"
-    )
-)]
 mod header;
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the preview path calls this module in a later task"
-    )
-)]
 mod normalize;
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the preview, commit and export paths call this module in a later task"
-    )
-)]
 mod wire;
 
 pub use error::CsvIoError;
@@ -51,3 +31,4 @@ pub use model::{
     ImportOptions, ImportPreview, ImportProblem, ImportReport, ParsedEntry, ParsedRider,
     ProblemCode,
 };
+pub use preview::preview;
