@@ -55,10 +55,6 @@ pub(crate) fn read_records(bytes: &[u8]) -> Result<Vec<Vec<String>>, CsvIoError>
 /// # Errors
 ///
 /// Return [`CsvIoError::Malformed`] when the writer refuses a record.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the export path calls the writer in a later task")
-)]
 pub(crate) fn write_records(records: &[Vec<String>]) -> Result<Vec<u8>, CsvIoError> {
     let mut writer = csv::WriterBuilder::new()
         .terminator(csv::Terminator::CRLF)
@@ -81,13 +77,6 @@ pub(crate) fn write_records(records: &[Vec<String>]) -> Result<Vec<u8>, CsvIoErr
 /// spreadsheet reads it as text. A leading space is not neutralised, because
 /// the guard prefixes and never strips.
 #[must_use]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "only the export writer calls the formula guard in a later task"
-    )
-)]
 pub(crate) fn neutralise_formula(cell: &str) -> String {
     if cell.starts_with(FORMULA_LEADERS) {
         return format!("'{cell}");

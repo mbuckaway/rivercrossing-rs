@@ -12,23 +12,19 @@
 
 pub mod commit;
 pub mod error;
+pub mod export;
 pub mod model;
 pub mod preview;
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the export path calls this module in a later task"
-    )
-)]
 mod format;
 mod header;
 mod normalize;
 mod wire;
+mod writer;
 
 pub use commit::commit;
 pub use error::CsvIoError;
+pub use export::{export, export_standings};
 pub use model::{
     ImportOptions, ImportPreview, ImportProblem, ImportReport, ParsedEntry, ParsedRider,
     ProblemCode,
