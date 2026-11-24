@@ -15,6 +15,8 @@ use rivercrossing_standings::{EntryResult, Placed, SnapshotKind};
 
 use super::{export, export_standings};
 use crate::error::CsvIoError;
+use crate::model::ImportOptions;
+use crate::preview::preview;
 
 // ---------------------------------------------------------------- helpers
 
@@ -528,5 +530,80 @@ fn test_export_standings_draw_card_writes_its_code() -> Result<(), Box<dyn std::
     let expected: &[u8] = b"place,plate,entry,type,sex,laps,hand,draw\r\n\
 1,7,Ada Lovelace,solo,,12,,KD\r\n";
     assert_eq!(written(&path)?, expected.to_vec());
+    Ok(())
+}
+
+#[test]
+fn test_export_pooled_round_trips_through_preview() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::TempDir::new()?;
+    let path = dir.path().join("pooled-draft.csv");
+    let mut roster = mixed(PlateModel::RiderPooled);
+    add_solo(&mut roster, rider("Ada", "Lovelace", Some("F")), "1");
+    let team = add_team(
+        &mut roster,
+        team_fields(
+            "Byte Club",
+            vec![
+                plated(rider("Grace", "Hopper", Some("F")), "4"),
+                plated(rider("Edsger", "Dijkstra", Some("M")), "3"),
+            ],
+            None,
+        ),
+    );
+    note(&mut roster, &team, "Bench mob");
+
+    export(&roster, &path, None)?;
+    let previewed = preview(&path, &roster, ImportOptions::default())?;
+
+    assert_eq!(previewed.conflicts.len(), 0);
+    assert_eq!(previewed.warnings.len(), 0);
+    assert_eq!(previewed.riders, 3);
+    assert_eq!(previewed.teams, 1);
+    assert_eq!(previewed.entries.len(), 2);
+    assert_eq!(previewed.entries[0].display_name, "Ada Lovelace");
+    assert_eq!(previewed.entries[0].plate, "1");
+    let reimported = &previewed.entries[1];
+    assert_eq!(reimported.display_name, "Byte Club");
+    assert_eq!(reimported.plate, "3");
+    assert_eq!(reimported.notes, "Bench mob");
+    assert_eq!(reimported.riders.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn test_export_relay_round_trips_through_preview() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::TempDir::new()?;
+    let path = dir.path().join("relay-draft.csv");
+    let mut roster = mixed(PlateModel::TeamRelay);
+    add_solo(&mut roster, rider("Ada", "Lovelace", Some("F")), "1");
+    let team = add_team(
+        &mut roster,
+        team_fields(
+            "Byte Club",
+            vec![
+                rider("Grace", "Hopper", Some("F")),
+                rider("Edsger", "Dijkstra", Some("M")),
+            ],
+            Some("5"),
+        ),
+    );
+    note(&mut roster, &team, "Bench mob");
+
+    export(&roster, &path, None)?;
+    let previewed = preview(&path, &roster, ImportOptions::default())?;
+
+    assert_eq!(previewed.conflicts.len(), 0);
+    assert_eq!(previewed.warnings.len(), 0);
+    assert_eq!(previewed.riders, 3);
+    assert_eq!(previewed.teams, 1);
+    assert_eq!(previewed.entries.len(), 2);
+    assert_eq!(previewed.entries[1].plate, "5");
+    assert_eq!(previewed.entries[1].display_name, "Byte Club");
+    assert!(
+        previewed.entries[1]
+            .riders
+            .iter()
+            .all(|member| member.plate.is_none())
+    );
     Ok(())
 }
