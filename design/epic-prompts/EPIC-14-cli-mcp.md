@@ -1,4 +1,4 @@
-# EPIC-13 — CLI + MCP (parity complete)
+# EPIC-14 — CLI + MCP (parity complete)
 
 Load into a `tdd-rust-writer` agent. TDD (RS-14). Run last — only after 100% Python parity.
 
@@ -9,7 +9,7 @@ drive every command the GUI can (mirroring ArtCraft's "every button is a command
 
 ## Context
 
-The `Action` registry built in EPIC-11 is the single source of truth. ArtCraft's pattern (verified in
+The `Action` registry built in EPIC-12 is the single source of truth. ArtCraft's pattern (verified in
 `storytold/wordcraft`): one command catalog drives the GUI, the CLI, and the MCP server.
 
 - **MCP**: use the shared **`craft-mcp-server`** crate from `storytold/craft-libs` (same git `rev` as
@@ -22,8 +22,9 @@ The `Action` registry built in EPIC-11 is the single source of truth. ArtCraft's
   dispatches to the command registry with `serde_json` params, exiting 0/1/3. Follow the same pattern
   (or justify `clap` if the command set makes hand-rolling unwieldy — ArtCraft's choice is
   hand-rolled).
-- A JSON control channel to drive a running app is optional; `craft`'s `automation` feature provides
-  it (WordCraft's `--connect` is still refused until it confines file access).
+- The debug-only JSON control channel ships in EPIC-10 on `craft`'s `automation` feature. This EPIC
+  owns the consented release surface (`AgentSettings`) and agent discovery (`control-agents` /
+  `automation-agents`, `craft-control::agents::Live`).
 
 ## Refs
 
@@ -42,7 +43,8 @@ and assert the same domain effect as the GUI `Action`.
 3. `apps/rivercrossing-cli`: a hand-rolled subcommand parser (ArtCraft style) — `commands`, `run`,
    `mcp`, and the inspect/convert equivalents that apply — dispatching to the same registry via
    `serde_json`.
-4. (Optional) a JSON control channel via `craft`'s `automation` feature for a running app.
+4. Extend the EPIC-10 control channel to release builds through the consented `AgentSettings` surface,
+   and add agent discovery (`control-agents` / `automation-agents`).
 5. SPDX line on every `.rs`.
 
 ## Done when

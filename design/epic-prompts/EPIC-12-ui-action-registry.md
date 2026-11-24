@@ -1,6 +1,7 @@
-# EPIC-11 — egui UI + Action registry (`rivercrossing-ui-egui`)
+# EPIC-12 — egui UI + Action registry (`rivercrossing-ui-egui`)
 
-Load into a `tdd-rust-writer` agent. TDD (RS-14). Run after EPIC-1 and the domain crates (EPIC-2..10).
+Load into a `tdd-rust-writer` agent. TDD (RS-14). Run after EPIC-10 (the automation harness) and the
+domain crates (EPIC-2..9 and EPIC-11).
 This is the largest EPIC — break it into window/area chunks, one agent per chunk, sequentially.
 
 ## Goal
