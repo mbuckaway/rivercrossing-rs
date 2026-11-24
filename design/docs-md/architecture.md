@@ -13,7 +13,7 @@ GPU**, layered Cargo crates, and a command/Action registry in place of XRC froze
 | Shared crates | `storytold/craft-libs` — `craft` facade + `craft-ui/settings/quit/menu/dialogs/i18n/keymap/atomic/update/print/pdf` |
 | Windowing | `winit` (storytold fork) |
 | Persistence | SQLite via `rusqlite` (bundled) |
-| Templates | `minijinja`/`askama` (HTML), `printpdf`/`lopdf` (PDF) |
+| Templates | `minijinja` (HTML), `craft-pdf`/`krilla` (PDF) |
 | Errors | `thiserror` (lib) + `anyhow` (bin) |
 | Sound | `rodio` |
 | License | GPL-3.0-only, single SPDX line per file |
@@ -42,7 +42,7 @@ C4Container
     Container(ui, "egui front end", "eframe + wgpu", "rivercrossing-ui-egui")
     Container(engine, "Ride engine + Action registry", "Rust", "domain crates")
     Container(store, "SQLite store", "rusqlite", "event-sourced persistence")
-    Container(exports, "Exporters", "minijinja / printpdf", "HTML / PDF / CSV")
+    Container(exports, "Exporters", "minijinja / craft-pdf", "HTML / PDF / CSV")
     System_Ext(wp, "WordPress", "REST")
     Rel(operator, ui, "Action commands")
     Rel(ui, engine, "dispatch Action")
@@ -145,10 +145,10 @@ flowchart TB
 
 ## 8. Exports
 
-- **HTML**: Jinja2 → `minijinja`/`askama`, vendored Tailwind CSS + woff2 fonts; the golden
-  `design/exports/*.html` `race-data` JSON is the byte oracle.
-- **PDF**: fpdf2 → `printpdf`/`lopdf` (or `craft-pdf`), embedded Barlow / Barlow Condensed / DejaVu
-  TTFs (OFL notices redistributed).
+- **HTML**: Jinja2 → `minijinja`, vendored Tailwind CSS + woff2 fonts; the committed production
+  goldens (`fixtures/epic-2026-results*.html`) and their `race-data` JSON are the byte oracle.
+- **PDF**: fpdf2 → `craft-pdf` (krilla), embedded Barlow / Barlow Condensed / DejaVu TTFs (licence
+  notices redistributed).
 - **CSV** via `rivercrossing-csvio`; **WordPress** via a single-site REST client.
 
 ## 9. Error handling, concurrency, platform
