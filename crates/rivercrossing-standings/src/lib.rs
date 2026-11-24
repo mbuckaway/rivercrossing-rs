@@ -18,6 +18,7 @@ pub mod types;
 
 pub use enums::ZeroLapMode;
 pub use error::StandingsError;
+pub use rivercrossing_ride::SnapshotKind;
 pub use rivercrossing_ride::TieBreak;
 pub use types::{EntryResult, Placed};
 

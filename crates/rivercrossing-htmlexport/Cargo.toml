@@ -22,6 +22,8 @@ base64 = { workspace = true }
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 rstest = { workspace = true }
+rivercrossing-hands = { path = "../rivercrossing-hands", version = "=0.1.0" }
+rivercrossing-ride = { path = "../rivercrossing-ride", version = "=0.1.0" }
 
 [lints]
 workspace = true

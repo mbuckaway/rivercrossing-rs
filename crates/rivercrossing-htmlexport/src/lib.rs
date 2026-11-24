@@ -13,7 +13,9 @@
 
 pub mod error;
 pub mod format;
+pub mod payload;
 pub mod record;
+pub mod sections;
 pub mod types;
 
 #[cfg(test)]

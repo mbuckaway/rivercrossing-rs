@@ -7,9 +7,10 @@
 //! the `race-data` record is `camelCase` and sparse, so one struct family cannot
 //! be both; [`crate::record`] owns the record shape.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use rivercrossing_cards::{Card, Rank, Suit};
+use rivercrossing_standings::Placed;
 use time::Date;
 
 /// The page kicker: the samples' own "· poker run" line.
@@ -133,6 +134,33 @@ impl Default for ExportOptions {
             lap_km: DEFAULT_LAP_KM,
         }
     }
+}
+
+/// Everything the exporter needs to build one ride's payload.
+///
+/// The caller composes the ranked rows, the publish settings, the pinned
+/// footer stamp and the logo seams; [`crate::payload::build_payload`] maps them
+/// to the shared [`RacePayload`].
+#[derive(Debug, Clone)]
+pub struct ExportInput {
+    /// The ride facts that the header and meta line read.
+    pub ride: RideInfo,
+    /// The ranked rows, DID-NOT-START rows included at the end.
+    pub placed: Vec<Placed>,
+    /// The publish settings.
+    pub options: ExportOptions,
+    /// The pinned footer stamp.
+    pub generated: String,
+    /// The ride logo as a data URI; `None` falls back to the transparent PNG.
+    pub logo_src: Option<String>,
+    /// The per-entry logos, keyed by the plate spelling the row carries.
+    pub team_logos: BTreeMap<String, String>,
+    /// The header's unique-rider count.
+    pub riders: usize,
+    /// Whether the ride was published over a failed evaluator self-test.
+    pub self_test_unverified: bool,
+    /// The caller-composed residual-tie note.
+    pub tie_note: Option<String>,
 }
 
 /// The event facts that the record's `event` block carries.

@@ -5035,6 +5035,8 @@ dependencies = [
  "minijinja",
  "pretty_assertions",
  "rivercrossing-cards",
+ "rivercrossing-hands",
+ "rivercrossing-ride",
  "rivercrossing-standings",
  "rstest",
  "serde_json",

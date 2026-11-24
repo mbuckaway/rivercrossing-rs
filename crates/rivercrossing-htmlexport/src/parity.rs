@@ -32,7 +32,11 @@ mod tests {
 
     /// The one custom formatter: safe strings verbatim, MarkupSafe HTML escaping,
     /// and integral floats coerced to integers (Jinja's `finalize`).
-    fn format_value(out: &mut Output, state: &mut State<'_, '_>, value: &Value) -> Result<(), Error> {
+    fn format_value(
+        out: &mut Output,
+        state: &mut State<'_, '_>,
+        value: &Value,
+    ) -> Result<(), Error> {
         if value.is_safe() {
             if let Some(s) = value.as_str() {
                 return out.write_str(s).map_err(Error::from);
@@ -97,7 +101,10 @@ mod tests {
         m.insert("cards".into(), row["cards"].clone());
         m.insert("drawn".into(), row["drawn"].clone());
         for key in ["tie", "dnf", "dns"] {
-            let present = row.get(key).and_then(serde_json::Value::as_bool).unwrap_or(false);
+            let present = row
+                .get(key)
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
             m.insert(key.into(), serde_json::Value::from(present));
         }
         // Template attributes are snake_case; the record uses camelCase for `bestLap`.
@@ -111,7 +118,9 @@ mod tests {
         );
         m.insert(
             "best_lap".into(),
-            row.get("bestLap").cloned().unwrap_or(serde_json::Value::Null),
+            row.get("bestLap")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
         );
         m.insert(
             "draw".into(),
@@ -187,10 +196,7 @@ mod tests {
             .cloned()
             .collect();
 
-        let team_plates: Vec<i64> = teams
-            .iter()
-            .filter_map(|r| r["plate"].as_i64())
-            .collect();
+        let team_plates: Vec<i64> = teams.iter().filter_map(|r| r["plate"].as_i64()).collect();
 
         let mut m = serde_json::Map::new();
         m.insert(
@@ -219,7 +225,11 @@ mod tests {
     }
 
     /// Build the production page context from a parsed payload record.
-    fn page_context(record: &serde_json::Value, riders: u64, record_text: &str) -> serde_json::Value {
+    fn page_context(
+        record: &serde_json::Value,
+        riders: u64,
+        record_text: &str,
+    ) -> serde_json::Value {
         let mut event = record["event"].as_object().expect("event").clone();
         event.insert("riders".into(), serde_json::Value::from(riders));
 
@@ -239,7 +249,10 @@ mod tests {
         m.insert("tie_note".into(), record["tieNote"].clone());
         m.insert(
             "self_test_note".into(),
-            record.get("selfTestNote").cloned().unwrap_or(serde_json::Value::Null),
+            record
+                .get("selfTestNote")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
         );
         m.insert("logo_src".into(), serde_json::Value::from(TRANSPARENT_PNG));
         m.insert("logo_alt".into(), record["event"]["organizer"].clone());
@@ -283,7 +296,11 @@ mod tests {
         let env = environment();
         let cases: [(&str, &str, u64); 3] = [
             ("payload-times.json", "epic-2026-results.html", 262),
-            ("payload-no-times.json", "epic-2026-results-no-times.html", 262),
+            (
+                "payload-no-times.json",
+                "epic-2026-results-no-times.html",
+                262,
+            ),
             ("payload-solo.json", "epic-2026-results-solo.html", 180),
         ];
         for (payload_file, golden_file, riders) in cases {
@@ -299,8 +316,7 @@ mod tests {
                 }
                 _ => include_str!("../fixtures/epic-2026-results-solo.html"),
             };
-            let record: serde_json::Value =
-                serde_json::from_str(payload_text).expect("payload");
+            let record: serde_json::Value = serde_json::from_str(payload_text).expect("payload");
             let context: serde_json::Value = page_context(&record, riders, payload_text);
             let ctx = minijinja::value::Value::from(minijinja::value::Serde(context));
             let rendered = env

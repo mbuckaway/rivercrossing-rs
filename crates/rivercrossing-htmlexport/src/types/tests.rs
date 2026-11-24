@@ -11,7 +11,9 @@ use pretty_assertions::assert_eq;
 use rivercrossing_cards::{Card, Rank, Suit};
 use rstest::rstest;
 
-use super::{CardPair, ExportOptions, KICKER, SELF_TEST_NOTE, TRANSPARENT_PNG};
+use super::{
+    CardPair, ExportInput, ExportOptions, KICKER, RideInfo, SELF_TEST_NOTE, TRANSPARENT_PNG,
+};
 
 fn natural(rank: Rank, suit: Suit) -> Card {
     Card::Natural { rank, suit }
@@ -153,4 +155,75 @@ fn test_transparent_png_matches_the_oracle_data_uri() {
         data_uri,
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
     );
+}
+
+fn export_input() -> ExportInput {
+    let mut team_logos = std::collections::BTreeMap::new();
+    team_logos.insert("88".to_owned(), "data:image/png;base64,AA==".to_owned());
+    ExportInput {
+        ride: RideInfo {
+            name: "Test Poker Run 2026".to_owned(),
+            event_date: time::Date::from_calendar_date(2026, time::Month::June, 6)
+                .expect("the fixture date is valid"),
+            venue: "Test Venue".to_owned(),
+            lap_km: 8.0,
+            organizer: "Test Org".to_owned(),
+            scorer: "T. Ester".to_owned(),
+        },
+        placed: Vec::new(),
+        options: ExportOptions::default(),
+        generated: "Generated 16:07, Sept 20 2026".to_owned(),
+        logo_src: Some("data:image/png;base64,BB==".to_owned()),
+        team_logos,
+        riders: 12,
+        self_test_unverified: true,
+        tie_note: Some("draw required".to_owned()),
+    }
+}
+
+#[test]
+fn test_export_input_given_a_fixture_exposes_every_field() {
+    // Arrange
+    let input = export_input();
+
+    // Act
+    let facts = (
+        input.ride.name.as_str(),
+        input.placed.len(),
+        input.options.laps_board,
+        input.generated.as_str(),
+        input.logo_src.as_deref(),
+        input.team_logos.get("88").map(String::as_str),
+        input.riders,
+        input.self_test_unverified,
+        input.tie_note.as_deref(),
+    );
+
+    // Assert
+    assert_eq!(
+        facts,
+        (
+            "Test Poker Run 2026",
+            0,
+            true,
+            "Generated 16:07, Sept 20 2026",
+            Some("data:image/png;base64,BB=="),
+            Some("data:image/png;base64,AA=="),
+            12,
+            true,
+            Some("draw required")
+        )
+    );
+}
+
+#[test]
+fn test_export_input_debug_names_the_type() {
+    // Arrange
+    let input = export_input();
+
+    // Act
+    let debug = format!("{input:?}");
+
+    // Assert
+    assert!(debug.starts_with("ExportInput {"), "debug was {debug}");
 }
