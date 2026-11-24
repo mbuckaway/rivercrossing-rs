@@ -49,6 +49,9 @@ The wx "frozen XRC name + `FindWindowByName` + accelerator table" triple becomes
 
 ## Rust automation harness
 
+Reusable craft-libs setup: `docs/porting-python-to-rust.md` §12.1. This section records the
+RiverCrossing-specific translation.
+
 The wx harness mechanics do not port — `SetValue()` firing `EVT_TEXT`, posted `wx.CommandEvent`,
 `Destroy()`/stale-window contamination have no egui analogue. The Rust harness (R-87…R-92,
 `design/docs-md/automation.md`, `design/docs-md/test-plan.md`) drives the real widgets instead, and
