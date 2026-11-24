@@ -8,3 +8,8 @@
 //! stays a thin adapter over the engine.
 
 #![forbid(unsafe_code)]
+
+pub mod error;
+pub mod fonts;
+pub mod geometry;
+pub mod layout;
