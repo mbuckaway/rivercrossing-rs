@@ -8,8 +8,8 @@ Python code, translated to the Rust layered-crate architecture in `design/docs-m
 
 ```
 apps/rivercrossing                 thin eframe binary (craft facade + ui-egui)
-apps/rivercrossing-cli             thin CLI, hand-rolled parser over the Action registry (EPIC-13)
-crates/rivercrossing-mcp           MCP server over the Action registry on craft-mcp-server (EPIC-13)
+apps/rivercrossing-cli             thin CLI, hand-rolled parser over the Action registry (EPIC-14)
+crates/rivercrossing-mcp           MCP server over the Action registry on craft-mcp-server (EPIC-14)
 crates/rivercrossing-ui-egui       L6 — egui front end (the only crate allowed egui/eframe/winit)
 crates/rivercrossing-pdfexport     ┐
 crates/rivercrossing-htmlexport    ├ L0–L3 domain crates (UI-agnostic, forbid unsafe)
@@ -110,7 +110,7 @@ The store is UI-agnostic and synchronous (one connection, caller thread). Timest
 `updated_at` (the `actual_start`/`finished_at` columns stay NULL and the event log is authoritative).
 The `crossing`/`card` tables are created for schema parity but nothing writes them; `roster_for`
 derives `has_data` from those rows or the ride's data-bearing audit actions, and marks retired entries
-as data-bearing. `heartbeat_at` is read (the crash `ended_at` fallback) but written by the EPIC-11
+as data-bearing. `heartbeat_at` is read (the crash `ended_at` fallback) but written by the EPIC-12
 timer, not the store. The schedule name is `schedule_hourly`, matching the earlier contract.
 
 ### rivercrossing-csvio
@@ -165,7 +165,10 @@ single-site REST client. stdlib `urllib` → **reqwest/ureq**.
 
 ### rivercrossing-ui-egui
 The egui front end: panels/dialogs for the Python window inventory, the `Action`/command registry
-(§15 menu map + §15b frozen ids), and the presenters' decision logic. Sound via **rodio**.
+(§15 menu map + §15b frozen ids), and the presenters' decision logic. Sound via **rodio**. The UI
+automation seam lives here too (EPIC-10): `src/ui/automation/` holds the production control-channel
+glue and method table, and `tests/ui/` the semantic/snapshot/scenario harness (`cargo nextest -P ui`)
+— no separate crate.
 
 ## Build order
 
@@ -177,6 +180,10 @@ Port in dependency order (leaf-first), each crate by a **sequential** `tdd-rust-
 The empty-shell EPIC (EPIC-1) creates `rivercrossing-ui-egui` + `apps/rivercrossing` first (an empty
 egui window, no business logic) to prove the egui/craft-libs toolchain before the domain crates land.
 
-EPIC-13 (parity complete) adds `crates/rivercrossing-mcp` — built on the shared **`craft-mcp-server`**
+EPIC-10 (UI automation harness) lands **before** the UI EPIC (EPIC-12): it adds no crate — only the
+`src/ui/automation/` seam and the `tests/ui/` harness inside `rivercrossing-ui-egui` — so the screens
+are built against a test contract rather than verified by hand.
+
+EPIC-14 (parity complete) adds `crates/rivercrossing-mcp` — built on the shared **`craft-mcp-server`**
 crate (JSON-RPC 2.0 over stdio; the app implements `Tools`) — and `apps/rivercrossing-cli` (a
 hand-rolled subcommand parser, no `clap`), both dispatching the same `Action` registry.

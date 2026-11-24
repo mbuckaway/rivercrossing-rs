@@ -1,4 +1,4 @@
-# EPIC-12 — Installers & release
+# EPIC-13 — Installers & release
 
 Load into a `shell-code-writer`/main agent (not `tdd-rust-writer` — this is packaging, not `.rs`).
 

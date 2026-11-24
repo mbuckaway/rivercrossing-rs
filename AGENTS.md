@@ -10,9 +10,23 @@ a symlink to this file.
 ---
 TEST RULES
 
-ONLY UNIT TESTS WILL BE WRITTEN. ALL CODE MUST BE WRITTEN USING TDD AND THE `tdd-rust-writer` AGENT.
-NO FUNCTIONAL, BEHAVIOURAL, ACCEPTANCE, SIMULATOR OR OTHER TESTS ARE TO BE WRITTEN WITHOUT EXPRESSED
-PERMISSION.
+UNIT TESTS ARE THE DEFAULT. ALL CODE MUST BE WRITTEN USING TDD AND THE `tdd-rust-writer` AGENT.
+
+The EPIC-10 UI-automation harness (R-87…R-92; R-92 amends R-74) is the one bounded exception.
+Exactly these test categories are authorized:
+
+- **Tier A semantic** — `craft::ui::testing::Fixture` tests in `src/**/tests.rs`, run by
+  `cargo nextest run -P unit --locked`.
+- **Tier A-snapshot** — `egui_kittest` snapshot tests in
+  `crates/rivercrossing-ui-egui/tests/ui/main.rs`, run by `cargo nextest run -P ui --locked`.
+- **Tier B real-window smokes** — exactly two: `open_and_quit_smoke` and the control-channel smoke
+  (`--control 0`, `ui.accessTree`, `ui.command probe_echo`, `ui.screenshot`,
+  `ui.command probe_quit`), run by hand under Xvfb, outside the `unit`/`ui` sweep.
+
+NO OTHER FUNCTIONAL, BEHAVIOURAL, ACCEPTANCE, SIMULATOR OR OTHER TESTS ARE TO BE WRITTEN WITHOUT
+EXPRESSED PERMISSION. Tier C Python parity runs on demand at EPIC-12 exit, not in the gate. No
+`#[ignore]`, no skips. Platform variance is absorbed by per-OS snapshot thresholds, never by
+disabling a test.
 ---
 
 ## `design/` is the contract
@@ -23,12 +37,14 @@ who was not part of the design conversation should be able to build the Rust por
 
 | Path | Role |
 |---|---|
-| `design/docs-md/requirements.md` | Numbered **R-ids** — the acceptance authority |
-| `design/docs-md/spec.md` | Engineering spec (§1–§9 behaviour is the Python oracle; §10–§15b rewritten for Rust) |
+| `design/docs-md/requirements.md` | Numbered **R-ids** — the acceptance authority (R-87…R-92 are the Rust automation requirements) |
+| `design/docs-md/spec.md` | Engineering spec — §1–§15b are the Python oracle; §12/§14 describe the Python test/CI stages and point at §16; §16 is the Rust automation mechanism |
 | `design/docs-md/xrc-windows.md` | The Python window inventory and the §15b frozen control-name registry — **implementation truth for UI** |
-| `design/docs-md/architecture.md` | The Rust architecture (layered crates, Action registry, persistence, exports) |
+| `design/docs-md/architecture.md` | The Rust architecture (layered crates, Action registry, persistence, exports, §12 automation) |
+| `design/docs-md/automation.md` | The Rust automation decision (Rune rejected), adopted stack, selector contract, tiers, snapshot policy, parity schema |
+| `design/docs-md/test-plan.md` | The Rust test matrix — flow → tier → mechanism → assertion, golden policy, tier owners/artifacts |
 | `design/docs-md/project-plan.md` · `task-briefs.md` | Rust EPIC plan and per-task briefs |
-| `design/epic-prompts/` | Agent-ready EPIC prompts (load each into a `tdd-rust-writer` agent) |
+| `design/epic-prompts/` | Agent-ready EPIC prompts EPIC-1…14 (load each into a `tdd-rust-writer` agent; EPIC-10 has the documented owner split) |
 | `design/screenshots/` | Python window screenshots — the visual source for the Rust UI |
 | `design/exports/*.html` | Golden results pages; their `race-data` JSON is the export oracle |
 
@@ -78,8 +94,12 @@ Source files carry a single SPDX line and no other licence header:
   Red-Green-Refactor: write the named failing tests, watch them fail, make them pass, refactor. A
   change whose first commit is not tests is rejected.
 - **Coverage ≥ 90% line AND 90% branch** on the domain crates (RS-13), enforced by the gate.
-- **Unit tests only.** Tests live in `src/<module>/tests.rs` (`#[cfg(test)] mod tests;`). No functional,
-  behavioural, acceptance, simulator or property tests without expressed permission.
+- **Unit tests only, by default.** Tests live in `src/<module>/tests.rs` (`#[cfg(test)] mod tests;`).
+  The EPIC-10 automation harness (R-87…R-92) adds the three authorized categories in the TEST RULES
+  block above — Tier A semantic (still `src/**/tests.rs`, `-P unit`), Tier A-snapshot
+  (`tests/ui/main.rs`, `-P ui`) and the two Tier B real-window smokes (manual). Tier C parity is an
+  on-demand EPIC-12-exit run, not a gate stage. No other functional, behavioural, acceptance,
+  simulator or property tests without expressed permission.
 - Use `rstest` (fixtures/cases), `pretty_assertions`, and `mockall` at I/O boundaries (trait seam).
   No `#[ignore]`, no skips, no `assert true`-style vacuous tests, `doctest = false`.
 - **Run `tdd-rust-writer` agents sequentially** — concurrent whole-crate test compiles collide.
@@ -90,6 +110,9 @@ Source files carry a single SPDX line and no other licence header:
   `-roster`, `-rider-issues`, `-store`, `-csvio`, `-htmlexport`, `-pdfexport`, `-wordpress`) are
   UI-agnostic; `rivercrossing-ui-egui` is the only crate allowed to depend on egui/eframe/winit.
 - **Nothing below `ui-egui` depends on egui** — enforced by `cargo xtask layers`.
+- **`egui_kittest` is an egui-family dependency** — forbidden below `rivercrossing-ui-egui` (in the
+  `cargo xtask layers` `FORBIDDEN` list) and allowed in `apps/`. The automation test-support module
+  lives in `crates/rivercrossing-ui-egui/tests/ui/`, not in a new crate.
 - **Command/Action registry.** The §15 menu map + §15b frozen-name registry become one `Action`
   registry (stable id, label, shortcut, `enabled()`, target). Menu rows and on-screen buttons dispatch
   the same id; an ids-drift check fails CI on drift.
@@ -104,7 +127,7 @@ Source files carry a single SPDX line and no other licence header:
   host runner (`runs-on: [linux, ARM64]`), never a `box`/`fleet` label, and needs a `git`-owned
   toolchain.
 - **`forbid(unsafe_code)`** per domain-crate root; no `unwrap`/`expect`/`panic` in production.
-- **Agent surface (EPIC-13).** The CLI and the MCP server both dispatch the same `Action` registry; the
+- **Agent surface (EPIC-14).** The CLI and the MCP server both dispatch the same `Action` registry; the
   MCP server uses the shared **`craft-mcp-server`** crate (craft-libs), and the CLI is a hand-rolled
   parser (no `clap`).
 - Keep functions short and single-purpose.
@@ -114,7 +137,10 @@ Source files carry a single SPDX line and no other licence header:
 ```bash
 cargo build --locked
 cargo nextest run -P unit --locked
-./scripts/validate-rust.sh     # the per-PR gate (fmt, clippy, doc, deny, machete, hack, llvm-cov)
+cargo nextest run -P ui --locked                  # Tier A-snapshot goldens (egui_kittest)
+cargo check -p rivercrossing --release --locked   # proves the debug-gated control path is inert
+./scripts/validate-rust.sh     # the per-PR gate (fmt, clippy, release check, doc, nextest list,
+                               # msrv/hack, deny, machete, layers, ui, llvm-cov)
 ```
 
 ---

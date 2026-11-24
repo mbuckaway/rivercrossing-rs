@@ -2,20 +2,24 @@
 
 The Rust project plan. It supersedes the Python nine-EPIC plan; it is derived from the Rust
 architecture (`architecture.md`) and the actual Python code's module structure (`CODE_STRUCTURE.md`),
-with acceptance criteria traced to the Python R-ids in `requirements.md`. The Python plan is a
-reference for *scope*, not a template.
+with acceptance criteria traced to the R-ids in `requirements.md` (the Python R-01…R-86 plus the
+Rust-added R-87…R-92). The Python plan is a reference for *scope*, not a template.
 
 ## Method
 
 - **TDD, always.** Each EPIC is executed by the `tdd-rust-writer` agent, test-first (RS-14), one crate
-  at a time, **sequentially** (concurrent whole-crate test compiles collide).
+  at a time, **sequentially** (concurrent whole-crate test compiles collide). EPIC-10 is the documented
+  owner-split exception (docs/main, `tdd-rust-writer` for `.rs`, `shell-code-writer` for scripts); its
+  `.rs` work is still TDD.
 - **Order** is the crate dependency order (leaf-first): `cards` → `hands` → `ride` → `roster` →
   `standings` → `rider-issues` → `store` → `csvio` → `htmlexport` → `pdfexport` → `wordpress` → `ui-egui`.
 - **Gates** per EPIC: `scripts/validate-rust.sh` green; ≥90% line and ≥90% branch on the delivered
   crate(s); the crate's public API matches `CODE_STRUCTURE.md`.
 - **EPIC-1 (empty egui shell) is the de-risk gate** — it proves the egui/craft-libs toolchain before
   any domain code lands.
-- **EPIC-13 (CLI + MCP) is new** — beyond the Python app's feature set, added only after 100% parity.
+- **EPIC-10 (UI automation harness) is a prerequisite for the UI EPIC** — it lands the test contract
+  (semantic harness, snapshots, live control channel, scenario schema) before any screen is built.
+- **EPIC-14 (CLI + MCP) is new** — beyond the Python app's feature set, added only after 100% parity.
 
 ## EPICs
 
@@ -103,27 +107,48 @@ reference for *scope*, not a template.
   opt-in.
 - **R-ids:** R-61, R-62, R-63, R-65 (HTML/PDF clause), R-86.
 
-### EPIC-10 — WordPress (`rivercrossing-wordpress`)
+### EPIC-10 — UI automation & Python-parity harness
+- **Crates:** none new — no new crate, binary or cargo feature; the harness lives in
+  `rivercrossing-ui-egui` (`src/ui/automation/` + `tests/ui/`) and runs against the existing app binary.
+- **Scope:** the test contract the UI EPIC builds against, landed before any screen exists: an
+  in-process semantic harness over craft's `ui-testing` `Fixture` (Action id first, AccessKit role +
+  accessible name second); offscreen `egui_kittest` PNG snapshots under a `ui` nextest profile; an
+  opt-in, token-authenticated, loopback-only JSON control channel through craft's `automation`
+  feature; the one shared scenario/observation schema the Python oracle will speak. Python parity
+  runs at EPIC-12 exit, when screens exist.
+- **Acceptance:** `scripts/validate-rust.sh` green (`unit` + `ui` profiles); the live app answers
+  `ui.accessTree`, `ui.command probe_echo`, `ui.screenshot` and `ui.resize`, and
+  `ui.command probe_quit` exits 0; one shell golden exists; the parity schema round-trips in Rust and
+  matches the Python-side schema. R-87/R-90/R-91 are partial here and complete at EPIC-12. See
+  `automation.md` and `test-plan.md`.
+- **R-ids:** R-87, R-88, R-89, R-90, R-91, R-92 (Rust-added).
+
+EPIC-10 is a prerequisite for EPIC-12 (egui UI + Action registry): every screen is built against the
+harness it lands.
+
+### EPIC-11 — WordPress (`rivercrossing-wordpress`)
 - **Scope:** single-site REST client (`BasicAuth`/`discover`/`publish_page`).
 - **Acceptance:** discover/publish match the oracle; credential handling decided (parity vs keychain).
 - **R-ids:** R-86.
 
-### EPIC-11 — egui UI + Action registry (`rivercrossing-ui-egui`)
+### EPIC-12 — egui UI + Action registry (`rivercrossing-ui-egui`)
 - **Scope:** reproduce the Python screens from `design/screenshots/` + `xrc-windows.md`; the
   `Action`/command registry (§15 menu map + §15b frozen ids); presenters' decision logic; console,
   riders/teams editors, results, audit, settings, dialogs; sound (rodio).
-- **Acceptance:** every EPIC-1..11 acceptance scenario passes against the Python screens; ids-drift
+- **Acceptance:** every EPIC-1..12 acceptance scenario passes against the Python screens; ids-drift
   and `xtask layers` checks green; keyboard-first + dialog/destructive/menu/a11y per
   `CODINGSTANDARDS-UX-DESKTOP.md`.
-- **R-ids:** R-02, R-03, R-04, R-05, R-30..R-38, R-51, R-73, R-76, R-79, R-81, R-82, R-83, R-84, R-85.
+- **R-ids:** R-02, R-03, R-04, R-05, R-30..R-38, R-51, R-73, R-76, R-79, R-81, R-82, R-83, R-84, R-85;
+  also completes the EPIC-10 partials R-87/R-90/R-91 (full screen/golden coverage and the parity
+  report).
 
-### EPIC-12 — Installers & release
+### EPIC-13 — Installers & release
 - **Scope:** macOS **ARM64-only** DMG (`hdiutil`, `aarch64-apple-darwin`; no Intel) → Windows x64+arm64 MSI (WiX v5) + portable zip → Linux x86_64
   `.deb` + `.rpm` (`nfpm`); `SHA256SUMS.txt`; signing/notarization in a release EPIC.
 - **Acceptance:** each installer builds and smoke-installs; release assets + checksums produced.
 - **R-ids:** R-01, R-75.
 
-### EPIC-13 — CLI + MCP (parity complete)
+### EPIC-14 — CLI + MCP (parity complete)
 - **Scope:** expose the `Action` registry via `apps/rivercrossing-cli` (hand-rolled subcommands, no
   `clap`), a JSON control channel, and an MCP server built on the shared **`craft-mcp-server`** crate
   (craft-libs; JSON-RPC 2.0 over stdio).
@@ -132,6 +157,7 @@ reference for *scope*, not a template.
 
 ## R-id coverage
 
-Every Python R-id (R-01…R-85, minus the retired R-53/R-80) is traced to at least one EPIC above;
-R-70 (TDD) and R-72 (card vectors) are cross-cutting method requirements enforced across all code
-EPICs.
+Every Python R-id (R-01…R-86, minus the retired R-53/R-80) is traced to at least one EPIC above;
+R-86 is the last Python id and R-87…R-92 are the Rust-added requirements (EPIC-10, UI automation &
+parity). R-70 (TDD) and R-72 (card vectors) are cross-cutting method requirements enforced across all
+code EPICs.
