@@ -22,10 +22,20 @@ adopted) and `test-plan.md` for the flow → tier → assertion matrix. Constrai
   test-support module in `crates/rivercrossing-ui-egui/tests/ui/scenario.rs`; the runner is
   `cargo nextest -P ui`; the live channel is `craft`'s workspace `automation` feature driving the
   existing `apps/rivercrossing` binary. The cross-language contract is JSON, not Rust types.
-- **Debug-only acquisition.** The whole `ControlOptions` acquisition (hand-rolled `--control` flags
-  **and** the `<APP>_CONTROL_*` environment) sits in one `#[cfg(debug_assertions)]` function with a
+- **Debug-only acquisition.** The whole `ControlOptions` acquisition (`resolve` → `check` →
+  `server_token`, reading the hand-rolled `--control` flags **and** the `<APP>_CONTROL_*`
+  environment) sits in one `#[cfg(debug_assertions)]` function with a
   `#[cfg(not(debug_assertions))]` stub returning `None`; release builds ignore flags and env vars.
   The consented release surface belongs to EPIC-14.
+- **The headless proof is the gate.** The Tier B control smoke must pass under `xvfb-run` on the
+  forge box, with its log at `target/gate/control-smoke.log`; a compile check does not satisfy it.
+- **Selector resolution is app-owned.** Craft's synthetic primitives take coordinates or text, not
+  selectors, so the app resolves `Selector::{Action, RoleAndLabel}` against the AccessKit tree and
+  injects the primitive. `ui.accessTree` is ROOT-only at this rev.
+- **Accessible names are explicit.** A text field's `hint_text` is a placeholder, not its
+  AccessKit name; the probe field must call `.accessible_name("Probe Input")`.
+- **Scenario model home:** `src/ui/automation/scenario.rs`; `Observation.tree` mirrors craft's flat
+  `accessTree` reply.
 - Tiers: **A** semantic (`Fixture`, `-P unit`), **A-snapshot** (`egui_kittest`, `-P ui`), **B** real
   window (control smoke), **C** Python parity (in-process pytest driver in the oracle repo, Mac).
 - R-87…R-92 are the Rust-added acceptance ids. R-87/R-90/R-91 are **partially satisfied here,
@@ -44,57 +54,70 @@ adopted) and `test-plan.md` for the flow → tier → assertion matrix. Constrai
 
 ## Tests-first (Red)
 
-- **Method table** — craft-provided `ui.click`/`move`/`key`/`type`/`ime`/`dialog.*`/`accessTree` plus
-  app-owned `ui.command` (`probe_echo`, `probe_quit`), `ui.screenshot`, `ui.resize`: an unknown method,
-  bad params, a bad token and a missing token each return a typed error, never a panic.
+- **Method table** — craft's coordinate/text primitives (`ui.click`/`move`/`wheel`/`key`/`release`/
+  `type`/`ime`/`capsLock`) plus the app-owned `ui.accessTree`, `ui.command` (`probe_echo`,
+  `probe_quit`), `ui.screenshot`, `ui.resize` and the selector-aware `ui.click`/`ui.type`: an
+  unknown method, bad params and a missing/duplicate selector each return a typed error, never a
+  panic. A bad or missing token is refused by the handshake before any method runs.
 - **Selector** — an Action id resolves first, role+label second; a `window` scope disambiguates two
-  probe nodes sharing one label; an unscoped multiple match is an error, never an arbitrary pick.
-- **Scenario round-trip** — `Scenario`/`Step`/`Selector`/`Observation`/`Node` serialise and deserialise
-  to `"version": 1` JSON; a 4-step scenario drives a probe UI closure (button, text field, Tab,
-  `Expect`) and asserts the tree; `include_str!` of `tools/parity/schema.json` asserts its
-  `required`/`enum`/`properties` match the serde derive (hand-written check, no schema crate).
-- **Path escape** — `ui.screenshot` writes only inside the canonicalised write root and rejects `..`
-  and symlink escapes.
-- **Accessibility** — every input widget exposes an accessible name (no unnamed text field/button).
+  probe nodes sharing one label; an unscoped multiple match is an error. The live resolver walks
+  the AccessKit tree and reads the node's bounds; `ui.accessTree` is ROOT-only at this rev.
+- **Scenario round-trip** — `Scenario`/`Step`/`Selector`/`Observation`/`WireTree`/`Node` serialise
+  and deserialise to `"version": 1` JSON; a 4-step scenario drives a probe UI closure (button, text
+  field, Tab, `Expect`) and asserts the tree; `include_str!` of `tools/parity/schema.json` asserts
+  its `required`/`enum`/`properties` match the serde derive (hand-written check, no schema crate).
+  The model lives in `src/ui/automation/scenario.rs`; `Observation.tree` mirrors craft's flat
+  reply.
+- **Path escape** — `ui.screenshot` writes only inside the canonicalised `<cwd>/target/control` root
+  and rejects absolute paths, `..` and symlink escapes.
+- **Accessibility** — every input widget exposes an accessible name. A text field needs an explicit
+  `.accessible_name("Probe Input")`: `hint_text` is only the placeholder.
 - **Snapshot** — one `egui_kittest` golden of the shell within the `kittest.toml` threshold.
-- **Control smoke (Tier B)** — spawn `rivercrossing --control 0`, drain stderr to the listening line,
-  connect, then assert `ui.accessTree` root, `probe_echo`, `probe_quit` exit 0, `ui.screenshot` PNG.
+- **Control smoke (Tier B)** — spawn `rivercrossing --control 0 --control-token <64hex>`, drain
+  stderr to the listening line, connect, then assert `ui.accessTree` root, `probe_echo`,
+  selector `ui.click`/`ui.type`, `ui.screenshot` PNG, a rejected `../` path, `ui.resize`, and
+  `probe_quit` exit 0. Also assert a release build ignores `--control` and the env vars.
 
 ## Implement (Green → Refactor)
 
 1. **T1 — Decision + contract docs** (main session): `automation.md`, `test-plan.md`, architecture
    §12, spec §16, R-87…R-92, the `AGENTS.md` bounded test exception, and the EPIC-10…14 renumber.
-2. **T2 — Harness skeleton**: add `egui_kittest` (version through the existing patch) and craft's
-   `ui-testing`; `tests/ui/main.rs` with one `Fixture` test and one snapshot; `kittest.toml`;
-   `[profile.ui]` + `[[test]] name = "ui"` landing **together**; regenerate and commit `Cargo.lock`.
-3. **T3 — Live control channel**: `src/ui/automation/` — `ControlChannel` in `logic`, `captures.issue`
-   in `ui`, `poll_input`/`poll_access_trees` each pass; the method table above; `ControlConfig` +
-   debug-only acquisition in `main.rs`; `craft` dep in the app; `run(quit_after, control)`;
-   `ctx.enable_accesskit()` in `make`; token 0600, loopback, canonicalised write root; hand-written
-   `Debug`.
-4. **T4 — Scenario model + expectation** (test-support): `Scenario`/`Step`/`Selector`/`Observation`/
-   `Node` in `tests/ui/scenario.rs`; JSON round-trip; selector resolution; `Expect` evaluator; the
-   schema structural test.
+2. **T2 — Harness skeleton**: add `egui_kittest` to the workspace deps (it is only a patch entry
+   today) and craft's `ui-testing` on the UI crate's **dev-dependencies**; `tests/ui/main.rs`
+   (harness smoke, then the shell golden); `kittest.toml`; `[profile.ui]` + `[[test]] name = "ui"`
+   landing together; regenerate and commit `Cargo.lock`.
+3. **T3 — Live control channel**: `src/ui/automation/` — `ControlConfig { options, token }`,
+   `ControlChannel` in `logic`, `captures.note_windows`/`drain`/`finish_captures`, `note_pass`/
+   `issue`/`finish_captures` in `ui`, `poll_input`/`poll_access_trees` each pass, `settle_ms` from
+   the animation time, `DocumentId = None`; the method table above; `run(quit_after, control)`;
+   `ctx.enable_accesskit()` in `make`; canonicalised `<cwd>/target/control`; hand-written `Debug`.
+4. **T4 — Scenario model + expectation**: `src/ui/automation/scenario.rs` (public automation API,
+   serde-only); `tools/parity/schema.json` created here; JSON round-trip; selector resolution;
+   `Expect` evaluator; the schema structural test.
 5. **T5 — Golden + gate**: `validate-rust.sh` `ui` stage and release `cargo check`; `kittest.toml`
-   thresholds; `.gitignore`; `xtask/src/layers.rs` `FORBIDDEN` 5 entries + `layers/tests.rs` violation
-   fixture.
-6. **T6 — Tier B smoke**: `control_channel_smoke` beside `open_and_quit_smoke`; `xvfb-run` command;
-   artifacts to `target/gate/control-smoke.log` and `target/control/`. Do **not** set
-   `RIVERCROSSING_SMOKE_QUIT_AFTER_MS` — `probe_quit` is the deterministic exit.
-7. **T7 — Parity scaffold** (main session): `tools/parity/` (schema, README, one Python smoke
-   scenario, in-process driver stub); record the oracle SHA/version.
-8. **T8 — Verification + handoff** (main session): full gate, Tier B, Tier C smoke, runbook update,
-   the EPIC-12 handoff checklist.
+   thresholds; `.gitignore`; `xtask/src/layers.rs` `FORBIDDEN` 5 entries + `layers/tests.rs`
+   violation fixture; `COVERAGE_IGNORE` for the channel glue.
+6. **T6 — Tier B smoke**: `control_channel_smoke` beside `open_and_quit_smoke`; the canonical
+   `xvfb-run` command; artifacts to `target/gate/control-smoke.log` and `target/control/`. Do
+   **not** set `RIVERCROSSING_SMOKE_QUIT_AFTER_MS` — `probe_quit` is the deterministic exit.
+7. **T7 — Parity scaffold** (main session): `tools/parity/` (README, one Python smoke scenario,
+   in-process driver stub); `docs/parity/SKIP.md`; record the oracle SHA/version.
+8. **T8 — Verification + handoff** (main session): full gate, Tier B, Tier C smoke or SKIP, runbook
+   update, the EPIC-12 handoff checklist.
 
 ## Done when
 
 - `cargo build --locked`, `cargo check -p rivercrossing --release --locked`,
-  `cargo nextest run -P unit --locked`, `cargo nextest run -P ui --locked` and
-  `./scripts/validate-rust.sh` are all green on the forge box.
-- The live app answers `ui.accessTree`, `ui.command probe_echo`, `ui.screenshot`, `ui.resize`, and
-  `ui.command probe_quit` exits 0; a path escape is rejected.
+  `cargo nextest run -P unit --locked`, `WGPU_BACKEND=vulkan cargo nextest run -P ui -p
+  rivercrossing-ui-egui --locked` and `./scripts/validate-rust.sh` are all green on the forge box.
+- **The headless proof passes**: the canonical control smoke under `xvfb-run` records
+  `target/gate/control-smoke.log` with every assertion, and `probe_quit` exits 0.
+- The release binary, run with `--control 0` under Xvfb, survives and never prints
+  `control server listening`.
+- The live app answers `ui.accessTree`, `ui.command probe_echo`, selector `ui.click`/`ui.type`,
+  `ui.screenshot`, `ui.resize`; a `../` path is rejected.
 - At least one shell golden exists and `-P ui` selects only the `ui` target.
-- The parity item is the **schema round-trip plus either a Tier C smoke run or a recorded `SKIP`
-  reason** in `target/gate/parity/SKIP.md` — "0 structured mismatches" belongs to EPIC-12 exit, when
-  screens exist.
+- The parity item is the **schema round-trip plus either a Tier C smoke run or a committed
+  `docs/parity/SKIP.md`** with the exact reason — "0 structured mismatches" belongs to EPIC-12
+  exit, when screens exist.
 - The EPIC-12 handoff checklist is written and `docs/ui-porting-runbook.md` is updated.

@@ -216,8 +216,8 @@ the two seams in §4, and the live channel rides the existing app binary.
 |---|---|---|
 | Semantic harness | `craft::ui::testing::{Fixture, Frames}` (`craft` feature `ui-testing`), used in `src/ui/**/tests.rs` | drives the app in-process over `Rc<RefCell<RiverCrossingApp>>`; no display, no GPU |
 | Snapshot suite | `egui_kittest` 0.37 (`snapshot` + `wgpu`), `tests/ui/main.rs` (`[[test]] name = "ui"`, `cargo nextest -P ui`) | offscreen PNG goldens of the shell, then of every screen state |
-| Scenario / observation model | `tests/ui/scenario.rs` — test-support only | versioned JSON: `Scenario`/`Step`/`Observation`/`Node` |
-| Live control channel | `crates/rivercrossing-ui-egui/src/ui/automation/` + `apps/rivercrossing` | `craft` `automation`: `ControlChannel` in the logic pass, the method table, `Captures` |
+| Scenario / observation model | `src/ui/automation/scenario.rs` — automation API, not a test-only file | versioned JSON: `Scenario`/`Step`/`Observation`/`WireTree`/`Node`; `Observation.tree` mirrors craft's flat `accessTree` reply |
+| Live control channel | `crates/rivercrossing-ui-egui/src/ui/automation/` + `apps/rivercrossing` | `craft` `automation`: `ControlChannel` in the logic pass, the app-owned method table (selector resolution), `Captures` |
 | Parity contract | `tools/parity/schema.json` + the Python in-process driver | one schema, both languages; no shared Rust types |
 
 **Selector.** Action id first, `RoleAndLabel { role, label, window }` second; no `NodeId`; a bare
@@ -234,19 +234,22 @@ goldens in `crates/rivercrossing-ui-egui/tests/snapshots`; app fonts installed s
 fails; no skips (R-90).
 
 **Live channel.** Debug builds only — the whole acquisition, flags and environment, sits behind one
-`#[cfg(debug_assertions)]` function. Loopback bind, 64-hex token written `0600`, canonicalised write
-root rejecting `..`/symlink escapes, `REPLY_DEADLINE` 60 s, and the `Listening` guard dropped on
-quit. `ctx.enable_accesskit()` is called once at install (R-88).
+`#[cfg(debug_assertions)]` function and runs `resolve` → `check` → `server_token`. Loopback bind,
+a caller-supplied token file is read (a generated token is printed to stderr), the canonicalised
+`<cwd>/target/control` write root rejects `..`/symlink escapes, `REPLY_DEADLINE` 60 s, and the
+`Listening` guard is dropped on quit. `ctx.enable_accesskit()` is called once in `run`'s `make`
+(R-88). The three `ui.dialog.*` methods return a typed "no hosted dialog" until EPIC-12.
 
-**Parity.** `Scenario`/`Observation` JSON v1 in `tools/parity/schema.json`, structurally checked
-against the serde derive by unit test; Tier C compares structured trees exactly and PNGs within
-threshold, writing artifacts under `target/gate/parity/` (R-91).
+**Parity.** `Scenario`/`Step`/`Observation`/`WireTree`/`Node` JSON v1 in `tools/parity/schema.json`,
+structurally checked against the serde derive by unit test; `Observation.tree` mirrors craft's flat
+`accessTree` reply. Tier C compares structured trees exactly and PNGs within threshold, writing
+artifacts under `target/gate/parity/` (R-91).
 
-**Scope split.** R-87, R-90 and R-91 are partially satisfied here and completed in EPIC-12; R-88,
-R-89 and R-92 are satisfied here. EPIC-10 exercises the shell and a debug probe surface only and
-ships no partial frozen-id manifest; EPIC-12 inherits the per-screen tests, goldens, real
-`ui.inspect`/`ui.set` fields and the parity report. Details: [automation](automation.md) and
-[test plan](test-plan.md).
+**Scope split.** R-87, R-90 and R-91 are partially satisfied here and completed in EPIC-12; R-88's
+dialog clause is also partial; R-89 and R-92 are satisfied here. EPIC-10 exercises the shell and a
+debug probe surface only and ships no partial frozen-id manifest; EPIC-12 inherits the per-screen
+tests, goldens, real `ui.inspect`/`ui.set` fields and the parity report. Details:
+[automation](automation.md) and [test plan](test-plan.md).
 
 Companions: [automation](automation.md) · [test plan](test-plan.md) · [requirements](requirements.md)
 · [engineering spec](spec.md) · [project plan](project-plan.md) · [task briefs](task-briefs.md).

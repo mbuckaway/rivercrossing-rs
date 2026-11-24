@@ -166,9 +166,15 @@ single-site REST client. stdlib `urllib` → **reqwest/ureq**.
 ### rivercrossing-ui-egui
 The egui front end: panels/dialogs for the Python window inventory, the `Action`/command registry
 (§15 menu map + §15b frozen ids), and the presenters' decision logic. Sound via **rodio**. The UI
-automation seam lives here too (EPIC-10): `src/ui/automation/` holds the production control-channel
-glue and method table, and `tests/ui/` the semantic/snapshot/scenario harness (`cargo nextest -P ui`)
-— no separate crate.
+automation seam lives here too (EPIC-10): `src/ui/automation/` — `channel.rs` (the
+`Control`/`ControlConfig` per-pass glue, `server::listen`, `Captures`), `selector.rs` (the pure
+AccessKit selector resolver), `path.rs` (the canonicalised `<cwd>/target/control` writer),
+`command.rs` (the `probe_echo`/`probe_quit` dispatcher) and `scenario.rs` (the public v1
+`Scenario`/`Step`/`Selector`/`Observation`/`WireTree`/`Node` model); the `tests/ui/` target and
+`kittest.toml` host the `egui_kittest` shell golden under `cargo nextest -P ui` — no separate crate.
+`craft`'s `automation` feature is a production dependency; `ui-testing` and `egui_kittest` are
+dev-only. The channel glue is excluded from coverage (Tier B only); the pure modules are unit-tested.
+The cross-language schema is `tools/parity/schema.json`.
 
 ## Build order
 
