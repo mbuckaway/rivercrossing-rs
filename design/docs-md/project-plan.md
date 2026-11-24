@@ -91,11 +91,12 @@ reference for *scope*, not a template.
 - **R-ids:** R-21, R-24.
 
 ### EPIC-9 — Exports (`rivercrossing-htmlexport` + `rivercrossing-pdfexport`)
-- **Scope:** results payload model; HTML (minijinja/askama + vendored Tailwind CSS + woff2 fonts);
-  PDF (printpdf/lopdf + embedded TTFs); podium poster.
-- **Acceptance:** golden `design/exports/*.html` byte-faithful; `race-data` JSON round-trips; PDF
-  deterministic; times opt-in.
-- **R-ids:** R-61, R-62, R-63, R-65.
+- **Scope:** results payload model; HTML (minijinja + vendored Tailwind CSS + woff2 fonts);
+  PDF (craft-pdf/krilla + embedded TTFs); podium poster + WordPress fragments.
+- **Acceptance:** HTML byte-identical to the committed production goldens; `race-data` JSON
+  round-trips; PDF deterministic (same input ⇒ same bytes) with section-keyed content parity; times
+  opt-in.
+- **R-ids:** R-61, R-62, R-63, R-65, R-86.
 
 ### EPIC-10 — WordPress (`rivercrossing-wordpress`)
 - **Scope:** single-site REST client (`BasicAuth`/`discover`/`publish_page`).

@@ -43,6 +43,10 @@ uuid = { version = "1", features = ["v4"] }
 minijinja = { version = "3.1", features = ["serde"] }
 # Data-URI encoding for the organizer logo.
 base64 = { version = "0.23", default-features = false, features = ["std"] }
+# PDF export: font metrics for card-box sizing (krilla exposes only units_per_em).
+skrifa = "0.42"
+# PDF export: the guarded krilla authoring façade, same craft-libs rev as `craft`.
+craft-pdf = { git = "https://github.com/storytold/craft-libs", rev = "243d68e12d05e89122db6d154924bf1992e10d38", version = "=0.1.0", default-features = false, features = ["write", "write-simple-text"] }
 
 # Source-file header convention: a single SPDX line, per AGENTS.md.
 # `// SPDX-License-Identifier: GPL-3.0-only`
@@ -87,8 +91,9 @@ ignored = ["craft-mcp-server"]
 
 # storytold's egui/winit forks. `[patch.crates-io]` does not propagate from
 # craft-libs to consumers, so this workspace must repeat it. The set matches
-# WordCraft's egui entries; the krilla/hayro*/linesweeper vendor patches are only
-# needed once craft-pdf lands (EPIC-9).
+# WordCraft's egui entries; the `krilla` vendor patch is required by craft-pdf's
+# writer feature (EPIC-9), while the hayro*/linesweeper patches are reader-only
+# and unused here.
 [patch.crates-io]
 ecolor = { git = "https://github.com/storytold/egui.git", rev = "7e1c30d142bc7879d043e74b5ceb3ecfe7f51329" }
 emath = { git = "https://github.com/storytold/egui.git", rev = "7e1c30d142bc7879d043e74b5ceb3ecfe7f51329" }
@@ -105,3 +110,4 @@ eframe = { git = "https://github.com/storytold/egui.git", rev = "7e1c30d142bc787
 egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "7e1c30d142bc7879d043e74b5ceb3ecfe7f51329" }
 egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "7e1c30d142bc7879d043e74b5ceb3ecfe7f51329" }
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
+krilla = { git = "https://github.com/storytold/craft-libs", rev = "243d68e12d05e89122db6d154924bf1992e10d38", version = "=0.8.2" }

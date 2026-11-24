@@ -136,8 +136,11 @@ by the caller and DNS rows come from `ZeroLapMode::Dns`; CSS/fonts are the froze
 lines were rewritten output-identically for minijinja (`.append()` → `{% set %}`).
 
 ### rivercrossing-pdfexport
-`render`, `podium_poster`, deterministic-byte stream helpers. fpdf2 → **printpdf/lopdf** (or craft-pdf);
-Barlow / Barlow Condensed / DejaVu TTFs embedded, OFL notices redistributed.
+`render`, `podium_poster` (`PdfInput { export, letter, created_at, logo_png }`). fpdf2 → **craft-pdf
+(krilla)**; Barlow / Barlow Condensed / DejaVu TTFs embedded, licence notices redistributed (DejaVu is
+Bitstream Vera, not OFL). Deterministic bytes from the caller-supplied `created_at`; a pure `layout`
+model + a thin `writer` keep the parity surface unit-testable. Rust-owned PDF goldens; the Python PDFs
+are a section-keyed content oracle (cross-engine byte parity is impossible).
 
 ### rivercrossing-wordpress
 `BasicAuth`, `SiteInfo`, `PublishedPage`, `discover`, `find_page_by_slug`, `publish_page` — a
