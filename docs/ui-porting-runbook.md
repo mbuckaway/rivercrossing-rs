@@ -62,12 +62,12 @@ the scenario JSON is the cross-language contract.
 | **A — semantic** | `craft::ui::testing::Fixture` over `Rc<RefCell<RiverCrossingApp>>` in `src/**/tests.rs` | `cargo nextest run -P unit --locked` | no display, no GPU |
 | **A-snapshot** | `egui_kittest` `Harness::new_ui` + craft `embed::install`, then per frame `embed::before_input`/`embed::logic`/`app.ui(ui)`, asserted with `snapshot` in `tests/ui/main.rs` | `cargo nextest run -P ui --locked` | lavapipe; goldens are written on the Linux golden host only |
 | **B — real window** | `open_and_quit_smoke` + `control_channel_smoke` (spawns `rivercrossing --control 0`) | by hand under `xvfb-run -a -s "-screen 0 1400x900x24"` | Xvfb; no WM |
-| **C — Python parity** | shared JSON scenarios; in-process pytest driver in the oracle repo (`FindWindowByName`/`SetValue`/posted `wx.CommandEvent` are in-process calls, `spec.md:273`) | on demand at EPIC-12 exit, never in the gate; runs on the Mac | Python 3.14 / wxPython 4.3.1 |
+| **C — Python parity** | shared JSON scenarios; in-process pytest driver in the oracle repo (`FindWindowByName`/`SetValue`/posted `wx.CommandEvent` are in-process calls, `spec.md` §12) | on demand at EPIC-12 exit, never in the gate; runs on the Mac | Python 3.14 / wxPython 4.3.1 |
 
 - **Selector contract.** `Selector::Action { id }` — a frozen §15b id — first;
   `Selector::RoleAndLabel { role, label, window }` second. `window` scopes labels that legitimately
   repeat (`plate_input`, `reason_input`, `continue_btn`, `message_lbl`; names are unique only within a
-  top-level window, `spec.md:376`). Multiple matches without a `window` are an error, never an
+  top-level window, `spec.md` §15b). Multiple matches without a `window` are an error, never an
   arbitrary pick. No `NodeId` (per-run, not reproducible) and no bare label lookup.
 - **Scenario model.** `Scenario`/`Step`/`Selector`/`Observation`/`Node` live in
   `crates/rivercrossing-ui-egui/tests/ui/scenario.rs` — test-support only, versioned JSON

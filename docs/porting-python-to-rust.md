@@ -1,5 +1,3 @@
-Copyright (c) 2026 TrailLensCo. All rights reserved.
-
 # PORTING-PYTHON-TO-RUST.md — runbook for porting a Python app to Rust
 
 A reusable, step-by-step runbook for an agent or engineer who must rewrite a working Python
@@ -118,8 +116,9 @@ uncompilable test file fails every other module's `cargo test`.
 - `actions/upload-artifact@v4` is reported to fail on Forgejo ("GHES not supported") — use v3 or the
   Forgejo-patched v4. `actions/checkout@v4` works (Node must exist on the host).
 - Cache only if the runner has a cache service; `Swatinem/rust-cache` with `cache-bin: "false"`.
-- The gate: `cargo fmt --check`, `CARGO_BUILD_WARNINGS=deny cargo clippy --all-targets --locked
-  --keep-going`, `cargo doc` with `RUSTDOCFLAGS=-D warnings`, `cargo nextest run -P unit`,
+- The gate: `cargo fmt --check`, `cargo clippy --all-targets --locked --keep-going -- -D warnings`
+  (`CARGO_BUILD_WARNINGS` only exists on Cargo >= 1.97 and silently no-ops on the 1.95 MSRV),
+  `cargo doc` with `RUSTDOCFLAGS=-D warnings`, `cargo nextest run -P unit`,
   `cargo llvm-cov` (line+branch), `cargo deny check`, `cargo machete`, `cargo hack check
   --rust-version`. A separate scheduled job runs Kani.
 
@@ -172,8 +171,10 @@ on the GPU** (eframe + wgpu + winit), "no Electron, no Tauri". Copy the **WordCr
 (`storytold/wordcraft`), not its code. Build the automation harness before the screens — see §12.1.
 
 - **UI stack**: `egui`/`eframe` + `egui_extras` (declared `0.37`, overridden by the storytold egui
-  fork), `winit` (storytold winit fork), `wgpu` `30` (inherited via craft-libs). `eframe` features:
-  `default_fonts, wgpu, accesskit, clipboard, wayland, x11, links` — no `glow`, no `persistence`.
+  fork), `winit` (storytold winit fork), `wgpu` `30` (inherited via craft-libs). The craft shell
+  enables `eframe` with `default_fonts, wgpu, x11`; add `wayland`/`clipboard`/`links` if the app
+  needs them, and no `glow`/`persistence`. AccessKit is **not** enabled by the shell — call
+  `ctx.enable_accesskit()` at install (§12.1).
 - **Shared crates**: depend on `storytold/craft-libs` (git-only, MIT/Apache-2.0). Use the `craft`
   facade or individual `craft-ui/settings/quit/menu/dialogs/i18n/keymap/atomic/update/print/pdf`
   crates. Pin **one shared `rev`**, add `version = "=0.1.0"`, commit `Cargo.lock`, build `--locked`.
@@ -182,10 +183,11 @@ on the GPU** (eframe + wgpu + winit), "no Electron, no Tauri". Copy the **WordCr
   `Cargo.toml` (WordCraft does the same).
 - **Layered workspace**: L0 domain crates → L4 engine/command registry → L6 `-ui-egui` → `apps/`.
   Hard rule (`cargo xtask layers`): nothing below `ui-egui` may depend on egui/eframe/winit/rfd.
-- **eframe 0.37 bootstrap**: `impl eframe::App` uses `logic()` + `ui()` (not `update()`); build
-  `eframe::NativeOptions` + `egui::ViewportBuilder`, `craft::gpu::configure` on `WgpuSetup::CreateNew`,
-  `craft::host::Host` + `craft::ui::InstallSpec` + `craft::ui::shell::embed::install`, then
-  `eframe::run_native`.
+- **eframe 0.37 bootstrap**: prefer `craft::ui::shell::app::run(spec, make)` — it builds the
+  `NativeOptions`/`ViewportBuilder`, installs the runtime through `embed::install` in the creator
+  closure, and calls `eframe::run_native`. Use the lower-level `craft::gpu::configure` /
+  `craft::host::Host` / `InstallSpec` / `embed::install` path only when embedding the shell in a
+  custom host. `impl eframe::App` uses `logic()` + `ui()` (not `update()`).
 
 ### 12.1 Automation before screens
 
@@ -214,9 +216,10 @@ worked example.
   after injected input and `poll_access_trees` after the UI pass, keep `Listening` alive for the
   window's lifetime, and call `ctx.enable_accesskit()` once at install — do not rely on the eframe
   build to do it. `craft-automation` supplies `ui.click/move/key/type/ime`, the `Captures` queue
-  behind `ui.screenshot`, `ui.accessTree` and `ui.dialog.set/confirm/cancel`; the app adds
-  `ui.command` (dispatch the Action registry), `ui.resize`, `ui.screenshot` (token plus a bounded
-  writer), and any `ui.inspect`/`ui.set` it needs. Gate the whole acquisition (flags **and**
+  behind `ui.screenshot`, the `ui.accessTree` reply plumbing (`Reply::access_tree` /
+  `poll_access_trees`) and `ui.dialog.set/confirm/cancel`; the app adds `ui.command` (dispatch the
+  Action registry), `ui.resize`, `ui.screenshot` (token plus a bounded writer), and any
+  `ui.inspect`/`ui.set` it needs. Gate the whole acquisition (flags **and**
   `<APP>_CONTROL_*` environment) behind `#[cfg(debug_assertions)]`; bind loopback only; token file
   `0600`; confine writes to a canonicalised root. The consented release surface is an `AgentSettings`
   decision, not the debug channel.
