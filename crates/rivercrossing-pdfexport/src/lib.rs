@@ -13,3 +13,7 @@ pub mod error;
 pub mod fonts;
 pub mod geometry;
 pub mod layout;
+#[cfg(test)]
+pub(crate) mod pdf_read;
+pub mod report;
+pub mod writer;

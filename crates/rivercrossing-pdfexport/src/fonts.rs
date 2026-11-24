@@ -35,7 +35,7 @@ const GLYPH_BYTES: &[u8] =
 
 impl FontFace {
     /// Return this face's embedded TrueType bytes.
-    const fn bytes(self) -> &'static [u8] {
+    pub(crate) const fn bytes(self) -> &'static [u8] {
         match self {
             Self::Body => BODY_BYTES,
             Self::Heading => HEADING_BYTES,
