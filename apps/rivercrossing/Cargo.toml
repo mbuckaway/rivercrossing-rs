@@ -13,6 +13,9 @@ rivercrossing-ui-egui = { path = "../../crates/rivercrossing-ui-egui", version =
 craft = { workspace = true, features = ["automation"] }
 eframe = { workspace = true }
 
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [lints]
 workspace = true
 
