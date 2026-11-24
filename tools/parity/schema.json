@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mbuckaway/rivercrossing-rs/tools/parity/schema.json",
+  "title": "RiverCrossing UI automation scenario and observation, version 1",
+  "description": "The v1 contract shared by the Rust harness and the Python parity driver. Observation.tree mirrors craft's flat ui.accessTree reply: nodes, focus and root. textSelection is a documented subset omission; a node that carries it still parses on the Rust side.",
+  "oneOf": [
+    { "$ref": "#/$defs/Scenario" },
+    { "$ref": "#/$defs/Observation" }
+  ],
+  "$defs": {
+    "Scenario": {
+      "title": "Scenario",
+      "description": "One recorded UI scenario: a version, an id and the steps to run in order.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "id", "steps"],
+      "properties": {
+        "version": {
+          "description": "The scenario format version. Only 1 is defined.",
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "description": "The scenario's stable name.",
+          "type": "string"
+        },
+        "size": {
+          "description": "The window size to run at, in points, when the scenario fixes one.",
+          "type": ["array", "null"],
+          "prefixItems": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "integer", "minimum": 0 }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "steps": {
+          "description": "The steps, run in order.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/Step" }
+        }
+      }
+    },
+    "Step": {
+      "title": "Step",
+      "description": "One step: a command, a click, a typing, a key press, a snapshot or an expectation.",
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "description": "The step kind.",
+          "enum": ["command", "click", "type", "key", "snapshot", "expect"]
+        },
+        "action": {
+          "description": "The frozen action id a `command` step sends.",
+          "type": "string"
+        },
+        "params": {
+          "description": "The command parameters. Null asks the probe for its text field's contents."
+        },
+        "selector": {
+          "description": "The node a `click`, `type` or `expect` step addresses.",
+          "$ref": "#/$defs/Selector"
+        },
+        "text": {
+          "description": "The text a `type` step enters.",
+          "type": "string"
+        },
+        "key": {
+          "description": "The key name a `key` step presses, such as Enter.",
+          "type": "string"
+        },
+        "modifiers": {
+          "description": "The modifier names held during a `key` press, such as ctrl.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "name": {
+          "description": "The expected accessible name of an `expect` node, or the snapshot name.",
+          "type": ["string", "null"]
+        },
+        "value": {
+          "description": "The expected value of an `expect` node.",
+          "type": ["string", "null"]
+        }
+      },
+      "oneOf": [
+        {
+          "description": "Send a command through the automation channel.",
+          "required": ["kind", "action"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "command" },
+            "action": { "type": "string" },
+            "params": {}
+          }
+        },
+        {
+          "description": "Click the node the selector names.",
+          "required": ["kind", "selector"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "click" },
+            "selector": { "$ref": "#/$defs/Selector" }
+          }
+        },
+        {
+          "description": "Type text into the node the selector names.",
+          "required": ["kind", "selector", "text"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "type" },
+            "selector": { "$ref": "#/$defs/Selector" },
+            "text": { "type": "string" }
+          }
+        },
+        {
+          "description": "Press a key, with optional modifiers.",
+          "required": ["kind", "key"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "key" },
+            "key": { "type": "string" },
+            "modifiers": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        {
+          "description": "Record a screenshot under this name.",
+          "required": ["kind", "name"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "snapshot" },
+            "name": { "type": "string" }
+          }
+        },
+        {
+          "description": "Assert the accessible name and value of the node the selector names.",
+          "required": ["kind", "selector"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "expect" },
+            "selector": { "$ref": "#/$defs/Selector" },
+            "name": { "type": ["string", "null"] },
+            "value": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "Selector": {
+      "title": "Selector",
+      "description": "A stable handle on one UI node: a frozen action id first, an AccessKit role and label second.",
+      "type": "object",
+      "properties": {
+        "action": {
+          "description": "The frozen action id.",
+          "type": "string"
+        },
+        "role": {
+          "description": "The AccessKit role spelling, compared case-insensitively.",
+          "type": "string"
+        },
+        "label": {
+          "description": "The exact accessible label.",
+          "type": "string"
+        },
+        "name": {
+          "description": "An alias for label, as the serde derive accepts it.",
+          "type": "string"
+        },
+        "window": {
+          "description": "The window scope. A non-root window is unsupported at EPIC-10.",
+          "type": ["string", "null"]
+        }
+      },
+      "oneOf": [
+        {
+          "description": "A frozen action id.",
+          "required": ["action"],
+          "additionalProperties": false,
+          "properties": {
+            "action": { "type": "string" }
+          }
+        },
+        {
+          "description": "An AccessKit role and label, optionally scoped to a window.",
+          "required": ["role"],
+          "anyOf": [{ "required": ["label"] }, { "required": ["name"] }],
+          "additionalProperties": false,
+          "properties": {
+            "role": { "type": "string" },
+            "label": { "type": "string" },
+            "name": { "type": "string" },
+            "window": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "Observation": {
+      "title": "Observation",
+      "description": "One settled view: the app, the viewport and the flat access tree, plus the screenshots written beside it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["app", "version", "viewport", "tree", "screenshots"],
+      "properties": {
+        "app": {
+          "description": "The app that produced the observation.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The observation format version. Only 1 is defined.",
+          "type": "integer",
+          "const": 1
+        },
+        "viewport": {
+          "description": "The viewport size in points.",
+          "type": "array",
+          "prefixItems": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "integer", "minimum": 0 }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "tree": {
+          "description": "The flat access tree of the root window.",
+          "$ref": "#/$defs/WireTree"
+        },
+        "screenshots": {
+          "description": "The screenshot names written beside the observation.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "WireTree": {
+      "title": "WireTree",
+      "description": "The flat access tree, as craft's ui.accessTree reply carries it.",
+      "type": "object",
+      "required": ["nodes"],
+      "properties": {
+        "nodes": {
+          "description": "The nodes, each naming its children by id.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/Node" }
+        },
+        "focus": {
+          "description": "The focused node's id, when one is focused.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "root": {
+          "description": "The root node's id, when the tree reports one.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      }
+    },
+    "Node": {
+      "title": "Node",
+      "description": "One flat node: its id, role, optional name and value, and its children's ids. Extra reply fields such as textSelection are ignored.",
+      "type": "object",
+      "required": ["id", "role", "children"],
+      "properties": {
+        "id": {
+          "description": "The AccessKit node id.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "role": {
+          "description": "The AccessKit role spelling, as format!(\"{:?}\", role) prints it.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The accessible name, when the node has one.",
+          "type": ["string", "null"]
+        },
+        "value": {
+          "description": "The accessible value, when the node has one.",
+          "type": ["string", "null"]
+        },
+        "children": {
+          "description": "The ids of the node's children, in their declared order.",
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

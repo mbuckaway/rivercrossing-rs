@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "id": "probe-round-trip",
+  "size": [1100, 780],
+  "steps": [
+    {
+      "kind": "command",
+      "action": "probe_echo",
+      "params": {
+        "x": 1
+      }
+    },
+    {
+      "kind": "expect",
+      "selector": {
+        "role": "Button",
+        "label": "Probe Echo"
+      },
+      "name": "Probe Echo"
+    },
+    {
+      "kind": "snapshot",
+      "name": "probe"
+    }
+  ]
+}
