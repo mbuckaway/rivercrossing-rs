@@ -32,10 +32,33 @@ pub(crate) mod ids;
     not(test),
     expect(
         dead_code,
+        reason = "Phase 6 writes the launch log; today only the tests open it"
+    )
+)]
+pub(crate) mod logging;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
         reason = "Phase 6 renders the console and the setup dialog from these presenters; today only the tests read them"
     )
 )]
 pub(crate) mod presenters;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Phase 6 plays the console cues; today only the tests drive the player"
+    )
+)]
+#[cfg_attr(
+    test,
+    expect(
+        dead_code,
+        reason = "the rodio backend needs a real output device, so the unit tests never build it"
+    )
+)]
+pub(crate) mod sound;
 #[cfg_attr(
     not(test),
     expect(

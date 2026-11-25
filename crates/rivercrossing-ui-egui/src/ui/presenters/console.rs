@@ -10,23 +10,13 @@ use rivercrossing_ride::{Clock, RideEngine, RideError, RideStatus, SystemClock};
 use rivercrossing_roster::roster::Roster;
 
 use super::data_source::{is_miss, refusal_message};
+pub(crate) use crate::ui::sound::Cue;
 
 #[cfg(test)]
 mod tests;
 
 /// The notice that a successful start posts.
 pub(crate) const RIDE_STARTED: &str = "Ride started";
-
-/// The sound cue that the console plays for an entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Cue {
-    /// A lap recorded above the minimum.
-    Recorded,
-    /// A lap recorded but flagged for review.
-    Flagged,
-    /// A refusal or a miss.
-    Error,
-}
 
 /// What the console does after one entry-field submission.
 #[derive(Debug, Clone, PartialEq, Eq)]

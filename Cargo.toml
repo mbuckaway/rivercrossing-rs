@@ -41,6 +41,9 @@ rstest = "0.28"
 pretty_assertions = "1"
 # Wall-clock instants for the ride engine: ISO-8601 payloads (Rfc3339) and epoch seconds.
 time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+# Console sound cues: WAV playback through cpal. No default codecs; the three
+# bundled cues are WAV, so `wav` (symphonia) plus `playback` is the whole surface.
+rodio = { version = "0.23", default-features = false, features = ["playback", "wav"] }
 # Entry identity: uuid4 hex, minted by the roster and persisted by the store.
 uuid = { version = "1", features = ["v4"] }
 # HTML export: Jinja2-compatible templates (the MarkupSafe-style formatter is our own).

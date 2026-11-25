@@ -13,13 +13,16 @@ eframe = { workspace = true }
 rivercrossing-ride = { path = "../rivercrossing-ride", version = "=0.1.0" }
 rivercrossing-roster = { path = "../rivercrossing-roster", version = "=0.1.0" }
 rivercrossing-store = { path = "../rivercrossing-store", version = "=0.1.0" }
+rodio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+time = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
 craft = { workspace = true, features = ["ui-testing"] }
 egui_kittest = { workspace = true, features = ["snapshot", "wgpu"] }
+mockall = "=0.15.0"
 pretty_assertions = { workspace = true }
 rstest = { workspace = true }
 tempfile = "3"
