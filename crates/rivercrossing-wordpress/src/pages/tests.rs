@@ -424,3 +424,28 @@ fn test_every_request_refuses_a_non_https_base_url() {
         [Vec::new(), Vec::new(), Vec::new()]
     );
 }
+
+#[test]
+fn test_public_page_entry_points_refuse_a_non_https_base_url() {
+    // Arrange
+    let base = "http://example.test";
+
+    // Act
+    let found = super::find_page_by_slug(base, &auth(), "results").map(|_page| ());
+    let published = super::publish_page(base, &auth(), &draft()).map(|_page| ());
+
+    // Assert
+    assert_eq!(
+        [found, published].map(|result| result.map_err(|error| error.to_string())),
+        [
+            Err(
+                "refusing to send WordPress credentials to a non-https URL: http://example.test/wp-json/wp/v2/pages?slug=results&context=edit"
+                    .to_owned()
+            ),
+            Err(
+                "refusing to send WordPress credentials to a non-https URL: http://example.test/wp-json/wp/v2/pages"
+                    .to_owned()
+            ),
+        ]
+    );
+}

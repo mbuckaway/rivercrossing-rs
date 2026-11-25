@@ -26,9 +26,12 @@ mod error;
 mod http;
 mod json;
 mod pages;
+mod transport;
 
 #[cfg(test)]
 pub(crate) mod mock;
 
 pub use auth::BasicAuth;
+pub use discover::{SiteInfo, discover};
 pub use error::WordPressError;
+pub use pages::{PageDraft, PublishedPage, find_page_by_slug, publish_page};

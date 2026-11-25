@@ -1,20 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! REST-index discovery (`wordpress.py:195-212`).
-//!
-//! [`discover_with`] carries the whole behaviour. The public `discover`
-//! wrapper lands in phase 4 beside the production transport, so it is not
-//! declared yet.
-
-// Only the unit tests drive discovery until the public `discover` wrapper
-// lands in phase 4.
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the public discover wrapper, which lands in phase 4, calls discover_with"
-    )
-)]
+//! REST-index discovery, and the `discover` entry point
+//! (`wordpress.py:195-212`).
 
 use serde_json::Value;
 
@@ -22,20 +9,18 @@ use crate::auth::BasicAuth;
 use crate::error::WordPressError;
 use crate::http::{Transport, request_json_with, rest_url};
 use crate::json;
+use crate::transport::UreqTransport;
 
 /// What a site's REST index advertises about itself.
-///
-/// The struct stays crate-private until the public `discover` wrapper lands in
-/// phase 4; the fields are public then.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SiteInfo {
+pub struct SiteInfo {
     /// The REST namespaces that the site lists, in the order it lists them.
-    pub(crate) namespaces: Vec<String>,
+    pub namespaces: Vec<String>,
     /// True when the site advertises Application Password authentication.
-    pub(crate) application_passwords: bool,
+    pub application_passwords: bool,
 }
 
-/// Return what the site at `base_url` advertises through its REST index.
+/// Discover what `{base_url}/wp-json/` advertises about the site.
 ///
 /// `namespaces` keeps only the string items that the index lists, and
 /// `application_passwords` is true only when `authentication` is an object
@@ -47,6 +32,15 @@ pub(crate) struct SiteInfo {
 /// [`WordPressError::Unavailable`] when the site does not answer with a JSON
 /// object. A refused credential set returns [`WordPressError::Auth`], and a
 /// `WordPress` error document returns [`WordPressError::Response`].
+pub fn discover(base_url: &str, auth: &BasicAuth) -> Result<SiteInfo, WordPressError> {
+    discover_with(&UreqTransport::new(), base_url, auth)
+}
+
+/// Return what the site at `base_url` advertises through `transport`.
+///
+/// # Errors
+///
+/// Return the same errors as [`discover`].
 pub(crate) fn discover_with(
     transport: &dyn Transport,
     base_url: &str,

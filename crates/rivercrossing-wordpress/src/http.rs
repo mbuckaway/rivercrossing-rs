@@ -2,16 +2,6 @@
 
 //! The crate-private HTTP seam and the URL helpers that every request uses.
 
-// Only the unit tests drive this pipeline until the public `discover` and
-// `pages` entry points land in later phases.
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the public discover and pages entry points, which land in later phases, call this pipeline"
-    )
-)]
-
 use serde_json::Value;
 use url::form_urlencoded::Serializer;
 

@@ -45,13 +45,6 @@ pub enum WordPressError {
     },
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the discover and pages modules, which land in later phases, call these constructors"
-    )
-)]
 impl WordPressError {
     /// Return the error for a URL that is not `https`.
     pub(crate) fn insecure(url: &str) -> Self {

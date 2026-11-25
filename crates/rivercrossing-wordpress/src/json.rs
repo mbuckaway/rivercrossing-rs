@@ -5,16 +5,6 @@
 //! Every failure names the site URL and uses the oracle's wording, so the
 //! caller's log matches what the app has always shown.
 
-// Only the unit tests drive these validators until the public `discover` and
-// `pages` entry points land in later phases.
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the public discover and pages entry points, which land in later phases, call these validators"
-    )
-)]
-
 use serde_json::{Map, Value};
 
 use crate::error::WordPressError;

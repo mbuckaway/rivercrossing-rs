@@ -303,3 +303,21 @@ fn test_discover_maps_a_transport_failure_to_unavailable() {
         )
     );
 }
+
+#[test]
+fn test_discover_refuses_a_non_https_base_url_before_sending() {
+    // Arrange
+    let base = "http://example.test";
+
+    // Act
+    let result = super::discover(base, &auth()).map_err(|error| error.to_string());
+
+    // Assert
+    assert_eq!(
+        result,
+        Err(
+            "refusing to send WordPress credentials to a non-https URL: http://example.test/wp-json/"
+                .to_owned()
+        )
+    );
+}
