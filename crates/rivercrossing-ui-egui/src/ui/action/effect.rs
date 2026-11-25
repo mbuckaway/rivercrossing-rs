@@ -32,4 +32,6 @@ pub(crate) enum DispatchError {
     UnknownAction(ActionId),
     /// The §15 gate refuses the action in the current ride state.
     Disabled(ActionId),
+    /// The action opens a window this release does not build; carries the window id.
+    NotImplemented(&'static str),
 }
