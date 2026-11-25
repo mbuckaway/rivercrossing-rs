@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Selector {
-    /// A frozen action id, such as `probe_echo`.
+    /// A frozen action id, such as `mi_start_ride`.
     Action {
         /// The frozen action id.
         action: String,
@@ -76,11 +76,9 @@ pub fn resolve(selector: &Selector, candidates: &[Candidate]) -> Result<Rect, St
     }
 }
 
-/// The role and label of each probe action id at EPIC-10.
+/// The AccessKit role and label of the on-screen control an action id names.
+///
+/// The lookup belongs to the automation actions, which own the console-button contract.
 pub(crate) fn action_target(action: &str) -> Option<(&'static str, &'static str)> {
-    match action {
-        "probe_echo" => Some(("Button", "Probe Echo")),
-        "probe_input" => Some(("TextInput", "Probe Input")),
-        _ => None,
-    }
+    super::actions::action_target(action)
 }

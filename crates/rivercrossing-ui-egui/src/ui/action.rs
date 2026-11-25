@@ -4,6 +4,13 @@
 //! pure dispatch.
 
 pub(crate) mod dispatch;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the ids-drift machine block and its comparisons run in the unit tests"
+    )
+)]
 pub(crate) mod drift;
 pub(crate) mod effect;
 pub(crate) mod enable;

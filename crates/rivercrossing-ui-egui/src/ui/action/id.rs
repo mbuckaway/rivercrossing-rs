@@ -15,6 +15,13 @@ impl ActionId {
 
     /// Wrap a name so the table can look it up. An unknown name is not an action.
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the unknown-name arm is pinned by the state and registry tests"
+        )
+    )]
     pub(crate) const fn from_name(name: &'static str) -> Self {
         Self(name)
     }

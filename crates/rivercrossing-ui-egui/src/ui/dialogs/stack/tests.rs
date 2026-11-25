@@ -474,3 +474,41 @@ fn test_is_empty_with_a_dialog_open() -> Result<(), DialogError> {
     assert_eq!(state, (false, false));
     Ok(())
 }
+
+#[test]
+fn test_activate_reports_the_clicked_button_not_the_default() -> Result<(), String> {
+    // Arrange
+    let mut stack = DialogStack::default();
+    stack
+        .open("resume_dlg", None)
+        .map_err(|_| "the resume dialog refuses to open".to_owned())?;
+
+    // Act
+    let event = stack
+        .activate(Button::Custom("library_btn"))
+        .map_err(|_| "the dialog was not open".to_owned())?;
+
+    // Assert
+    assert_eq!(
+        event,
+        DialogEvent::Confirmed {
+            id: "resume_dlg",
+            button: Button::Custom("library_btn"),
+            opener: None,
+        }
+    );
+    assert!(stack.is_empty());
+    Ok(())
+}
+
+#[test]
+fn test_activate_given_no_dialog_errors() {
+    // Arrange
+    let mut stack = DialogStack::default();
+
+    // Act
+    let event = stack.activate(Button::Ok);
+
+    // Assert
+    assert_eq!(event, Err(DialogError::NotOpen));
+}

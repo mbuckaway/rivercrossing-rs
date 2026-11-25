@@ -159,7 +159,9 @@ until EPIC-14 adds the consented release surface.
 Methods: craft's `synthetic::input_method` provides the coordinate/text primitives
 `ui.click`/`ui.move`/`ui.wheel`/`ui.key`/`ui.release`/`ui.type`/`ui.ime`/`ui.capsLock`, and
 `dialogs::dialog_method` handles `ui.dialog.set`/`confirm`/`cancel`. The app owns `ui.accessTree`
-(craft's flat ROOT tree), `ui.command` (debug probes `probe_echo` and `probe_quit`), `ui.resize`,
+(craft's flat ROOT tree), `ui.command` (any frozen action id, so `mi_new_ride` opens the setup
+dialog and the automation-only `app_quit` closes the app; a native confirmation answers
+`ui.dialog.confirm`/`cancel` when no `DialogStack` dialog is open), `ui.resize`,
 `ui.screenshot`, and the selector-aware `ui.click`/`ui.type` that resolve a `Selector` to bounds
 before injecting the primitive.
 

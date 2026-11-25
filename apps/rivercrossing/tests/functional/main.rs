@@ -5,7 +5,7 @@
 //! EPIC-1's launch smoke and EPIC-10's control-channel smoke. Both spawn the real binary, so
 //! they need a display (or `xvfb-run`) and never belong to the unit sweep.
 
-use std::io::{self, BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Write};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::process::{Child, ChildStderr, Command, ExitStatus, Stdio};
@@ -37,8 +37,16 @@ const LISTENING_PREFIX: &str = "control server listening on ";
 /// The longest the control smoke waits for the listening line.
 const LISTEN_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The longest the control smoke waits for the child to exit after `probe_quit`.
+/// The longest the control smoke waits for the child to exit after `app_quit`.
 const CONTROL_EXIT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How long the control smoke lets the first frame finish before its first request.
+///
+/// craft-libs' control server takes the context's pass state to read the frame clock when it wakes
+/// the window (`craft_automation::server::serve_connection`), which panics if the app is inside a
+/// pass. The first pass builds the window and the GPU device; once it ends the app idles between
+/// passes, so a request is safe.
+const SETTLE_DELAY: Duration = Duration::from_secs(2);
 
 /// A smoke step's result.
 type SmokeResult = Result<(), Box<dyn std::error::Error>>;
@@ -101,9 +109,14 @@ fn open_and_quit_smoke() -> Result<(), Box<dyn std::error::Error>> {
 /// The working directory is the workspace root, so the screenshot write root is the repository's
 /// own `target/control`.
 fn spawn_control_process(workspace: &Path) -> io::Result<Child> {
+    // Keep the smoke's settings, logs and database under the workspace, in fresh directories.
+    std::fs::create_dir_all(workspace.join("target/control/config"))?;
+    std::fs::create_dir_all(workspace.join("target/control/data"))?;
     Command::new(env!("CARGO_BIN_EXE_rivercrossing"))
         .args(["--control", "0", "--control-token", CONTROL_TOKEN])
         .current_dir(workspace)
+        .env("XDG_CONFIG_HOME", workspace.join("target/control/config"))
+        .env("XDG_DATA_HOME", workspace.join("target/control/data"))
         .env_remove("RIVERCROSSING_SMOKE_QUIT_AFTER_MS")
         .env_remove("RIVERCROSSING_CONTROL_PORT")
         .env_remove("RIVERCROSSING_CONTROL_TOKEN")
@@ -146,7 +159,7 @@ impl ControlProcess {
                 child.wait().ok();
                 return Err(io::Error::new(
                     io::ErrorKind::TimedOut,
-                    "the control process did not exit after probe_quit",
+                    "the control process did not exit after app_quit",
                 ));
             }
             thread::sleep(POLL_INTERVAL);
@@ -163,17 +176,32 @@ impl Drop for ControlProcess {
     }
 }
 
-/// Drain the child's stderr on a reader thread, forwarding every line to the returned receiver.
-fn spawn_stderr_reader(stderr: ChildStderr) -> Receiver<String> {
+/// Drain the child's stderr on a reader thread, forwarding every line to the returned receiver and
+/// appending it to *log* for a failing run's artifact.
+fn spawn_stderr_reader(stderr: ChildStderr, log: &Path) -> Receiver<String> {
     let (lines, received) = mpsc::channel();
+    let log = log.to_path_buf();
     thread::spawn(move || {
+        let mut sink = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log)
+            .ok();
         for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            if let Some(file) = sink.as_mut() {
+                writeln!(file, "{line}").ok();
+            }
             if lines.send(line).is_err() {
                 break;
             }
         }
     });
     received
+}
+
+/// Name the smoke step that failed.
+fn step(name: &str, result: SmokeResult) -> SmokeResult {
+    result.map_err(|error| format!("{name}: {error}").into())
 }
 
 /// Wait for the listening line and return the bound address it names.
@@ -218,34 +246,88 @@ fn assert_access_tree(client: &mut ControlClient) -> SmokeResult {
     Ok(())
 }
 
-/// Assert `probe_echo` echoes its parameters.
-fn assert_command_echo(client: &mut ControlClient) -> SmokeResult {
-    let echo = client.call(
-        "ui.command",
-        json!({"name": "probe_echo", "params": {"x": 1}}),
+/// Return whether any tree node's name or value equals *text*.
+fn tree_mentions(tree: &Value, text: &str) -> bool {
+    tree_nodes(tree).iter().any(|node| {
+        node.get("name").and_then(Value::as_str) == Some(text)
+            || node.get("value").and_then(Value::as_str) == Some(text)
+    })
+}
+
+/// Assert the disabled console controls answer a click and a type without failing.
+fn assert_console_click_and_type(client: &mut ControlClient) -> SmokeResult {
+    let clicked = client.call(
+        "ui.click",
+        json!({"selector": {"role": "Button", "label": "Record"}}),
     )?;
-    assert_eq!(echo, json!({"echo": {"x": 1}}));
+    assert_eq!(clicked, Value::Null);
+
+    // The entry is closed with no ride, so the typed text reaches nothing and nothing breaks.
+    let typed = client.call(
+        "ui.type",
+        json!({"selector": {"role": "TextInput", "label": "Plate"}, "text": "abc"}),
+    )?;
+    assert_eq!(typed, Value::Null);
+    let tree = client.call("ui.accessTree", json!({}))?;
+    assert!(
+        !tree_nodes(&tree).is_empty(),
+        "the console still renders after the input: {tree}"
+    );
     Ok(())
 }
 
-/// Assert a selector click and a selector type reach the probe surface.
+/// Assert the Exit row raises the native confirmation, and `ui.dialog.cancel` dismisses it.
+fn assert_native_confirm_cancels(client: &mut ControlClient) -> SmokeResult {
+    let opened = client.call("ui.command", json!({"name": "wxID_EXIT"}))?;
+    assert_eq!(opened, json!({"ok": true}));
+    let tree = client.call("ui.accessTree", json!({}))?;
+    assert!(
+        tree_mentions(&tree, "Quit RiverCrossing?"),
+        "the quit confirmation is open: {tree}"
+    );
+    let cancelled = client.call("ui.dialog.cancel", json!({}))?;
+    assert_eq!(
+        cancelled.get("event"),
+        Some(&json!("cancelled")),
+        "the confirmation reports its cancel: {cancelled}"
+    );
+    let after = client.call("ui.accessTree", json!({}))?;
+    assert!(
+        !tree_mentions(&after, "Quit RiverCrossing?"),
+        "the confirmation closed: {after}"
+    );
+    Ok(())
+}
+
+/// Assert `mi_new_ride` answers ok and the settled tree shows the setup dialog.
+fn assert_command_opens_setup(client: &mut ControlClient) -> SmokeResult {
+    let opened = client.call("ui.command", json!({"name": "mi_new_ride"}))?;
+    assert_eq!(opened, json!({"ok": true}));
+    let tree = client.call("ui.accessTree", json!({}))?;
+    assert!(
+        tree_mentions(&tree, "Ride Setup"),
+        "the setup dialog is open: {tree}"
+    );
+    Ok(())
+}
+
+/// Assert a selector click and a selector type reach the setup form's name field.
 fn assert_click_and_type(client: &mut ControlClient) -> SmokeResult {
-    let clicked = client.call("ui.click", json!({"selector": {"action": "probe_echo"}}))?;
+    let selector = json!({"role": "TextInput", "label": "Ride name"});
+    let clicked = client.call("ui.click", json!({"selector": selector}))?;
     assert_eq!(clicked, Value::Null);
 
     let typed = client.call(
         "ui.type",
-        json!({"selector": {"action": "probe_input"}, "text": "abc"}),
+        json!({"selector": selector, "text": "smoke ride"}),
     )?;
     assert_eq!(typed, Value::Null);
-    let field = client.call("ui.command", json!({"name": "probe_echo"}))?;
-    assert_eq!(field, json!({"echo": "abc"}));
-    let typed_tree = client.call("ui.accessTree", json!({}))?;
+    let tree = client.call("ui.accessTree", json!({}))?;
     assert!(
-        tree_nodes(&typed_tree)
+        tree_nodes(&tree)
             .iter()
-            .any(|node| node.get("value") == Some(&json!("abc"))),
-        "the settled tree shows the typed value: {typed_tree}"
+            .any(|node| node.get("value") == Some(&json!("smoke ride"))),
+        "the settled tree shows the typed name: {tree}"
     );
     Ok(())
 }
@@ -293,9 +375,9 @@ fn assert_resize(client: &mut ControlClient) -> SmokeResult {
     Ok(())
 }
 
-/// Assert `probe_quit` replies and the process exits successfully.
+/// Assert `app_quit` replies and the process exits successfully.
 fn assert_quit(client: &mut ControlClient, app: ControlProcess) -> SmokeResult {
-    let bye = client.call("ui.command", json!({"name": "probe_quit"}))?;
+    let bye = client.call("ui.command", json!({"name": "app_quit"}))?;
     assert_eq!(bye, json!({"bye": true}));
     let status = app.wait_for_exit()?;
     assert!(status.success(), "the control run exits 0, got {status:?}");
@@ -307,15 +389,27 @@ fn control_channel_smoke() -> SmokeResult {
     // Arrange: the real binary, the fixed token and the repository root as its working directory.
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut app = ControlProcess::spawn(&workspace)?;
-    let lines = spawn_stderr_reader(app.take_stderr()?);
+    let lines = spawn_stderr_reader(
+        app.take_stderr()?,
+        &workspace.join("target/control/control-smoke.log"),
+    );
     let address = wait_for_address(&lines)?;
+    thread::sleep(SETTLE_DELAY);
     let mut client = ControlClient::connect(address, CONTROL_TOKEN)?;
 
     // Act and assert: one live-channel step per helper.
-    assert_access_tree(&mut client)?;
-    assert_command_echo(&mut client)?;
-    assert_click_and_type(&mut client)?;
-    assert_screenshot(&mut client, &workspace)?;
-    assert_resize(&mut client)?;
-    assert_quit(&mut client, app)
+    step("access tree", assert_access_tree(&mut client))?;
+    step(
+        "console click and type",
+        assert_console_click_and_type(&mut client),
+    )?;
+    step(
+        "exit confirmation",
+        assert_native_confirm_cancels(&mut client),
+    )?;
+    step("new ride command", assert_command_opens_setup(&mut client))?;
+    step("setup click and type", assert_click_and_type(&mut client))?;
+    step("screenshot", assert_screenshot(&mut client, &workspace))?;
+    step("resize", assert_resize(&mut client))?;
+    step("app_quit", assert_quit(&mut client, app))
 }

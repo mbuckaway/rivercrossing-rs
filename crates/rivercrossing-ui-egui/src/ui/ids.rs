@@ -321,6 +321,13 @@ pub(crate) const WINDOWS: &[WindowControls] = &[
 
 /// Return the frozen control ids of the window, or `None` when the window is unknown.
 #[must_use]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the drift test reads the frozen controls through this lookup"
+    )
+)]
 pub(crate) fn controls(window: &str) -> Option<&'static [&'static str]> {
     WINDOWS
         .iter()
@@ -344,6 +351,13 @@ pub(crate) enum FieldKind {
 impl FieldKind {
     /// Return the stable name, as the machine block spells it.
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the machine-block spelling the drift test renders"
+        )
+    )]
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::Text => "text",

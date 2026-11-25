@@ -13,8 +13,8 @@ use rivercrossing_store::Store;
 use rstest::rstest;
 
 use super::{
-    FeedRow, StopLight, clock_fraction, counters, current_lap, feed_rows, filter_rows,
-    format_duration, is_miss, review_rows, status_text, stop_light_mode,
+    FeedRow, StopLight, clock_fraction, clock_seconds, counters, current_lap, feed_rows,
+    filter_rows, format_duration, is_miss, review_rows, status_text, stop_light_mode,
 };
 
 /// The ride name every fixture uses.
@@ -146,6 +146,7 @@ fn row(plate: &str, name: &str, card: Option<&str>) -> FeedRow {
         name: name.to_owned(),
         lap: 1,
         lap_time: 100.0,
+        total_time: 100.0,
         card: card.map(str::to_owned),
         flagged: false,
         edited: false,
@@ -706,5 +707,133 @@ fn test_review_rows_word_a_duplicate_crossing() -> Result<(), String> {
             .collect::<Vec<_>>(),
         vec!["Duplicate crossing", "Duplicate crossing"]
     );
+    Ok(())
+}
+
+// ---------------------------------------------------------------- clock
+
+#[test]
+fn test_clock_seconds_is_zero_for_a_draft_ride() -> Result<(), String> {
+    // Arrange
+    let engine = draft_engine(&fixture_config(1200, true)?, &solo_roster()?)?;
+
+    // Act
+    let seconds = clock_seconds(&engine, None);
+
+    // Assert
+    assert!(seconds.abs() < f64::EPSILON);
+    Ok(())
+}
+
+#[test]
+fn test_clock_seconds_reads_the_live_clock_for_a_running_ride() -> Result<(), String> {
+    // Arrange
+    let engine = running_engine(&fixture_config(1200, true)?, &solo_roster()?)?;
+
+    // Act
+    let seconds = clock_seconds(&engine, None);
+
+    // Assert
+    assert!(
+        (0.0..60.0).contains(&seconds),
+        "the live clock reads {seconds}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_clock_seconds_keeps_the_frozen_reading_when_stopped() -> Result<(), String> {
+    // Arrange
+    let mut engine = running_engine(&fixture_config(1200, true)?, &solo_roster()?)?;
+    engine.stop().map_err(|error| error.to_string())?;
+
+    // Act
+    let seconds = clock_seconds(&engine, Some(120.0));
+
+    // Assert
+    assert!((seconds - 120.0).abs() < f64::EPSILON);
+    Ok(())
+}
+
+#[test]
+fn test_clock_seconds_is_zero_when_stopped_without_a_frozen_reading() -> Result<(), String> {
+    // Arrange
+    let mut engine = running_engine(&fixture_config(1200, true)?, &solo_roster()?)?;
+    engine.stop().map_err(|error| error.to_string())?;
+
+    // Act
+    let seconds = clock_seconds(&engine, None);
+
+    // Assert
+    assert!(seconds.abs() < f64::EPSILON);
+    Ok(())
+}
+
+#[rstest]
+#[case(true)]
+#[case(false)]
+fn test_clock_seconds_reads_the_closed_elapsed_for_a_closed_ride(
+    #[case] reopen: bool,
+) -> Result<(), String> {
+    // Arrange
+    let mut engine = running_engine(&fixture_config(1200, true)?, &solo_roster()?)?;
+    engine.finish(&[]).map_err(|error| error.to_string())?;
+    if reopen {
+        engine.reopen().map_err(|error| error.to_string())?;
+    }
+
+    // Act
+    let seconds = clock_seconds(&engine, Some(99.0));
+
+    // Assert
+    assert!((seconds - engine.closed_elapsed()).abs() < f64::EPSILON);
+    assert!(
+        (0.0..60.0).contains(&seconds),
+        "the closed clock reads {seconds}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_feed_rows_carry_the_running_total() -> Result<(), String> {
+    // Arrange
+    let roster = solo_roster()?;
+    let mut engine = running_engine(&fixture_config(1200, true)?, &roster)?;
+    let _ = engine.record_crossing(PLATE, None);
+    let _ = engine.record_crossing(PLATE, None);
+
+    // Act
+    let rows = feed_rows(&engine, &roster);
+
+    // Assert
+    assert_eq!(rows.len(), 2);
+    let newest = &rows[0];
+    let oldest = &rows[1];
+    assert!(
+        (oldest.total_time - oldest.lap_time).abs() < 1e-6,
+        "the first lap's total is its lap time: {oldest:?}"
+    );
+    assert!(
+        (newest.total_time - (oldest.lap_time + newest.lap_time)).abs() < 1e-6,
+        "the second lap's total is the sum: {newest:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_a_miss_row_has_no_total() -> Result<(), String> {
+    // Arrange
+    let roster = solo_roster()?;
+    let mut engine = running_engine(&fixture_config(1200, true)?, &roster)?;
+    engine
+        .record_miss(Timestamp::now_utc(), "missed number")
+        .map_err(|error| error.to_string())?;
+
+    // Act
+    let rows = feed_rows(&engine, &roster);
+
+    // Assert
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].total_time.abs() < f64::EPSILON);
     Ok(())
 }

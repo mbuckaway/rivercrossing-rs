@@ -53,6 +53,8 @@ pub(crate) struct FeedRow {
     pub(crate) lap: u32,
     /// The derived lap time in seconds; zero for a miss.
     pub(crate) lap_time: f64,
+    /// The running total from the gun to this crossing, in seconds; zero for a miss.
+    pub(crate) total_time: f64,
     /// The dealt card code, or `None` for a miss.
     pub(crate) card: Option<String>,
     /// Whether the lap came in under the ride's minimum lap.
@@ -135,6 +137,21 @@ pub(crate) fn format_duration(seconds: f64) -> String {
 )]
 fn whole_seconds(seconds: f64) -> u64 {
     seconds.max(0.0).trunc() as u64
+}
+
+/// Return the seconds that the console's clocks show for *engine*.
+///
+/// A draft ride shows zero, a live running ride reads the wall clock, a stopped ride keeps the
+/// reading captured when it stopped, and a closed ride shows the recorded finish instant. The
+/// `frozen` reading is the console's captured value; `None` leaves a stopped ride at zero.
+#[must_use]
+pub(crate) fn clock_seconds(engine: &RideEngine<Roster, SystemClock>, frozen: Option<f64>) -> f64 {
+    match engine.state() {
+        RideStatus::Draft => 0.0,
+        RideStatus::Running if engine.stopped() => frozen.unwrap_or(0.0),
+        RideStatus::Running => engine.elapsed().unwrap_or(0.0),
+        RideStatus::Finished | RideStatus::Reopened => engine.closed_elapsed(),
+    }
 }
 
 /// Return *seconds* as a 0.0..=1.0 dial fraction of *total*.
@@ -312,6 +329,7 @@ fn miss_row() -> FeedRow {
         name: MISS_NAME.to_owned(),
         lap: 0,
         lap_time: 0.0,
+        total_time: 0.0,
         card: None,
         flagged: false,
         edited: false,
@@ -384,6 +402,18 @@ impl<'a> FeedContext<'a> {
             .unwrap_or(0.0)
     }
 
+    /// Return the running total from the gun to the crossing, or zero when it is unknown.
+    fn total_time(&self, crossing: &Crossing) -> f64 {
+        usize::try_from(crossing.seq)
+            .ok()
+            .and_then(|seq| {
+                self.times
+                    .get(&crossing.entry_id)
+                    .map(|times| times.iter().take(seq).sum())
+            })
+            .unwrap_or(0.0)
+    }
+
     /// Return whether the crossing's lap is under the ride's minimum lap.
     fn is_short_lap(&self, crossing: &Crossing, lap_time: f64) -> bool {
         let known = usize::try_from(crossing.seq).is_ok_and(|seq| {
@@ -404,6 +434,7 @@ fn crossing_row(context: &FeedContext<'_>, crossing: &Crossing) -> FeedRow {
         name: name_text(entry.as_ref(), crossing),
         lap: crossing.seq,
         lap_time,
+        total_time: context.total_time(crossing),
         card: card_code(context.engine, crossing),
         flagged: context.is_short_lap(crossing, lap_time),
         edited: context.edited.contains(&crossing_key(crossing)),

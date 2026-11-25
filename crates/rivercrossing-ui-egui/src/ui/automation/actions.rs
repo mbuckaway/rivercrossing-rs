@@ -114,7 +114,21 @@ fn action_id(name: &str) -> Option<ActionId> {
 }
 
 /// Activate the top dialog's Enter button and report the event.
+///
+/// A native confirmation is the top dialog while no [`crate::ui::dialogs::stack::DialogStack`]
+/// dialog is open, so the same method confirms it.
 fn confirm(state: &mut AppState) -> Result<Value, String> {
+    if state.dialogs.is_empty() {
+        return if state.confirm_native() {
+            Ok(json!({
+                "event": "confirmed",
+                "button": "OK",
+                "opener": null,
+            }))
+        } else {
+            Err(NO_DIALOG.to_owned())
+        };
+    }
     match state.dialogs.confirm() {
         Ok(DialogEvent::Confirmed { button, opener, .. }) => Ok(json!({
             "event": "confirmed",
@@ -126,7 +140,21 @@ fn confirm(state: &mut AppState) -> Result<Value, String> {
 }
 
 /// Activate the top dialog's Esc button and report the event.
+///
+/// A native confirmation is the top dialog while no [`crate::ui::dialogs::stack::DialogStack`]
+/// dialog is open, so the same method cancels it.
 fn cancel(state: &mut AppState) -> Result<Value, String> {
+    if state.dialogs.is_empty() {
+        return if state.cancel_native() {
+            Ok(json!({
+                "event": "cancelled",
+                "button": "Cancel",
+                "opener": null,
+            }))
+        } else {
+            Err(NO_DIALOG.to_owned())
+        };
+    }
     match state.dialogs.cancel() {
         Ok(DialogEvent::Cancelled { id, opener }) => Ok(json!({
             "event": "cancelled",

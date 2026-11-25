@@ -109,6 +109,106 @@ pub(crate) enum NativeDialog {
     Error,
 }
 
+/// The §15 menu section that holds an action.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MenuSection {
+    /// The File menu.
+    File,
+    /// The Ride menu.
+    Ride,
+    /// The Riders menu.
+    Riders,
+    /// The Cards menu.
+    Cards,
+    /// The Results menu.
+    Results,
+    /// The View menu.
+    View,
+    /// The Help menu.
+    Help,
+}
+
+impl MenuSection {
+    /// The seven sections, in §15 menu order.
+    pub(crate) const ALL: [Self; 7] = [
+        Self::File,
+        Self::Ride,
+        Self::Riders,
+        Self::Cards,
+        Self::Results,
+        Self::View,
+        Self::Help,
+    ];
+
+    /// Return the menu title.
+    #[must_use]
+    pub(crate) const fn title(self) -> &'static str {
+        match self {
+            Self::File => "File",
+            Self::Ride => "Ride",
+            Self::Riders => "Riders",
+            Self::Cards => "Cards",
+            Self::Results => "Results",
+            Self::View => "View",
+            Self::Help => "Help",
+        }
+    }
+}
+
+/// Return the §15 menu section that holds the action.
+#[must_use]
+pub(crate) fn section(action: ActionId) -> MenuSection {
+    match action {
+        id::MI_OPEN_LIBRARY
+        | id::MI_DUPLICATE_RIDE
+        | id::MI_IMPORT_CSV
+        | id::MI_EXPORT_CSV
+        | id::MI_BACKUP_NOW
+        | id::MI_SIMULATION
+        | id::WX_ID_PREFERENCES
+        | id::WX_ID_EXIT => MenuSection::File,
+        id::MI_NEW_RIDE
+        | id::MI_EDIT_RIDE
+        | id::MI_START_RIDE
+        | id::MI_STOP_RIDE
+        | id::MI_SET_START_TIME
+        | id::MI_FINISH_RIDE
+        | id::MI_REOPEN_RIDE
+        | id::MI_AUDIT_TRAIL
+        | id::MI_CLEAR_RIDE => MenuSection::Ride,
+        id::MI_RIDER_EDITOR | id::MI_TEAM_EDITOR | id::MI_CHECK_RIDER_ISSUES | id::MI_MARK_DNF => {
+            MenuSection::Riders
+        }
+        id::MI_UNDO_CROSSING | id::MI_ADD_CROSSING_AT | id::MI_DEAL_MANUAL => MenuSection::Cards,
+        id::MI_STANDINGS
+        | id::MI_EXPORT_HTML
+        | id::MI_EXPORT_PDF
+        | id::MI_EXPORT_POSTER
+        | id::MI_EXPORT_POSTER_HTML
+        | id::MI_EXPORT_RESULTS_CSV
+        | id::MI_PREVIEW_HTML_BROWSER
+        | id::MI_PREVIEW_POSTER_HTML_BROWSER
+        | id::MI_PREVIEW_PDF_BROWSER
+        | id::MI_PUBLISH_WORDPRESS
+        | id::MI_SHOW_TIMES
+        | id::MI_LAPS_BOARD
+        | id::MI_TIME_BOARD
+        | id::MI_FULL_FIELD
+        | id::MI_ALL_CARDS
+        | id::MI_SHOW_DNS_RIDERS => MenuSection::Results,
+        id::MI_SHOW_TOTAL_TIMES
+        | id::MI_SHOW_LAP_TIME
+        | id::MI_ZOOM_90
+        | id::MI_ZOOM_100
+        | id::MI_ZOOM_110
+        | id::MI_ZOOM_120
+        | id::MI_ZOOM_130
+        | id::MI_ZOOM_140
+        | id::MI_ZOOM_150 => MenuSection::View,
+        _ => MenuSection::Help,
+    }
+}
+
 /// The keyboard key a shortcut uses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Key {
@@ -150,6 +250,13 @@ impl CommandId {
 impl CheckKind {
     /// Return the stable `snake_case` name, as the machine block spells it.
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the machine-block spelling the drift test renders"
+        )
+    )]
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::PublishShowTimes => "publish_show_times",
@@ -191,6 +298,13 @@ impl Key {
 
 /// Return the target as the machine block writes it: one typed object per target kind.
 #[must_use]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the machine-block rendering the drift test compares"
+    )
+)]
 pub(crate) fn target_json(target: Target) -> Value {
     match target {
         Target::Window(window) => json!({ "kind": "window", "window": window }),
@@ -210,6 +324,19 @@ pub(crate) struct Shortcut {
     pub(crate) key: Key,
     /// Whether the command modifier (Ctrl on Linux and Windows, Command on macOS) applies.
     pub(crate) command: bool,
+}
+
+impl Shortcut {
+    /// Return the menu row's shortcut text, such as `Ctrl+Z` or `F5`.
+    #[must_use]
+    pub(crate) fn text(self) -> String {
+        let key = self.key.as_str().to_uppercase();
+        if self.command {
+            format!("Ctrl+{key}")
+        } else {
+            key
+        }
+    }
 }
 
 /// One §15 row.

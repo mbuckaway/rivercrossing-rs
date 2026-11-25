@@ -7,7 +7,10 @@ use std::collections::BTreeSet;
 use rstest::rstest;
 use serde_json::json;
 
-use super::{ACTIONS, CheckKind, CommandId, Key, NativeDialog, Target, spec, target_json};
+use super::{
+    ACTIONS, CheckKind, CommandId, Key, MenuSection, NativeDialog, Shortcut, Target, spec,
+    target_json,
+};
 use crate::ui::action::id::{
     MI_CLEAR_RIDE, MI_DUPLICATE_RIDE, MI_FINISH_RIDE, MI_REOPEN_RIDE, MI_STOP_RIDE,
     MI_UNDO_CROSSING, WX_ID_EXIT,
@@ -336,4 +339,94 @@ fn test_target_json_renders_a_native_target() {
         rendered,
         json!({ "kind": "native", "dialog": "danger", "then": "clear_ride" })
     );
+}
+
+// ------------------------------------------------------- menu sections
+
+#[rstest]
+#[case(MenuSection::File, 8)]
+#[case(MenuSection::Ride, 9)]
+#[case(MenuSection::Riders, 4)]
+#[case(MenuSection::Cards, 3)]
+#[case(MenuSection::Results, 16)]
+#[case(MenuSection::View, 9)]
+#[case(MenuSection::Help, 4)]
+fn test_menu_sections_hold_the_section_15_rows(
+    #[case] section: MenuSection,
+    #[case] expected: usize,
+) {
+    // Act
+    let rows = ACTIONS
+        .iter()
+        .filter(|row| super::section(row.id) == section)
+        .count();
+
+    // Assert
+    assert_eq!(rows, expected);
+}
+
+#[test]
+fn test_every_action_maps_to_one_of_the_seven_sections() {
+    // Act
+    let sections: Vec<MenuSection> = ACTIONS.iter().map(|row| super::section(row.id)).collect();
+
+    // Assert
+    assert_eq!(sections.len(), 53);
+    assert_eq!(
+        MenuSection::ALL
+            .iter()
+            .map(|section| sections.iter().filter(|found| *found == section).count())
+            .sum::<usize>(),
+        53
+    );
+}
+
+#[test]
+fn test_the_menu_sections_follow_table_order() {
+    // Act
+    let ordered: Vec<MenuSection> = ACTIONS.iter().map(|row| super::section(row.id)).collect();
+
+    // Assert: a section's rows are contiguous, in the §15 menu order.
+    let mut runs: Vec<MenuSection> = Vec::new();
+    for section in ordered {
+        if runs.last() != Some(&section) {
+            runs.push(section);
+        }
+    }
+    assert_eq!(runs, MenuSection::ALL.to_vec());
+}
+
+#[rstest]
+#[case(MenuSection::File, "File")]
+#[case(MenuSection::Ride, "Ride")]
+#[case(MenuSection::Riders, "Riders")]
+#[case(MenuSection::Cards, "Cards")]
+#[case(MenuSection::Results, "Results")]
+#[case(MenuSection::View, "View")]
+#[case(MenuSection::Help, "Help")]
+fn test_menu_section_titles(#[case] section: MenuSection, #[case] expected: &str) {
+    // Act
+    let title = section.title();
+
+    // Assert
+    assert_eq!(title, expected);
+}
+
+#[rstest]
+#[case(Key::Z, true, "Ctrl+Z")]
+#[case(Key::F5, false, "F5")]
+#[case(Key::F1, false, "F1")]
+fn test_shortcut_text_names_the_command_modifier(
+    #[case] key: Key,
+    #[case] command: bool,
+    #[case] expected: &str,
+) {
+    // Arrange
+    let shortcut = Shortcut { key, command };
+
+    // Act
+    let text = shortcut.text();
+
+    // Assert
+    assert_eq!(text, expected);
 }

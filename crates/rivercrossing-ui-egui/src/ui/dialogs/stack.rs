@@ -34,6 +34,13 @@ pub(crate) struct OpenDialog {
 
 /// One key routed to the top dialog.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Tab and Shift+Tab reach the stack when the dialog key router lands"
+    )
+)]
 pub(crate) enum Key {
     /// Cancel the top dialog.
     Escape,
@@ -133,6 +140,24 @@ impl DialogStack {
         let mut dialog = self.pop()?;
         let spec = spec_of(dialog.id)?;
         let button = primary_button(spec);
+        dialog.confirmed_button = Some(button);
+        Ok(DialogEvent::Confirmed {
+            id: dialog.id,
+            button,
+            opener: dialog.opener,
+        })
+    }
+
+    /// Activate the named button on the top dialog, popping it and reporting the event.
+    ///
+    /// The view calls this for the button the operator clicked, so a custom or destructive button
+    /// reports its own id rather than the dialog's default.
+    ///
+    /// # Errors
+    ///
+    /// Returns `NotOpen` when no dialog is open.
+    pub(crate) fn activate(&mut self, button: Button) -> Result<DialogEvent, DialogError> {
+        let mut dialog = self.pop()?;
         dialog.confirmed_button = Some(button);
         Ok(DialogEvent::Confirmed {
             id: dialog.id,

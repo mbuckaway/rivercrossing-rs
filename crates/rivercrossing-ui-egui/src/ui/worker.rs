@@ -220,6 +220,13 @@ impl StoreWorker {
         self.replies.try_iter().collect()
     }
 
+    /// Return the next reply, waiting for the store thread to answer.
+    ///
+    /// The app drains without waiting; a test that drives one command end to end uses this.
+    pub(crate) fn recv(&self) -> Option<Reply> {
+        self.replies.recv().ok()
+    }
+
     /// Stop the store thread and stamp the session closed.
     ///
     /// # Errors

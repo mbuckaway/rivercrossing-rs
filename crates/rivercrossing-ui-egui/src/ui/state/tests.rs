@@ -3,8 +3,6 @@
 //! Unit tests for the app state: the phase and gate projections, the status
 //! notice, the settings write, the new-ride seed and the action execution.
 
-use std::path::PathBuf;
-
 use pretty_assertions::assert_eq;
 use rivercrossing_ride::{
     EntryMode, PlateModel, RideConfig, RideConfigParams, RideEngine, SystemClock,
@@ -25,7 +23,9 @@ use crate::ui::action::id::{
     WX_ID_EXIT,
 };
 use crate::ui::action::spec::{CheckKind, CommandId, NativeDialog};
-use crate::ui::dialogs::stack::{DialogStack, Focus};
+use crate::ui::dialogs::stack::Focus;
+use crate::ui::presenters::console::RIDE_STARTED;
+use crate::ui::sound::Cue;
 
 /// The ride name every fixture uses.
 const RIDE_NAME: &str = "GORBA EPIC 2026";
@@ -48,6 +48,7 @@ fn fixture_config() -> Result<RideConfig, String> {
         scorer: "K. Singh".to_owned(),
         entry_mode: EntryMode::Mixed,
         plate_model: PlateModel::RiderPooled,
+        min_lap_s: 1200,
         ..RideConfigParams::default()
     })
     .map_err(|error| error.to_string())
@@ -72,17 +73,7 @@ fn fixture_roster() -> Result<Roster, String> {
 
 /// Return an empty app state over the default settings.
 fn empty_state() -> AppState {
-    AppState {
-        settings: rivercrossing_store::default_settings(),
-        settings_path: PathBuf::new(),
-        ride: None,
-        dialogs: DialogStack::default(),
-        notice: None,
-        exports: ExportPresence::default(),
-        audit_row_count: 0,
-        pending_native: None,
-        pending_command: None,
-    }
+    AppState::blank()
 }
 
 /// Return an empty app state whose settings are written inside a fresh temporary directory.
@@ -484,4 +475,585 @@ fn test_a_failed_settings_save_keeps_the_toggle_and_posts_the_notice() -> Result
     assert_eq!(state.settings.publish_show_times, !before);
     assert_eq!(state.notice, Some(expected));
     Ok(())
+}
+
+// ----------------------------------------------------------- setup dialog
+
+/// Return the app state with the setup dialog open on `fields`.
+fn setup_state(fields: &[(&str, &str)]) -> Result<AppState, String> {
+    let mut state = empty_state();
+    state
+        .dialogs
+        .open("ride_setup_dlg", None)
+        .map_err(|_| "the setup dialog refuses to open".to_owned())?;
+    for (field, value) in fields {
+        state
+            .dialogs
+            .set_field(field, *value)
+            .map_err(|_| format!("the setup dialog refuses `{field}`"))?;
+    }
+    Ok(state)
+}
+
+/// Return every setup field of a complete form.
+fn complete_setup_fields() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("name_input", RIDE_NAME),
+        ("date_picker", "2026-11-25"),
+        ("start_time_picker", "08:00"),
+        ("venue_input", "Sea to Sky Gondola"),
+        ("lap_km_spin", "8.0"),
+        ("organizer_input", "GORBA"),
+        ("scorer_input", "K. Singh"),
+        ("duration_input", "6:00"),
+        ("min_lap_input", "20:00"),
+    ]
+}
+
+#[test]
+fn test_open_setup_dialog_seeds_its_defaults() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    let today = time::Date::from_calendar_date(2026, time::Month::November, 25)
+        .map_err(|error| error.to_string())?;
+
+    // Act
+    state.open_setup_dialog(today);
+
+    // Assert
+    assert_eq!(
+        state.dialogs.field("date_picker"),
+        Some("2026-11-25".to_owned()).as_deref()
+    );
+    assert_eq!(state.dialogs.field("start_time_picker"), Some("08:00"));
+    assert_eq!(state.dialogs.field("duration_input"), Some("6:00"));
+    assert_eq!(state.dialogs.field("min_lap_input"), Some("20:00"));
+    assert_eq!(state.dialogs.field("lap_km_spin"), Some("8.0"));
+    assert_eq!(state.dialogs.field("team_size_spin"), Some("4"));
+    assert_eq!(state.dialogs.field("decks_spin"), Some("8"));
+    assert_eq!(state.dialogs.field("jokers_spin"), Some("1"));
+    assert_eq!(state.dialogs.field("cap_choice"), Some("Disabled"));
+    assert_eq!(state.dialogs.field("name_input"), None);
+    Ok(())
+}
+
+#[test]
+fn test_submit_setup_stores_the_pending_config() -> Result<(), String> {
+    // Arrange
+    let mut state = setup_state(&complete_setup_fields())?;
+
+    // Act
+    let result = state.submit_setup();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(
+        state.pending_create.map(|config| config.name),
+        Some(RIDE_NAME.to_owned())
+    );
+    assert_eq!(state.setup_errors, None);
+    assert!(state.dialogs.is_empty());
+    Ok(())
+}
+
+#[test]
+fn test_submit_setup_reports_a_malformed_field() -> Result<(), String> {
+    // Arrange
+    let mut fields = complete_setup_fields();
+    fields.push(("date_picker", "25/11/2026"));
+    let mut state = setup_state(&fields)?;
+
+    // Act
+    let result = state.submit_setup();
+
+    // Assert
+    assert_eq!(
+        result,
+        Err(vec!["Date must be YYYY-MM-DD, got '25/11/2026'".to_owned()])
+    );
+    assert_eq!(state.pending_create, None);
+    assert_eq!(
+        state.setup_errors,
+        Some(vec!["Date must be YYYY-MM-DD, got '25/11/2026'".to_owned()])
+    );
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("ride_setup_dlg")
+    );
+    Ok(())
+}
+
+#[test]
+fn test_submit_setup_reports_the_minimum_violations() -> Result<(), String> {
+    // Arrange
+    let mut fields = complete_setup_fields();
+    fields.push(("venue_input", ""));
+    let mut state = setup_state(&fields)?;
+
+    // Act
+    let result = state.submit_setup();
+
+    // Assert
+    assert_eq!(result, Err(vec!["venue is required".to_owned()]));
+    assert_eq!(state.pending_create, None);
+    Ok(())
+}
+
+#[test]
+fn test_submit_setup_given_no_dialog_reports_it() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    let result = state.submit_setup();
+
+    // Assert
+    assert_eq!(result, Err(vec!["No ride setup dialog is open".to_owned()]));
+    assert_eq!(state.pending_create, None);
+}
+
+#[test]
+fn test_submit_setup_given_another_dialog_reports_it() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state
+        .dialogs
+        .open("about_dlg", None)
+        .map_err(|_| "the about dialog refuses to open".to_owned())?;
+
+    // Act
+    let result = state.submit_setup();
+
+    // Assert
+    assert_eq!(result, Err(vec!["No ride setup dialog is open".to_owned()]));
+    Ok(())
+}
+
+// ------------------------------------------------------------ plate entry
+
+#[test]
+fn test_submit_plate_records_a_crossing_and_queues_the_cue() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Running)?;
+    state.plate = PLATE.to_owned();
+
+    // Act
+    state.submit_plate();
+
+    // Assert
+    assert_eq!(
+        state.notice,
+        Some(format!(
+            "Recorded plate {PLATE} — short lap flagged for review"
+        ))
+    );
+    assert_eq!(state.pending_cues, vec![Cue::Flagged]);
+    assert_eq!(state.plate, "");
+    let crossings = state
+        .ride
+        .as_ref()
+        .map(|ride| ride.engine.crossings().len());
+    assert_eq!(crossings, Some(1));
+    Ok(())
+}
+
+#[test]
+fn test_submit_plate_given_a_blank_plate_is_silent_and_keeps_the_field() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Running)?;
+    state.plate = "  ".to_owned();
+
+    // Act
+    state.submit_plate();
+
+    // Assert
+    assert_eq!(state.notice, None);
+    assert_eq!(state.pending_cues, Vec::new());
+    assert_eq!(state.plate, "  ");
+    Ok(())
+}
+
+#[test]
+fn test_submit_plate_given_an_unknown_plate_keeps_the_field_and_buzzes() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Running)?;
+    state.plate = "999".to_owned();
+
+    // Act
+    state.submit_plate();
+
+    // Assert
+    assert_eq!(state.notice, Some("Unknown plate 999".to_owned()));
+    assert_eq!(state.pending_cues, vec![Cue::Error]);
+    assert_eq!(state.plate, "999");
+    Ok(())
+}
+
+#[test]
+fn test_submit_plate_without_a_ride_is_inert() {
+    // Arrange
+    let mut state = empty_state();
+    state.plate = PLATE.to_owned();
+
+    // Act
+    state.submit_plate();
+
+    // Assert
+    assert_eq!(state.notice, None);
+    assert_eq!(state.pending_cues, Vec::new());
+    assert_eq!(state.plate, PLATE);
+}
+
+// ------------------------------------------------------------- lifecycle
+
+#[test]
+fn test_start_ride_posts_the_notice_and_clears_the_frozen_clock() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Draft)?;
+    state.clock_frozen = Some(42.0);
+
+    // Act
+    state.start_ride();
+
+    // Assert
+    assert_eq!(state.notice, Some(RIDE_STARTED.to_owned()));
+    assert_eq!(state.clock_frozen, None);
+    assert_eq!(state.phase(), RidePhase::Running);
+    Ok(())
+}
+
+#[test]
+fn test_start_ride_given_a_blocked_draft_opens_the_blocked_dialog() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    let mut ride =
+        loaded_ride(RidePhase::Draft)?.ok_or_else(|| "the draft ride is not built".to_owned())?;
+    ride.engine
+        .update_config(
+            RideConfig::new(RideConfigParams {
+                lap_km: 8.0,
+                planned_duration_s: 21_600,
+                min_lap_s: 1_200,
+                ..RideConfigParams::default()
+            })
+            .map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+    state.ride = Some(ride);
+
+    // Act
+    state.start_ride();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("start_blocked_dlg")
+    );
+    assert!(
+        state
+            .notice
+            .as_deref()
+            .is_some_and(|notice| notice.contains("name is required")),
+        "the notice names the blocked setup: {:?}",
+        state.notice
+    );
+    Ok(())
+}
+
+#[test]
+fn test_start_ride_without_a_ride_is_inert() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.start_ride();
+
+    // Assert
+    assert_eq!(state.notice, None);
+}
+
+#[test]
+fn test_stop_ride_captures_the_frozen_clock() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Running)?;
+
+    // Act
+    state.stop_ride();
+
+    // Assert
+    assert_eq!(
+        state.notice,
+        Some("Ride stopped — continue to resume".to_owned())
+    );
+    assert!(
+        state.clock_frozen.is_some_and(|frozen| frozen >= 0.0),
+        "the stop captured the clock: {:?}",
+        state.clock_frozen
+    );
+    assert_eq!(state.phase(), RidePhase::RunningStopped);
+    Ok(())
+}
+
+#[test]
+fn test_stop_ride_given_a_draft_posts_the_refusal() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Draft)?;
+
+    // Act
+    state.stop_ride();
+
+    // Assert
+    assert!(
+        state
+            .notice
+            .as_deref()
+            .is_some_and(|notice| notice.starts_with("Cannot stop:")),
+        "the notice names the refusal: {:?}",
+        state.notice
+    );
+    assert_eq!(state.clock_frozen, None);
+    Ok(())
+}
+
+#[test]
+fn test_stop_ride_without_a_ride_is_inert() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.stop_ride();
+
+    // Assert
+    assert_eq!(state.notice, None);
+    assert_eq!(state.clock_frozen, None);
+}
+
+#[test]
+fn test_undo_crossing_without_a_crossing_posts_the_refusal() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Running)?;
+
+    // Act
+    state.undo_crossing();
+
+    // Assert
+    assert_eq!(
+        state.notice,
+        Some("Undo unavailable: nothing to undo".to_owned())
+    );
+    Ok(())
+}
+
+#[test]
+fn test_undo_crossing_given_no_ride_posts_the_refusal() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.undo_crossing();
+
+    // Assert
+    assert_eq!(
+        state.notice,
+        Some("Undo unavailable: nothing to undo".to_owned())
+    );
+}
+
+#[test]
+fn test_finish_and_reopen_post_the_notice() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Running)?;
+
+    // Act
+    state.finish_ride();
+
+    // Assert
+    assert_eq!(
+        state.notice,
+        Some("Ride is finished. Results are available".to_owned())
+    );
+    assert_eq!(state.phase(), RidePhase::Finished);
+
+    // Act
+    state.reopen_ride();
+
+    // Assert
+    assert_eq!(
+        state.notice,
+        Some("Ride reopened for corrections".to_owned())
+    );
+    assert_eq!(state.phase(), RidePhase::Reopened);
+    Ok(())
+}
+
+#[test]
+fn test_finish_ride_without_a_ride_is_inert() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.finish_ride();
+
+    // Assert
+    assert_eq!(state.notice, None);
+}
+
+#[test]
+fn test_reopen_ride_without_a_ride_is_inert() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.reopen_ride();
+
+    // Assert
+    assert_eq!(state.notice, None);
+}
+
+#[test]
+fn test_clear_ride_unloads_the_ride() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Running)?;
+    state.audit_row_count = 3;
+    state.exports = ExportPresence {
+        html: true,
+        poster_html: true,
+        pdf: true,
+    };
+
+    // Act
+    state.clear_ride();
+
+    // Assert
+    assert_eq!(state.notice, Some("Ride cleared".to_owned()));
+    assert_eq!(state.phase(), RidePhase::None);
+    assert_eq!(state.audit_row_count, 0);
+    assert_eq!(state.exports, ExportPresence::default());
+    assert_eq!(state.clock_frozen, None);
+    Ok(())
+}
+
+#[test]
+fn test_finish_ride_given_a_draft_posts_the_refusal() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Draft)?;
+
+    // Act
+    state.finish_ride();
+
+    // Assert
+    assert!(
+        state
+            .notice
+            .as_deref()
+            .is_some_and(|notice| notice.starts_with("Cannot finish:")),
+        "the notice names the refusal: {:?}",
+        state.notice
+    );
+    Ok(())
+}
+
+#[test]
+fn test_reopen_ride_given_a_running_ride_posts_the_refusal() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Running)?;
+
+    // Act
+    state.reopen_ride();
+
+    // Assert
+    assert!(
+        state
+            .notice
+            .as_deref()
+            .is_some_and(|notice| notice.starts_with("Cannot reopen:")),
+        "the notice names the refusal: {:?}",
+        state.notice
+    );
+    Ok(())
+}
+
+// ------------------------------------------------------- native confirms
+
+/// Return an app state whose running ride holds one crossing.
+fn state_with_a_crossing() -> Result<AppState, String> {
+    let mut state = empty_state();
+    let mut ride = loaded_ride(RidePhase::Running)?
+        .ok_or_else(|| "the running ride is not built".to_owned())?;
+    let _ = ride.engine.record_crossing(PLATE, None);
+    state.ride = Some(ride);
+    Ok(state)
+}
+
+#[test]
+fn test_confirm_native_forwards_the_command() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_a_crossing()?;
+    state.act(MI_UNDO_CROSSING).map_err(|e| format!("{e:?}"))?;
+
+    // Act
+    let confirmed = state.confirm_native();
+
+    // Assert
+    assert!(confirmed);
+    assert_eq!(state.pending_native, None);
+    assert_eq!(state.pending_command, Some(CommandId::UndoCrossing));
+    assert_eq!(
+        state
+            .ride
+            .as_ref()
+            .map(|ride| ride.engine.crossings().len()),
+        Some(1),
+        "confirming queues the command; the app runs it on the next pass"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_cancel_native_runs_nothing() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_a_crossing()?;
+    state.act(MI_UNDO_CROSSING).map_err(|e| format!("{e:?}"))?;
+
+    // Act
+    let cancelled = state.cancel_native();
+
+    // Assert
+    assert!(cancelled);
+    assert_eq!(state.pending_native, None);
+    assert_eq!(state.pending_command, None);
+    assert_eq!(
+        state
+            .ride
+            .as_ref()
+            .map(|ride| ride.engine.crossings().len()),
+        Some(1)
+    );
+    Ok(())
+}
+
+#[test]
+fn test_confirm_and_cancel_native_without_a_pending_dialog_report_false() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    let confirmed = state.confirm_native();
+    let cancelled = state.cancel_native();
+
+    // Assert
+    assert!(!confirmed);
+    assert!(!cancelled);
+    assert_eq!(state.pending_command, None);
 }

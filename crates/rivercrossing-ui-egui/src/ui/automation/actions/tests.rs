@@ -3,31 +3,19 @@
 //! Unit tests for the `ui.*` action helpers: the action dispatch, the qualified field reads and
 //! writes, the dialog trio and the click selector.
 
-use std::path::PathBuf;
-
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 use serde_json::{Value, json};
 
 use super::{action_target, command, dialog, inspect, set};
-use crate::ui::dialogs::stack::DialogStack;
-use crate::ui::state::{AppState, ExportPresence};
+use crate::ui::action::spec::{CommandId, NativeDialog};
+use crate::ui::state::AppState;
 
 // ------------------------------------------------------------- fixtures
 
 /// Return an empty app state over the default settings.
 fn empty_state() -> AppState {
-    AppState {
-        settings: rivercrossing_store::default_settings(),
-        settings_path: PathBuf::new(),
-        ride: None,
-        dialogs: DialogStack::default(),
-        notice: None,
-        exports: ExportPresence::default(),
-        audit_row_count: 0,
-        pending_native: None,
-        pending_command: None,
-    }
+    AppState::blank()
 }
 
 /// Return the empty state with the ride setup dialog open.
@@ -440,4 +428,54 @@ fn test_action_target_maps_the_console_buttons_and_rejects_the_rest(
 
     // Assert
     assert_eq!(target, expected);
+}
+
+// ------------------------------------------------------ native confirms
+
+#[test]
+fn test_dialog_confirm_queues_a_pending_native_command() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state
+        .act(crate::ui::action::id::MI_BACKUP_NOW)
+        .map_err(|error| format!("{error:?}"))?;
+    state.pending_command = None;
+    state.pending_native = Some(crate::ui::state::PendingNative {
+        dialog: NativeDialog::Danger,
+        then: CommandId::UndoCrossing,
+    });
+
+    // Act
+    let reply = dialog(&mut state, "ui.dialog.confirm", &json!({}))?;
+
+    // Assert
+    assert_eq!(
+        reply,
+        json!({"event": "confirmed", "button": "OK", "opener": null})
+    );
+    assert_eq!(state.pending_native, None);
+    assert_eq!(state.pending_command, Some(CommandId::UndoCrossing));
+    Ok(())
+}
+
+#[test]
+fn test_dialog_cancel_clears_a_pending_native_without_a_command() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.pending_native = Some(crate::ui::state::PendingNative {
+        dialog: NativeDialog::Danger,
+        then: CommandId::UndoCrossing,
+    });
+
+    // Act
+    let reply = dialog(&mut state, "ui.dialog.cancel", &json!({}))?;
+
+    // Assert
+    assert_eq!(
+        reply,
+        json!({"event": "cancelled", "button": "Cancel", "opener": null})
+    );
+    assert_eq!(state.pending_native, None);
+    assert_eq!(state.pending_command, None);
+    Ok(())
 }

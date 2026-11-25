@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-craft = { workspace = true, features = ["automation"] }
+craft = { workspace = true, features = ["automation", "window"] }
 eframe = { workspace = true }
 rivercrossing-ride = { path = "../rivercrossing-ride", version = "=0.1.0" }
 rivercrossing-roster = { path = "../rivercrossing-roster", version = "=0.1.0" }

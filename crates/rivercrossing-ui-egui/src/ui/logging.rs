@@ -34,6 +34,13 @@ pub(crate) struct LaunchLog {
     /// This launch's log path, set even when no file was opened.
     path: PathBuf,
     /// Whether trace records are written.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the verbose gate is read back by the launch-log tests"
+        )
+    )]
     verbose: bool,
     /// The launch instant that names the file and starts the record stamps.
     now: OffsetDateTime,
@@ -71,6 +78,13 @@ impl LaunchLog {
     }
 
     /// Append one trace record when verbose logging is on.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the operator trace records arrive with the later screens"
+        )
+    )]
     pub(crate) fn detail(&mut self, name: &str, fields: Value) {
         if self.verbose {
             self.record(name, fields);
@@ -83,6 +97,10 @@ impl LaunchLog {
     }
 
     /// Return whether trace records are written.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the launch-log tests read the verbose gate back")
+    )]
     pub(crate) fn is_verbose(&self) -> bool {
         self.verbose
     }

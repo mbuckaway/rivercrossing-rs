@@ -496,3 +496,23 @@ fn test_worker_shutdown_closes_the_session() -> Result<(), String> {
     assert!(previous.ended_at.is_some());
     Ok(())
 }
+
+#[test]
+fn test_worker_recv_returns_the_next_reply() -> Result<(), String> {
+    // Arrange
+    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let worker =
+        StoreWorker::start(directory.path().join("rides.db")).map_err(|error| error.to_string())?;
+
+    // Act
+    worker.send(StoreCommand::Rides);
+    let reply = worker
+        .recv()
+        .ok_or_else(|| "the worker sent no reply".to_owned())?;
+    let rows = ride_rows(reply)?;
+    worker.shutdown().map_err(|error| error.to_string())?;
+
+    // Assert
+    assert_eq!(rows.len(), 0);
+    Ok(())
+}
