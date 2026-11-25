@@ -7,7 +7,34 @@ This is the largest EPIC — break it into window/area chunks, one agent per chu
 ## Goal
 
 The egui front end that reproduces the Python app's screens and functionality, driven by a command/
-Action registry (the replacement for XRC frozen names + `ids.py`).
+Action registry (the replacement for XRC frozen names + `ids.py`). It lands as five PRs: **12a**
+foundation, **12b** editors/CSV, **12c** lifecycle/corrections/system, **12d** results/exports/
+publish/simulator, **12e** close-out.
+
+## Chosen approach (recorded before 12a)
+
+- **Window inventory: 30** (§15b file map, `spec.md:392`), not 23 (the stale EPIC-1 screenshot set)
+  and not the prompt's undefined "27". `design/docs-md/gui-windows.md` is produced first, with one
+  fenced JSON machine block (windows/controls/actions/fields) that the ids-drift unit test compares
+  to the Rust registry; the human tables document it. The registry has **53 unique actions** = 50
+  `mi_*` + 3 stock ids (the View row expands to 9 items).
+- **Settings:** `rivercrossing-store::settings` reads/writes the Python `settings.json` schema-
+  compatibly (29 fields, same path, same coercers, atomic, never-raising); `craft-settings` is TOML
+  and is not used. Credentials stay plaintext at parity.
+- **Geometry:** craft-window's `window.json` via `AppSpec.placement`; `splitter_sash` in
+  `settings.json`; Python's `window_geometry` seeds the first run only.
+- **Sound:** universal `rodio` 0.23 (`playback` + `wav`), WAVs embedded with `include_bytes!`, a
+  `SoundBackend` seam; a missing device/asset/cue is silent. Linux needs `libasound2-dev` to build.
+- **Dialogs:** in-crate `DialogStack` over `egui::Modal` owns Esc/Enter/default/focus; native
+  file/message dialogs via `craft-dialogs` with `set_override` as the test seam.
+- **Menu:** `craft::menu` model (`Item`/`CommandRef`/`Chord`) rendered by `craft::ui::menu::MenuBar`.
+- **Async:** one `StoreWorker` thread owns `Store` (R-02); exports/imports/publish/backups run there.
+- **Automation:** `ui.command` dispatches any Action id, `ui.inspect`/`ui.set` use qualified
+  `{field, window?}` ids, `ui.dialog.*` drives the host; `probe_*` is retired for `app_quit`.
+- **Verification split:** every gate, golden and Tier B smoke runs on the headless Linux box (Xvfb +
+  lavapipe); the Mac is needed only for the operator visual pass, audio, native dialogs and Tier C.
+- **Empty Enter is silent** (the Python presenter returns early, `console.py:491-493`); the spec's
+  buzz line (`spec.md:242`) is recorded as a discrepancy to amend.
 
 ## Context
 

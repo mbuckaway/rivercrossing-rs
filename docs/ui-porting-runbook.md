@@ -7,8 +7,37 @@ accumulated knowledge instead of re-learning it.
 ## Status
 
 - [x] EPIC-1 empty egui shell — done
-- [ ] EPIC-10 UI automation & Python-parity harness — next (the mechanism first; no screens)
-- [ ] EPIC-12 egui UI panels + Action registry — not started (inherits the EPIC-10 harness)
+- [x] EPIC-10 UI automation & Python-parity harness — done (Tier A harness, shell golden, live control
+  channel)
+- [ ] EPIC-12 egui UI panels + Action registry — in progress, five PRs: **12a** foundation
+  (`gui-windows.md`, settings, registry, dialogs, state/worker, ride setup + `main_frame` console,
+  sound, logging, theme/zoom, automation), **12b** editors/CSV, **12c** lifecycle/corrections/system,
+  **12d** results/exports/publish/simulator, **12e** close-out (R-73 sweep, R-76 per dialog, Tier C).
+
+## Build prerequisites and the platform split
+
+- **Linux (the build/gate host).** `libasound2-dev` is required once `rodio` lands (cpal's ALSA
+  backend); install it before the first build (`sudo apt-get install -y libasound2-dev`;
+  `pkg-config --exists alsa` must succeed). Offscreen rendering uses Mesa lavapipe, and the Tier B
+  smokes run under `Xvfb` — no display or GPU is needed.
+- **Windows cross-check (not the gate).** `rustup target add x86_64-pc-windows-gnu` plus
+  `gcc-mingw-w64-x86-64`; `scripts/check-windows.sh` wraps
+  `cargo check -p rivercrossing-ui-egui --target x86_64-pc-windows-gnu --locked`. Bundled SQLite is
+  the C dependency; `ring` arrives with the WordPress crate and is re-checked. The authoritative
+  Windows run is at EPIC-13 on a Windows host.
+- **macOS.** CoreAudio needs nothing extra. The Mac checkout is used per PR for the unit+ui legs over
+  SSH; the visual acceptance pass is run at the Mac itself (a GUI app launched over SSH may not
+  attach to the Aqua session).
+- **What the headless host can and cannot verify.** It runs the unit sweep, the snapshot goldens, the
+  Xvfb real-window smokes and every gate item. It cannot play audio (`/dev/snd` is absent — the sound
+  backend must fall back to silence), show a real native dialog without a portal (rfd may answer
+  `Unavailable`), or give a human the visual acceptance judgement. Those are Mac steps; Tier C parity
+  is the Mac's by design.
+- **Recorded decisions.** Geometry lives in craft-window's `window.json` (`splitter_sash` in
+  `settings.json`); settings stay Python-schema JSON in `rivercrossing-store`; WordPress credentials
+  stay plaintext at parity; empty Enter on the plate field is **silent** (Python behaviour —
+  `spec.md:242`'s buzz is the recorded discrepancy); `verbose_logging` gates an NDJSON per-launch log
+  (prune 20).
 
 ## The translation one-liner
 

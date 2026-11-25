@@ -134,15 +134,23 @@ harness it lands.
 - **R-ids:** R-86.
 
 ### EPIC-12 — egui UI + Action registry (`rivercrossing-ui-egui`)
-- **Scope:** reproduce the Python screens from `design/screenshots/` + `xrc-windows.md`; the
-  `Action`/command registry (§15 menu map + §15b frozen ids); presenters' decision logic; console,
-  riders/teams editors, results, audit, settings, dialogs; sound (rodio).
-- **Acceptance:** every EPIC-1..12 acceptance scenario passes against the Python screens; ids-drift
-  and `xtask layers` checks green; keyboard-first + dialog/destructive/menu/a11y per
-  `CODINGSTANDARDS-UX-DESKTOP.md`.
-- **R-ids:** R-02, R-03, R-04, R-05, R-30..R-38, R-51, R-73, R-76, R-79, R-81, R-82, R-83, R-84, R-85;
-  also completes the EPIC-10 partials R-87/R-90/R-91 (full screen/golden coverage and the parity
-  report).
+- **Scope:** reproduce the Python screens from `design/screenshots/` + `xrc-windows.md` (30 windows);
+  the `Action`/command registry (§15 menu map + §15b frozen ids, 53 unique actions); presenters'
+  decision logic; console, riders/teams editors, results, audit, settings, dialogs; sound (rodio).
+- **Delivery — five PRs:** **12a** foundation (`gui-windows.md`, settings in `rivercrossing-store`,
+  registry + ids-drift, `DialogStack`, app state + `StoreWorker`, ride setup + `main_frame` console,
+  sound, NDJSON logging, theme/zoom, automation completion); **12b** riders/teams editors, add
+  dialogs, rider issues, CSV; **12c** ride library, launch/resume/exit/quit, set start, corrections,
+  audit, self-test, settings/about/shortcuts, native-dialog mapping, session/backups; **12d**
+  results/standings, exports + previews, WordPress publish (R-86), simulator; **12e** close-out.
+- **Acceptance per PR:** unit + snapshot goldens + `xtask layers` + coverage green; **Tier B smokes
+  under Xvfb on the Linux host**; operator visual pass on the Mac; at 12e the R-73 route×state
+  matrix, the per-dialog R-76 assertions, the Tier C parity report and every screen golden.
+- **Environment:** the headless Linux box runs every gate, golden and Tier B smoke (Xvfb + lavapipe);
+  audio, native dialogs, visual acceptance and Tier C are Mac-only steps.
+- **R-ids:** R-02, R-03, R-04, R-05, R-21, R-24, R-30..R-38, R-51, R-65, R-73, R-76, R-79, R-81,
+  R-82, R-83, R-84, R-85; also completes the EPIC-10 partials R-87/R-90/R-91 (full screen/golden
+  coverage and the parity report).
 
 ### EPIC-13 — Installers & release
 - **Scope:** macOS **ARM64-only** DMG (`hdiutil`, `aarch64-apple-darwin`; no Intel) → Windows x64+arm64 MSI (WiX v5) + portable zip → Linux x86_64
