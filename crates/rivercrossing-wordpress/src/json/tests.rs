@@ -58,17 +58,16 @@ fn test_as_object_and_as_array_accept_their_own_shape() {
     // Arrange
     let object_payload = json!({"a": 1});
     let array_payload = json!([1, 2]);
+    let expected_object = Map::from_iter([("a".to_owned(), Value::from(1))]);
+    let expected_items = vec![Value::from(1), Value::from(2)];
 
     // Act
-    let object = as_object(object_payload, URL);
-    let array = as_array(array_payload, URL);
+    let object = as_object(&object_payload, URL);
+    let array = as_array(&array_payload, URL);
 
     // Assert
-    assert_eq!(
-        object,
-        Ok(Map::from_iter([("a".to_owned(), Value::from(1))]))
-    );
-    assert_eq!(array, Ok(vec![Value::from(1), Value::from(2)]));
+    assert_eq!(object, Ok(&expected_object));
+    assert_eq!(array, Ok(expected_items.as_slice()));
 }
 
 #[test]
@@ -78,8 +77,8 @@ fn test_as_object_and_as_array_reject_the_other_shape() {
     let object_payload = json!({"a": 1});
 
     // Act
-    let object = as_object(array_payload, URL).map_err(|error| error.to_string());
-    let array = as_array(object_payload, URL).map_err(|error| error.to_string());
+    let object = as_object(&array_payload, URL).map_err(|error| error.to_string());
+    let array = as_array(&object_payload, URL).map_err(|error| error.to_string());
 
     // Assert
     assert_eq!(
@@ -95,10 +94,10 @@ fn test_as_object_and_as_array_reject_the_other_shape() {
 #[test]
 fn test_integer_field_returns_the_integer() {
     // Arrange
-    let mapping = Map::from_iter([("id".to_owned(), Value::from(42))]);
+    let page = json!({"id": 42});
 
     // Act
-    let result = integer_field(&mapping, "id", URL);
+    let result = integer_field(&page, "id", URL);
 
     // Assert
     assert_eq!(result, Ok(42));
@@ -107,15 +106,12 @@ fn test_integer_field_returns_the_integer() {
 #[test]
 fn test_integer_field_given_missing_string_or_boolean() {
     // Arrange
-    let mapping = Map::from_iter([
-        ("text".to_owned(), Value::from("7")),
-        ("flag".to_owned(), Value::Bool(true)),
-    ]);
+    let page = json!({"text": "7", "flag": true});
 
     // Act
-    let missing = integer_field(&mapping, "id", URL).map_err(|error| error.to_string());
-    let text = integer_field(&mapping, "text", URL).map_err(|error| error.to_string());
-    let flag = integer_field(&mapping, "flag", URL).map_err(|error| error.to_string());
+    let missing = integer_field(&page, "id", URL).map_err(|error| error.to_string());
+    let text = integer_field(&page, "text", URL).map_err(|error| error.to_string());
+    let flag = integer_field(&page, "flag", URL).map_err(|error| error.to_string());
 
     // Assert
     assert_eq!(
@@ -125,6 +121,21 @@ fn test_integer_field_given_missing_string_or_boolean() {
             Err("WordPress site https://x returned a response without an integer text".to_owned()),
             Err("WordPress site https://x returned a response without an integer flag".to_owned()),
         ]
+    );
+}
+
+#[test]
+fn test_integer_field_given_a_non_object_page() {
+    // Arrange
+    let page = json!([]);
+
+    // Act
+    let result = integer_field(&page, "id", URL).map_err(|error| error.to_string());
+
+    // Assert
+    assert_eq!(
+        result,
+        Err("WordPress site https://x returned a response without an integer id".to_owned())
     );
 }
 

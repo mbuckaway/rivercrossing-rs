@@ -53,7 +53,8 @@ pub(crate) fn discover_with(
     auth: &BasicAuth,
 ) -> Result<SiteInfo, WordPressError> {
     let url = rest_url(base_url, "wp-json/", &[]);
-    let index = json::as_object(request_json_with(transport, &url, auth, None)?, &url)?;
+    let payload = request_json_with(transport, &url, auth, None)?;
+    let index = json::as_object(&payload, &url)?;
     let application_passwords = index
         .get("authentication")
         .and_then(Value::as_object)

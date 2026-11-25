@@ -34,7 +34,10 @@ pub(crate) fn decode_json(raw: &[u8], url: &str) -> Result<Value, WordPressError
 /// # Errors
 ///
 /// Return [`WordPressError::Unavailable`] when `payload` is not a JSON object.
-pub(crate) fn as_object(payload: Value, url: &str) -> Result<Map<String, Value>, WordPressError> {
+pub(crate) fn as_object<'a>(
+    payload: &'a Value,
+    url: &str,
+) -> Result<&'a Map<String, Value>, WordPressError> {
     match payload {
         Value::Object(mapping) => Ok(mapping),
         _ => Err(WordPressError::unavailable(format!(
@@ -48,7 +51,7 @@ pub(crate) fn as_object(payload: Value, url: &str) -> Result<Map<String, Value>,
 /// # Errors
 ///
 /// Return [`WordPressError::Unavailable`] when `payload` is not a JSON array.
-pub(crate) fn as_array(payload: Value, url: &str) -> Result<Vec<Value>, WordPressError> {
+pub(crate) fn as_array<'a>(payload: &'a Value, url: &str) -> Result<&'a [Value], WordPressError> {
     match payload {
         Value::Array(items) => Ok(items),
         _ => Err(WordPressError::unavailable(format!(
@@ -57,21 +60,19 @@ pub(crate) fn as_array(payload: Value, url: &str) -> Result<Vec<Value>, WordPres
     }
 }
 
-/// Return the integer field `name` of `mapping`.
+/// Return the integer field `name` of `value`.
 ///
-/// A JSON boolean is rejected, matching the Rust reading rather than Python's
-/// `bool`-is-`int` behaviour; `WordPress` never sends a boolean id.
+/// `value` is the containing document, so a page that is not a JSON object
+/// fails with the same message as a missing field. A JSON boolean is rejected,
+/// matching the Rust reading rather than Python's `bool`-is-`int` behaviour;
+/// `WordPress` never sends a boolean id.
 ///
 /// # Errors
 ///
-/// Return [`WordPressError::Unavailable`] when the field is absent or holds no
-/// integer.
-pub(crate) fn integer_field(
-    mapping: &Map<String, Value>,
-    name: &str,
-    url: &str,
-) -> Result<i64, WordPressError> {
-    mapping.get(name).and_then(Value::as_i64).ok_or_else(|| {
+/// Return [`WordPressError::Unavailable`] when `value` is no object, or the
+/// field is absent or holds no integer.
+pub(crate) fn integer_field(value: &Value, name: &str, url: &str) -> Result<i64, WordPressError> {
+    value.get(name).and_then(Value::as_i64).ok_or_else(|| {
         WordPressError::unavailable(format!(
             "WordPress site {url} returned a response without an integer {name}"
         ))

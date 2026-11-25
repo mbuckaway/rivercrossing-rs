@@ -25,6 +25,7 @@ mod discover;
 mod error;
 mod http;
 mod json;
+mod pages;
 
 #[cfg(test)]
 pub(crate) mod mock;
