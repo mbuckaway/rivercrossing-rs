@@ -5519,6 +5519,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rivercrossing-wordpress"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "pretty_assertions",
+ "rstest",
+ "serde_json",
+ "thiserror 2.0.21",
+ "ureq",
+ "url",
+]
+
+[[package]]
 name = "roxmltree"
 version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

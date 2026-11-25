@@ -47,6 +47,11 @@ uuid = { version = "1", features = ["v4"] }
 minijinja = { version = "3.1", features = ["serde"] }
 # Data-URI encoding for the organizer logo.
 base64 = { version = "0.23", default-features = false, features = ["std"] }
+# WordPress REST client (EPIC-11): blocking HTTP over rustls, no tokio. The
+# publish worker is synchronous, exactly the Python oracle's model.
+ureq = { version = "3.5.2", default-features = false, features = ["rustls"] }
+# WordPress REST client: `form_urlencoded` for the query string only.
+url = "2"
 # PDF export: font metrics for card-box sizing (krilla exposes only units_per_em).
 skrifa = "0.42"
 # PDF export: the guarded krilla authoring façade, same craft-libs rev as `craft`.
