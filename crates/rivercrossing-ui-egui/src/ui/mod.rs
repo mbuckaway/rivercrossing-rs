@@ -32,6 +32,14 @@ pub(crate) mod ids;
     not(test),
     expect(
         dead_code,
+        reason = "Phase 6 renders the console and the setup dialog from these presenters; today only the tests read them"
+    )
+)]
+pub(crate) mod presenters;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
         reason = "Phase 5 and Phase 6 read the app state; today only the tests build it"
     )
 )]
