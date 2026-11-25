@@ -28,4 +28,20 @@ pub(crate) mod dialogs;
     )
 )]
 pub(crate) mod ids;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Phase 5 and Phase 6 read the app state; today only the tests build it"
+    )
+)]
+pub(crate) mod state;
 pub mod window;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Phase 6 starts the store worker; today only the tests drive it"
+    )
+)]
+pub(crate) mod worker;

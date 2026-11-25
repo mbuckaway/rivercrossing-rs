@@ -10,14 +10,19 @@ repository.workspace = true
 [dependencies]
 craft = { workspace = true, features = ["automation"] }
 eframe = { workspace = true }
+rivercrossing-ride = { path = "../rivercrossing-ride", version = "=0.1.0" }
+rivercrossing-roster = { path = "../rivercrossing-roster", version = "=0.1.0" }
+rivercrossing-store = { path = "../rivercrossing-store", version = "=0.1.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 craft = { workspace = true, features = ["ui-testing"] }
 egui_kittest = { workspace = true, features = ["snapshot", "wgpu"] }
 pretty_assertions = { workspace = true }
 rstest = { workspace = true }
+tempfile = "3"
 
 [lints]
 workspace = true

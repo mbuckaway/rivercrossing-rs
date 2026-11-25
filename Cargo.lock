@@ -5513,9 +5513,14 @@ dependencies = [
  "eframe",
  "egui_kittest",
  "pretty_assertions",
+ "rivercrossing-ride",
+ "rivercrossing-roster",
+ "rivercrossing-store",
  "rstest",
  "serde",
  "serde_json",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
