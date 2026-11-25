@@ -8,4 +8,28 @@
 
 pub(crate) mod console;
 pub(crate) mod data_source;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the editor views that call these presenters land in the following PR; today the unit tests exercise them"
+    )
+)]
+pub(crate) mod rider_issues;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the editor views that call these presenters land in the following PR; today the unit tests exercise them"
+    )
+)]
+pub(crate) mod riders;
 pub(crate) mod setup;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the editor views that call these presenters land in the following PR; today the unit tests exercise them"
+    )
+)]
+pub(crate) mod teams;
