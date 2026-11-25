@@ -4,12 +4,14 @@
 
 use std::collections::BTreeSet;
 
-use super::{ACTIONS, Key, NativeDialog, Target, spec};
+use rstest::rstest;
+use serde_json::json;
+
+use super::{ACTIONS, CheckKind, CommandId, Key, NativeDialog, Target, spec, target_json};
 use crate::ui::action::id::{
     MI_CLEAR_RIDE, MI_DUPLICATE_RIDE, MI_FINISH_RIDE, MI_REOPEN_RIDE, MI_STOP_RIDE,
     MI_UNDO_CROSSING, WX_ID_EXIT,
 };
-use crate::ui::action::spec::CommandId;
 
 /// The 50 `mi_*` names `spec.md` §15b lists, in menu order.
 const SECTION_15B_MI_IDS: [&str; 50] = [
@@ -202,4 +204,136 @@ fn test_the_native_rows_name_their_follow_on_command() {
     // Assert
     assert_eq!(actual, wanted);
     assert_eq!(native_rows, 7);
+}
+
+#[rstest]
+#[case(CommandId::DuplicateRide, "duplicate_ride")]
+#[case(CommandId::ReopenRide, "reopen_ride")]
+#[case(CommandId::StartRide, "start_ride")]
+#[case(CommandId::StopRide, "stop_ride")]
+#[case(CommandId::FinishRide, "finish_ride")]
+#[case(CommandId::UndoCrossing, "undo_crossing")]
+#[case(CommandId::ClearRide, "clear_ride")]
+#[case(CommandId::BackupNow, "backup_now")]
+#[case(CommandId::ExportHtml, "export_html")]
+#[case(CommandId::ExportPdf, "export_pdf")]
+#[case(CommandId::ExportPoster, "export_poster")]
+#[case(CommandId::ExportPosterHtml, "export_poster_html")]
+#[case(CommandId::ExportCsv, "export_csv")]
+#[case(CommandId::PreviewHtml, "preview_html")]
+#[case(CommandId::PreviewPosterHtml, "preview_poster_html")]
+#[case(CommandId::PreviewPdf, "preview_pdf")]
+#[case(CommandId::OpenUserGuide, "open_user_guide")]
+#[case(CommandId::AppQuit, "app_quit")]
+fn test_command_id_as_str_returns_the_stable_name(#[case] command: CommandId, #[case] name: &str) {
+    // Act
+    let rendered = command.as_str();
+
+    // Assert
+    assert_eq!(rendered, name);
+}
+
+#[rstest]
+#[case(CheckKind::PublishShowTimes, "publish_show_times")]
+#[case(CheckKind::LapsBoard, "laps_board")]
+#[case(CheckKind::TimeBoard, "time_board")]
+#[case(CheckKind::FullField, "full_field")]
+#[case(CheckKind::AllCards, "all_cards")]
+#[case(CheckKind::ShowDnsRiders, "show_dns_riders")]
+#[case(CheckKind::ShowTotalTimes, "show_total_times")]
+#[case(CheckKind::ShowLapTime, "show_lap_time")]
+fn test_check_kind_as_str_returns_the_stable_name(#[case] check: CheckKind, #[case] name: &str) {
+    // Act
+    let rendered = check.as_str();
+
+    // Assert
+    assert_eq!(rendered, name);
+}
+
+#[rstest]
+#[case(NativeDialog::Confirm, "confirm")]
+#[case(NativeDialog::Danger, "danger")]
+#[case(NativeDialog::Prompt, "prompt")]
+#[case(NativeDialog::Error, "error")]
+fn test_native_dialog_as_str_returns_the_stable_name(
+    #[case] dialog: NativeDialog,
+    #[case] name: &str,
+) {
+    // Act
+    let rendered = dialog.as_str();
+
+    // Assert
+    assert_eq!(rendered, name);
+}
+
+#[rstest]
+#[case(Key::Z, "z")]
+#[case(Key::F1, "f1")]
+#[case(Key::F5, "f5")]
+fn test_key_as_str_returns_the_stable_name(#[case] key: Key, #[case] name: &str) {
+    // Act
+    let rendered = key.as_str();
+
+    // Assert
+    assert_eq!(rendered, name);
+}
+
+#[test]
+fn test_target_json_renders_a_window_target() {
+    // Act
+    let rendered = target_json(Target::Window("ride_library_dlg"));
+
+    // Assert
+    assert_eq!(
+        rendered,
+        json!({ "kind": "window", "window": "ride_library_dlg" })
+    );
+}
+
+#[test]
+fn test_target_json_renders_a_command_target() {
+    // Act
+    let rendered = target_json(Target::Command(CommandId::BackupNow));
+
+    // Assert
+    assert_eq!(
+        rendered,
+        json!({ "kind": "command", "command": "backup_now" })
+    );
+}
+
+#[test]
+fn test_target_json_renders_a_check_target() {
+    // Act
+    let rendered = target_json(Target::Check(CheckKind::PublishShowTimes));
+
+    // Assert
+    assert_eq!(
+        rendered,
+        json!({ "kind": "check", "check": "publish_show_times" })
+    );
+}
+
+#[test]
+fn test_target_json_renders_a_zoom_target() {
+    // Act
+    let rendered = target_json(Target::Zoom(110));
+
+    // Assert
+    assert_eq!(rendered, json!({ "kind": "zoom", "percent": 110 }));
+}
+
+#[test]
+fn test_target_json_renders_a_native_target() {
+    // Act
+    let rendered = target_json(Target::Native {
+        dialog: NativeDialog::Danger,
+        then: CommandId::ClearRide,
+    });
+
+    // Assert
+    assert_eq!(
+        rendered,
+        json!({ "kind": "native", "dialog": "danger", "then": "clear_ride" })
+    );
 }

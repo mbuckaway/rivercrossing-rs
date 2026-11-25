@@ -328,5 +328,74 @@ pub(crate) fn controls(window: &str) -> Option<&'static [&'static str]> {
         .map(|entry| entry.controls)
 }
 
+/// The widget kind of a settable control, as the machine block spells it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FieldKind {
+    /// A text input or a date/time picker.
+    Text,
+    /// A dropdown choice.
+    Choice,
+    /// A checkbox.
+    Check,
+    /// A numeric spinner.
+    Spin,
+}
+
+impl FieldKind {
+    /// Return the stable name, as the machine block spells it.
+    #[must_use]
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Choice => "choice",
+            Self::Check => "check",
+            Self::Spin => "spin",
+        }
+    }
+}
+
+/// One settable control that the automation channel can inspect or set.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FieldSpec {
+    /// The frozen control id.
+    pub(crate) id: &'static str,
+    /// The frozen window id that holds the control.
+    pub(crate) window: &'static str,
+    /// The widget kind.
+    pub(crate) kind: FieldKind,
+}
+
+/// Return every settable control, derived from the window registry by suffix.
+#[must_use]
+pub(crate) fn fields() -> Vec<FieldSpec> {
+    WINDOWS
+        .iter()
+        .flat_map(|window| {
+            window.controls.iter().filter_map(move |control| {
+                field_kind(control).map(|kind| FieldSpec {
+                    id: control,
+                    window: window.window,
+                    kind,
+                })
+            })
+        })
+        .collect()
+}
+
+/// Return the widget kind the control's frozen suffix names, or `None` when it is not settable.
+fn field_kind(control: &str) -> Option<FieldKind> {
+    if control.ends_with("_input") || control.ends_with("_picker") {
+        Some(FieldKind::Text)
+    } else if control.ends_with("_choice") {
+        Some(FieldKind::Choice)
+    } else if control.ends_with("_chk") {
+        Some(FieldKind::Check)
+    } else if control.ends_with("_spin") {
+        Some(FieldKind::Spin)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests;

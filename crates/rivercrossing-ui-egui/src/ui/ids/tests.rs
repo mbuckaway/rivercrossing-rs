@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use super::{APP_QUIT, WINDOWS, controls};
+use super::{APP_QUIT, FieldKind, FieldSpec, WINDOWS, controls, fields};
 
 #[test]
 fn test_the_window_table_has_30_windows() {
@@ -79,4 +79,82 @@ fn test_app_quit_is_the_automation_command_id() {
 
     // Assert
     assert_eq!(name, "app_quit");
+}
+
+/// Return the kind of `id` in `window`, when `fields()` holds it.
+fn kind_of(all: &[FieldSpec], window: &str, id: &str) -> Option<FieldKind> {
+    all.iter()
+        .find(|field| field.window == window && field.id == id)
+        .map(|field| field.kind)
+}
+
+#[test]
+fn test_fields_are_derived_for_every_settable_control() {
+    // Act
+    let all = fields();
+
+    // Assert
+    assert_eq!(all.len(), 67);
+}
+
+#[test]
+fn test_every_field_id_belongs_to_its_window() {
+    // Act
+    let stray: Vec<&'static str> = fields()
+        .iter()
+        .filter(|field| controls(field.window).is_none_or(|list| !list.contains(&field.id)))
+        .map(|field| field.id)
+        .collect();
+
+    // Assert
+    assert_eq!(stray, Vec::<&'static str>::new());
+}
+
+#[test]
+fn test_fields_map_the_documented_suffixes() {
+    // Arrange
+    let all = fields();
+
+    // Act
+    let text_input = kind_of(&all, "main_frame", "plate_input");
+    let text_picker = kind_of(&all, "ride_setup_dlg", "date_picker");
+    let choice = kind_of(&all, "ride_setup_dlg", "cap_choice");
+    let check = kind_of(&all, "csv_preview_dlg", "convert_teams_of_one_chk");
+    let spin = kind_of(&all, "settings_dlg", "avg_speed_spin");
+    let button = kind_of(&all, "main_frame", "record_btn");
+    let list = kind_of(&all, "main_frame", "crossings_list");
+
+    // Assert
+    assert_eq!(text_input, Some(FieldKind::Text));
+    assert_eq!(text_picker, Some(FieldKind::Text));
+    assert_eq!(choice, Some(FieldKind::Choice));
+    assert_eq!(check, Some(FieldKind::Check));
+    assert_eq!(spin, Some(FieldKind::Spin));
+    assert_eq!(button, None);
+    assert_eq!(list, None);
+}
+
+#[test]
+fn test_field_kinds_have_stable_names() {
+    // Act
+    let names = [
+        FieldKind::Text.as_str(),
+        FieldKind::Choice.as_str(),
+        FieldKind::Check.as_str(),
+        FieldKind::Spin.as_str(),
+    ];
+
+    // Assert
+    assert_eq!(names, ["text", "choice", "check", "spin"]);
+}
+
+#[test]
+fn test_every_field_is_unique_within_its_window() {
+    // Act
+    let all = fields();
+    let keys: Vec<(&str, &str)> = all.iter().map(|field| (field.window, field.id)).collect();
+    let unique: BTreeSet<(&str, &str)> = keys.iter().copied().collect();
+
+    // Assert
+    assert_eq!(unique.len(), keys.len());
 }

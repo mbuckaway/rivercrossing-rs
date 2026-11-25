@@ -2,6 +2,8 @@
 
 //! The §15 action table: one row per menu item, with its label, shortcut and target.
 
+use serde_json::{Value, json};
+
 use super::id;
 use super::id::ActionId;
 
@@ -97,9 +99,12 @@ pub(crate) enum NativeDialog {
     /// A non-destructive question.
     Prompt,
     /// An error report.
-    #[expect(
-        dead_code,
-        reason = "the native error dialog is raised by the command handlers in Phase 6, not by a §15 row"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the native error dialog is raised by the command handlers in Phase 6, not by a §15 row"
+        )
     )]
     Error,
 }
@@ -113,6 +118,89 @@ pub(crate) enum Key {
     F1,
     /// The `F5` key.
     F5,
+}
+
+impl CommandId {
+    /// Return the stable `snake_case` name, as the machine block spells it.
+    #[must_use]
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::DuplicateRide => "duplicate_ride",
+            Self::ReopenRide => "reopen_ride",
+            Self::StartRide => "start_ride",
+            Self::StopRide => "stop_ride",
+            Self::FinishRide => "finish_ride",
+            Self::UndoCrossing => "undo_crossing",
+            Self::ClearRide => "clear_ride",
+            Self::BackupNow => "backup_now",
+            Self::ExportHtml => "export_html",
+            Self::ExportPdf => "export_pdf",
+            Self::ExportPoster => "export_poster",
+            Self::ExportPosterHtml => "export_poster_html",
+            Self::ExportCsv => "export_csv",
+            Self::PreviewHtml => "preview_html",
+            Self::PreviewPosterHtml => "preview_poster_html",
+            Self::PreviewPdf => "preview_pdf",
+            Self::OpenUserGuide => "open_user_guide",
+            Self::AppQuit => "app_quit",
+        }
+    }
+}
+
+impl CheckKind {
+    /// Return the stable `snake_case` name, as the machine block spells it.
+    #[must_use]
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::PublishShowTimes => "publish_show_times",
+            Self::LapsBoard => "laps_board",
+            Self::TimeBoard => "time_board",
+            Self::FullField => "full_field",
+            Self::AllCards => "all_cards",
+            Self::ShowDnsRiders => "show_dns_riders",
+            Self::ShowTotalTimes => "show_total_times",
+            Self::ShowLapTime => "show_lap_time",
+        }
+    }
+}
+
+impl NativeDialog {
+    /// Return the stable name, as the machine block spells it.
+    #[must_use]
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Confirm => "confirm",
+            Self::Danger => "danger",
+            Self::Prompt => "prompt",
+            Self::Error => "error",
+        }
+    }
+}
+
+impl Key {
+    /// Return the lowercase key name, as the machine block spells it.
+    #[must_use]
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Z => "z",
+            Self::F1 => "f1",
+            Self::F5 => "f5",
+        }
+    }
+}
+
+/// Return the target as the machine block writes it: one typed object per target kind.
+#[must_use]
+pub(crate) fn target_json(target: Target) -> Value {
+    match target {
+        Target::Window(window) => json!({ "kind": "window", "window": window }),
+        Target::Command(command) => json!({ "kind": "command", "command": command.as_str() }),
+        Target::Check(check) => json!({ "kind": "check", "check": check.as_str() }),
+        Target::Zoom(percent) => json!({ "kind": "zoom", "percent": percent }),
+        Target::Native { dialog, then } => {
+            json!({ "kind": "native", "dialog": dialog.as_str(), "then": then.as_str() })
+        }
+    }
 }
 
 /// A documented keyboard shortcut.

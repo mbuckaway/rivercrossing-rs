@@ -4,6 +4,7 @@
 //! pure dispatch.
 
 pub(crate) mod dispatch;
+pub(crate) mod drift;
 pub(crate) mod effect;
 pub(crate) mod enable;
 pub(crate) mod id;
