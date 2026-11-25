@@ -432,21 +432,24 @@ fn test_the_console_empty_state_shows_the_zero_clock_and_disables_the_entry() {
 }
 
 #[test]
-fn test_the_console_menu_bar_lists_the_seven_titles() {
+fn test_the_menu_model_lists_the_seven_sections() {
     // Arrange
     let (app, _directory) = headless_app(None);
     let mut fixture = app_fixture(&app);
 
-    // Act
+    // Act: the model is ours; the rendered labels are the platform's.
+    let titles = menu::section_titles();
     fixture.idle(2);
 
     // Assert
-    for title in ["File", "Ride", "Riders", "Cards", "Results", "View", "Help"] {
-        assert!(
-            fixture.by_label(title).is_some(),
-            "the {title} title is in the bar"
-        );
-    }
+    assert_eq!(
+        titles,
+        ["File", "Ride", "Riders", "Cards", "Results", "View", "Help"]
+    );
+    assert_eq!(
+        violations(fixture.ctx(), fixture.tree()),
+        Vec::<String>::new()
+    );
 }
 
 #[test]

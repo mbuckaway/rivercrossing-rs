@@ -39,6 +39,14 @@ pub(crate) struct MenuRow {
     pub(crate) separator_before: bool,
 }
 
+/// Return the menu bar's section titles, in §15 menu order.
+///
+/// The renderer builds one `MenuTitle` per entry, so the model the tests assert and the bar on
+/// screen cannot drift. The titles are platform-independent; only the rendered labels differ.
+pub(crate) fn section_titles() -> [&'static str; MenuSection::ALL.len()] {
+    MenuSection::ALL.map(MenuSection::title)
+}
+
 /// Return every menu row, in §15 table order.
 ///
 /// A row is enabled when the §15 gate allows it and this release builds its target.
@@ -73,13 +81,13 @@ pub(crate) fn show(ui: &mut Ui, state: &mut AppState) {
     {
         let activated = &activated;
         let mut titles: Vec<MenuTitle<'_>> = Vec::with_capacity(MenuSection::ALL.len());
-        for section in MenuSection::ALL {
+        for (section, title) in MenuSection::ALL.into_iter().zip(section_titles()) {
             let mine: Vec<MenuRow> = rows
                 .iter()
                 .filter(|row| row.section == section)
                 .cloned()
                 .collect();
-            titles.push(MenuTitle::new(section.title(), move |ui| {
+            titles.push(MenuTitle::new(title, move |ui| {
                 for row in &mine {
                     if row.separator_before {
                         ui.separator();
