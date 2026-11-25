@@ -28,7 +28,7 @@ pub enum Step {
     Command {
         /// The frozen action id.
         action: String,
-        /// The command parameters; null asks the probe for its text field's contents.
+        /// The command parameters; `null` sends no parameters.
         #[serde(default)]
         params: Value,
     },

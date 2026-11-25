@@ -20,8 +20,8 @@ Exactly these test categories are authorized:
 - **Tier A-snapshot** — `egui_kittest` snapshot tests in
   `crates/rivercrossing-ui-egui/tests/ui/main.rs`, run by `cargo nextest run -P ui --locked`.
 - **Tier B real-window smokes** — exactly two: `open_and_quit_smoke` and the control-channel smoke
-  (`--control 0`, `ui.accessTree`, `ui.command probe_echo`, `ui.screenshot`,
-  `ui.command probe_quit`), run by hand under Xvfb, outside the `unit`/`ui` sweep.
+  (`--control 0`, `ui.accessTree`, `ui.command mi_new_ride`, `ui.screenshot`,
+  `ui.command app_quit`), run by hand under Xvfb, outside the `unit`/`ui` sweep.
 
 NO OTHER FUNCTIONAL, BEHAVIOURAL, ACCEPTANCE, SIMULATOR OR OTHER TESTS ARE TO BE WRITTEN WITHOUT
 EXPRESSED PERMISSION. Tier C Python parity runs on demand at EPIC-12 exit, not in the gate. No

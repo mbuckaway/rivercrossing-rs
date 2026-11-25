@@ -17,9 +17,11 @@ use craft::ui::runtime::motion;
 use craft::ui::runtime::windows::WindowHost;
 use serde_json::{Map, Value, json};
 
-use super::command::{ProbeOutcome, probe_command};
+use super::actions;
 use super::path;
 use super::selector::{Candidate, Selector, resolve};
+use crate::ui::ids;
+use crate::ui::state::AppState;
 
 /// The largest viewport side `ui.resize` accepts, in points.
 const MAX_VIEWPORT_SIDE: f32 = 16_384.0;
@@ -34,26 +36,6 @@ pub struct ControlConfig {
     pub options: ControlOptions,
     /// The 64-hex server token.
     pub token: String,
-}
-
-/// The debug probe surface: the click count, the last echo and the input field.
-#[derive(Debug, Default)]
-pub(crate) struct ProbeState {
-    /// How many times the probe button was clicked.
-    #[cfg(debug_assertions)]
-    pub(crate) clicks: u64,
-    /// The value the probe label shows.
-    pub(crate) echo: Option<String>,
-    /// The probe text field's contents.
-    pub(crate) text: String,
-}
-
-/// The per-pass values a dispatched request needs.
-pub(crate) struct Pass<'a> {
-    /// The debug probe state.
-    pub probe: &'a mut ProbeState,
-    /// The egui context of the running pass.
-    pub ctx: &'a Context,
 }
 
 /// The live control server and the project method table it feeds.
@@ -108,16 +90,15 @@ impl Control {
     }
 
     /// Run the logic-phase steps of one pass: refresh capture geometry, settle finished captures,
-    /// answer held access-tree requests, dispatch queued requests and close on `probe_quit`.
-    pub(crate) fn logic(&mut self, probe: &mut ProbeState, ctx: &Context) {
+    /// answer held access-tree requests, dispatch queued requests and close on `app_quit`.
+    pub(crate) fn logic(&mut self, state: &mut AppState, ctx: &Context) {
         let host = WindowHost::of(ctx);
         self.channel.captures.note_windows(&host, None);
         let finished = self.channel.captures.drain(motion::now(), None);
         self.finish_captures(finished);
         self.channel.poll_access_trees(ctx);
-        let mut pass = Pass { probe, ctx };
         while let Some(request) = self.channel.next_request() {
-            let reply = self.dispatch(&request, &mut pass);
+            let reply = self.dispatch(&request, state, ctx);
             self.channel.settle(
                 request,
                 reply,
@@ -135,7 +116,7 @@ impl Control {
 
     /// Run the UI-phase steps of one pass: settle capture passes, issue due captures and answer
     /// the input waiters.
-    pub(crate) fn ui(&mut self, ctx: &Context) {
+    pub(crate) fn ui(&mut self, _state: &mut AppState, ctx: &Context) {
         let host = WindowHost::of(ctx);
         self.channel.captures.note_pass();
         let finished = self.channel.captures.issue(&host, motion::now(), None);
@@ -155,19 +136,29 @@ impl Control {
     }
 
     /// Answer one request through the project method table.
-    pub(crate) fn dispatch(&mut self, request: &ControlRequest, pass: &mut Pass<'_>) -> Reply {
-        let ctx = pass.ctx;
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the server owns the reply, the request names the method, and the state and context are the running pass"
+    )]
+    pub(crate) fn dispatch(
+        &mut self,
+        request: &ControlRequest,
+        state: &mut AppState,
+        ctx: &Context,
+    ) -> Reply {
         let host = WindowHost::of(ctx);
         match request.method.as_str() {
             "ui.accessTree" => Reply::access_tree(),
-            "ui.command" => command_reply(&request.params, pass.probe, &mut self.close),
+            "ui.command" => command_reply(state, &request.params, &mut self.close),
+            "ui.inspect" => Reply::from_result(actions::inspect(state, &request.params)),
+            "ui.set" => Reply::from_result(actions::set(state, &request.params)),
             "ui.screenshot" => self.screenshot_reply(&request.params),
             "ui.resize" => resize(&request.params, ctx),
             "ui.click" => click(&request.params, &host, ctx),
             "ui.type" => type_text(&request.params, &host, ctx),
-            "ui.dialog.set" | "ui.dialog.confirm" | "ui.dialog.cancel" => {
-                Reply::from_result(Err(format!("no hosted dialog for `{}`", request.method)))
-            }
+            "ui.dialog.set" | "ui.dialog.confirm" | "ui.dialog.cancel" => Reply::from_result(
+                actions::dialog(state, request.method.as_str(), &request.params),
+            ),
             other => inject(other, &request.params, &host),
         }
     }
@@ -185,22 +176,16 @@ impl Control {
     }
 }
 
-/// Answer a `ui.command` probe.
-fn command_reply(params: &Value, probe: &mut ProbeState, close: &mut bool) -> Reply {
+/// Answer a `ui.command`: dispatch the named action, or quit on `app_quit`.
+fn command_reply(state: &mut AppState, params: &Value, close: &mut bool) -> Reply {
     let Some(name) = params.get("name").and_then(Value::as_str) else {
         return Reply::from_result(Err("ui.command needs a string `name`".to_owned()));
     };
-    let missing = Value::Null;
-    let command_params = params.get("params").unwrap_or(&missing);
-    match probe_command(name, command_params) {
-        Ok(ProbeOutcome::Echo(value)) => Reply::from_result(Ok(json!({"echo": value}))),
-        Ok(ProbeOutcome::EchoField) => {
-            let text = probe.text.clone();
-            probe.echo = Some(text.clone());
-            Reply::from_result(Ok(json!({"echo": text})))
-        }
-        Ok(ProbeOutcome::Quit(value)) => {
-            *close = true;
+    match actions::command(state, name) {
+        Ok(value) => {
+            if name == ids::APP_QUIT {
+                *close = true;
+            }
             Reply::from_result(Ok(value))
         }
         Err(error) => Reply::from_result(Err(error)),

@@ -21,18 +21,18 @@ fn sample_scenario() -> Scenario {
         size: Some([1100, 780]),
         steps: vec![
             Step::Command {
-                action: "probe_echo".to_owned(),
+                action: "mi_start_ride".to_owned(),
                 params: json!({"x": 1}),
             },
             Step::Click {
                 selector: Selector::Action {
-                    action: "probe_echo".to_owned(),
+                    action: "mi_start_ride".to_owned(),
                 },
             },
             Step::Type {
                 selector: Selector::RoleAndLabel {
                     role: "TextInput".to_owned(),
-                    label: "Probe Input".to_owned(),
+                    label: "Plate".to_owned(),
                     window: None,
                 },
                 text: "abc".to_owned(),
@@ -46,9 +46,9 @@ fn sample_scenario() -> Scenario {
             },
             Step::Expect {
                 selector: Selector::Action {
-                    action: "probe_echo".to_owned(),
+                    action: "mi_start_ride".to_owned(),
                 },
-                name: Some("Probe Echo".to_owned()),
+                name: Some("Start Ride".to_owned()),
                 value: Some("clicked 1".to_owned()),
             },
         ],
@@ -73,7 +73,7 @@ fn sample_observation() -> Observation {
                 Node {
                     id: 2,
                     role: "Button".to_owned(),
-                    name: Some("Probe Echo".to_owned()),
+                    name: Some("Start Ride".to_owned()),
                     value: None,
                     children: Vec::new(),
                 },
@@ -81,7 +81,7 @@ fn sample_observation() -> Observation {
             focus: Some(2),
             root: Some(0),
         },
-        screenshots: vec!["shell.png".to_owned()],
+        screenshots: vec!["console_empty.png".to_owned()],
     }
 }
 
@@ -99,14 +99,14 @@ fn wire_tree() -> WireTree {
             Node {
                 id: 2,
                 role: "Button".to_owned(),
-                name: Some("Probe Echo".to_owned()),
+                name: Some("Start Ride".to_owned()),
                 value: None,
                 children: Vec::new(),
             },
             Node {
                 id: 3,
                 role: "TextInput".to_owned(),
-                name: Some("Probe Input".to_owned()),
+                name: Some("Plate".to_owned()),
                 value: Some("abc".to_owned()),
                 children: Vec::new(),
             },
@@ -186,7 +186,7 @@ fn test_step_snapshot_serializes_its_shape() {
 #[test]
 fn test_step_command_defaults_its_params() {
     // Arrange
-    let value = json!({"kind": "command", "action": "probe_echo"});
+    let value = json!({"kind": "command", "action": "mi_start_ride"});
 
     // Act
     let step: Step = serde_json::from_value(value).expect("the command step parses");
@@ -195,7 +195,7 @@ fn test_step_command_defaults_its_params() {
     assert_eq!(
         step,
         Step::Command {
-            action: "probe_echo".to_owned(),
+            action: "mi_start_ride".to_owned(),
             params: Value::Null,
         }
     );
@@ -228,7 +228,7 @@ fn test_observation_ignores_text_selection() {
             "nodes": [{
                 "id": 2,
                 "role": "TextInput",
-                "name": "Probe Input",
+                "name": "Plate",
                 "children": [],
                 "textSelection": {"anchor": 0, "focus": 1}
             }],
@@ -249,7 +249,7 @@ fn test_observation_ignores_text_selection() {
             .nodes
             .first()
             .and_then(|node| node.name.as_deref()),
-        Some("Probe Input")
+        Some("Plate")
     );
 }
 
@@ -259,10 +259,10 @@ fn test_expect_matches_the_named_node() {
     let step = Step::Expect {
         selector: Selector::RoleAndLabel {
             role: "textinput".to_owned(),
-            label: "Probe Input".to_owned(),
+            label: "Plate".to_owned(),
             window: None,
         },
-        name: Some("Probe Input".to_owned()),
+        name: Some("Plate".to_owned()),
         value: Some("abc".to_owned()),
     };
 
@@ -278,9 +278,9 @@ fn test_expect_matches_an_action_selector() {
     // Arrange
     let step = Step::Expect {
         selector: Selector::Action {
-            action: "probe_echo".to_owned(),
+            action: "mi_start_ride".to_owned(),
         },
-        name: Some("Probe Echo".to_owned()),
+        name: Some("Start Ride".to_owned()),
         value: None,
     };
 
@@ -296,9 +296,9 @@ fn test_expect_reports_a_name_mismatch() {
     // Arrange
     let step = Step::Expect {
         selector: Selector::Action {
-            action: "probe_echo".to_owned(),
+            action: "mi_start_ride".to_owned(),
         },
-        name: Some("Probe Input".to_owned()),
+        name: Some("Plate".to_owned()),
         value: None,
     };
 
@@ -308,7 +308,7 @@ fn test_expect_reports_a_name_mismatch() {
     // Assert
     assert_eq!(
         checked,
-        Err("node 2 name is \"Probe Echo\", expected \"Probe Input\"".to_owned())
+        Err("node 2 name is \"Start Ride\", expected \"Plate\"".to_owned())
     );
 }
 
@@ -316,8 +316,10 @@ fn test_expect_reports_a_name_mismatch() {
 fn test_expect_reports_a_value_mismatch() {
     // Arrange
     let step = Step::Expect {
-        selector: Selector::Action {
-            action: "probe_input".to_owned(),
+        selector: Selector::RoleAndLabel {
+            role: "TextInput".to_owned(),
+            label: "Plate".to_owned(),
+            window: None,
         },
         name: None,
         value: Some("xyz".to_owned()),
@@ -338,7 +340,7 @@ fn test_expect_reports_a_missing_value() {
     // Arrange
     let step = Step::Expect {
         selector: Selector::Action {
-            action: "probe_echo".to_owned(),
+            action: "mi_start_ride".to_owned(),
         },
         name: None,
         value: Some("clicked 1".to_owned()),
@@ -360,7 +362,7 @@ fn test_expect_reports_a_missing_node() {
     let step = Step::Expect {
         selector: Selector::RoleAndLabel {
             role: "Button".to_owned(),
-            label: "Probe Input".to_owned(),
+            label: "Plate".to_owned(),
             window: None,
         },
         name: None,
@@ -373,7 +375,7 @@ fn test_expect_reports_a_missing_node() {
     // Assert
     assert_eq!(
         checked,
-        Err("no node matches role `Button` and label `Probe Input`".to_owned())
+        Err("no node matches role `Button` and label `Plate`".to_owned())
     );
 }
 
@@ -384,13 +386,13 @@ fn test_expect_reports_a_duplicate_match() {
     tree.nodes.push(Node {
         id: 5,
         role: "Button".to_owned(),
-        name: Some("Probe Echo".to_owned()),
+        name: Some("Start Ride".to_owned()),
         value: None,
         children: Vec::new(),
     });
     let step = Step::Expect {
         selector: Selector::Action {
-            action: "probe_echo".to_owned(),
+            action: "mi_start_ride".to_owned(),
         },
         name: None,
         value: None,
@@ -403,7 +405,7 @@ fn test_expect_reports_a_duplicate_match() {
     assert_eq!(
         checked,
         Err(
-            "2 nodes match role `Button` and label `Probe Echo`; a window scope is required"
+            "2 nodes match role `Button` and label `Start Ride`; a window scope is required"
                 .to_owned()
         )
     );
@@ -415,7 +417,7 @@ fn test_expect_reports_a_window_scope() {
     let step = Step::Expect {
         selector: Selector::RoleAndLabel {
             role: "Button".to_owned(),
-            label: "Probe Echo".to_owned(),
+            label: "Start Ride".to_owned(),
             window: Some("main".to_owned()),
         },
         name: None,

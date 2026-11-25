@@ -36,7 +36,7 @@ Run in `crates/rivercrossing-ui-egui/src/ui/**/tests.rs` through `craft::ui::tes
 
 | Flow | Mechanism | Assertion |
 |---|---|---|
-| Probe dispatch | `Fixture` + the probe UI closure; `probe_command` | the action fires; resulting state is readable |
+| Registry dispatch | `Fixture` over the app; `AppState::act` | the action fires; the resulting state is readable |
 | Unknown action | direct lookup with an unregistered id | typed error; no panic |
 | Bad selector | `Selector::Action` with an unknown id; malformed params | typed error; no panic |
 | Selector window scope / duplicates | two candidates with the same label | the scoped lookup resolves; the unscoped lookup errors |
@@ -45,9 +45,9 @@ Run in `crates/rivercrossing-ui-egui/src/ui/**/tests.rs` through `craft::ui::tes
 | Schema structure | `include_str!` of `tools/parity/schema.json`, compared with the serde derive | `required`/`enum`/`properties` match field and variant names |
 | Expect evaluator | `Step::Expect` over a settled tree | match passes; a mismatch names the node and field |
 | Method-table errors (in-process) | unknown method, bad params, path escape | typed error replies; no write outside the automation root |
-| Probe scenario | a 4-step scenario (button, text field, Tab, `Expect`) over the probe closure | the asserted tree matches |
+| Scenario model | a 4-step scenario (command, click, type, `Expect`) over a synthetic tree | the asserted tree matches |
 
-## 4 · Tier A-snapshot — shell golden
+## 4 · Tier A-snapshot — screen goldens
 
 `crates/rivercrossing-ui-egui/tests/ui/main.rs`, `[[test]] name = "ui"`, `cargo nextest -P ui`.
 `egui_kittest` `Harness::builder().with_context_setup(...).build_ui(...)` calling craft's public
@@ -56,7 +56,8 @@ runs before `run`, and `embed::logic` + `app.ui(ui)` inside the pass.
 
 | Flow | Mechanism | Assertion |
 |---|---|---|
-| Shell first frame | `snapshot("shell")` after the frame settles | golden `tests/snapshots/shell.png` within threshold (Linux `0.6`; Mac `2.0`) |
+| Console, empty state | `snapshot("console_empty")` after the frame settles | golden `tests/snapshots/console_empty.png` within threshold (Linux `0.6`; Mac `2.0`) |
+| Ride setup open | `ui.command mi_new_ride` before the pass, then `snapshot("setup_open")` | golden `tests/snapshots/setup_open.png` within threshold |
 | Fonts | app fonts installed via `craft::ui::fonts::UiFonts`; `allow_missing_glyphs` off | no missing glyph; a tofu glyph fails |
 | Golden update | `UPDATE_SNAPSHOTS=force WGPU_BACKEND=vulkan cargo nextest run -P ui -p rivercrossing-ui-egui --locked` on the golden host only | regenerated goldens reviewed and committed |
 
@@ -71,11 +72,11 @@ run; `WGPU_BACKEND=vulkan` is for offscreen snapshots only.
 | Launch / present / quit | existing `open_and_quit_smoke` (`RIVERCROSSING_SMOKE_QUIT_AFTER_MS=750`) | the process survives, presents, and exits cleanly |
 | Live channel — connect | spawn `rivercrossing --control 0 --control-token <64hex>`; a reader thread drains stderr until `control server listening on <addr>`; `ControlClient::connect(addr, token)` | the handshake succeeds |
 | Live channel — tree | `ui.accessTree` | a non-empty root with the settled tree |
-| Live channel — command | `ui.command probe_echo` | `{"ok":true,"result":{"echo":…}}`; the echo is visible in the next tree |
-| Live channel — input | `ui.click` the `probe_echo` selector; `ui.type` the `probe_input` selector | the post-input tree shows the click/typed value |
+| Live channel — command | `ui.command mi_new_ride` | `{"ok":true}`; the next tree shows the ride-setup dialog |
+| Live channel — input | `ui.click` the console `record_btn` (`role: Button, label: Record`); `ui.type` the console `plate_input` (`role: TextInput, label: Plate`), then the open setup dialog's name field | the click and the closed entry are harmless; the post-input tree shows the typed setup name |
 | Live channel — screenshot | `ui.screenshot {path:"smoke.png"}` | PNG bytes; the file is under `target/control/`; a `..` path is rejected |
 | Live channel — resize | `ui.resize` | `ok`; the window survives |
-| Live channel — quit | `ui.command probe_quit` | the window closes and the process exits 0 |
+| Live channel — quit | `ui.command app_quit` | `{"bye":true}`, the window closes and the process exits 0 |
 
 The control smoke does **not** set `RIVERCROSSING_SMOKE_QUIT_AFTER_MS`; it removes
 `RIVERCROSSING_SMOKE_QUIT_AFTER_MS` and `RIVERCROSSING_CONTROL_PORT`/`_TOKEN`/`_TOKEN_FILE` from the

@@ -1,24 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! Unit tests for the pure automation helpers: the selector, the write root and the probe commands.
+//! Unit tests for the pure automation helpers: the selector and the write root.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use craft::egui::{Rect, pos2};
-use serde_json::json;
 
-use super::command::{ProbeOutcome, probe_command};
 use super::path::{write_root, write_screenshot};
 use super::selector::{Candidate, Selector, resolve};
 
-/// The bounds of the probe button in these tests.
+/// The bounds of the start button in these tests.
 fn button_bounds() -> Rect {
     Rect::from_min_max(pos2(10.0, 20.0), pos2(110.0, 60.0))
 }
 
-/// The bounds of the probe input field in these tests.
+/// The bounds of the plate field in these tests.
 fn input_bounds() -> Rect {
     Rect::from_min_max(pos2(10.0, 70.0), pos2(210.0, 100.0))
 }
@@ -33,11 +31,11 @@ fn candidate(role: &str, label: Option<&str>, bounds: Rect) -> Candidate {
 }
 
 #[test]
-fn test_selector_given_an_action_resolves_the_probe_button() {
+fn test_selector_given_an_action_resolves_the_start_button() {
     // Arrange
-    let candidates = [candidate("Button", Some("Probe Echo"), button_bounds())];
+    let candidates = [candidate("Button", Some("Start Ride"), button_bounds())];
     let selector = Selector::Action {
-        action: "probe_echo".to_owned(),
+        action: "mi_start_ride".to_owned(),
     };
 
     // Act
@@ -52,11 +50,11 @@ fn test_selector_given_an_action_resolves_its_label_not_a_lookalike() {
     // Arrange
     let lookalike = Rect::from_min_max(pos2(0.0, 0.0), pos2(10.0, 10.0));
     let candidates = [
-        candidate("Button", Some("Probe Echo 2"), lookalike),
-        candidate("Button", Some("Probe Echo"), button_bounds()),
+        candidate("Button", Some("Start Ride 2"), lookalike),
+        candidate("Button", Some("Start Ride"), button_bounds()),
     ];
     let selector = Selector::Action {
-        action: "probe_echo".to_owned(),
+        action: "mi_start_ride".to_owned(),
     };
 
     // Act
@@ -67,18 +65,18 @@ fn test_selector_given_an_action_resolves_its_label_not_a_lookalike() {
 }
 
 #[test]
-fn test_selector_given_the_probe_input_action_resolves_the_field() {
+fn test_selector_given_the_stop_action_resolves_the_button() {
     // Arrange
-    let candidates = [candidate("TextInput", Some("Probe Input"), input_bounds())];
+    let candidates = [candidate("Button", Some("Stop Ride"), button_bounds())];
     let selector = Selector::Action {
-        action: "probe_input".to_owned(),
+        action: "mi_stop_ride".to_owned(),
     };
 
     // Act
     let resolved = resolve(&selector, &candidates);
 
     // Assert
-    assert_eq!(resolved, Ok(input_bounds()));
+    assert_eq!(resolved, Ok(button_bounds()));
 }
 
 #[test]
@@ -98,10 +96,10 @@ fn test_selector_given_an_unknown_action_errs() {
 #[test]
 fn test_selector_given_role_and_label_matches_the_role_case_insensitively() {
     // Arrange
-    let candidates = [candidate("Button", Some("Probe Input"), input_bounds())];
+    let candidates = [candidate("Button", Some("Plate"), input_bounds())];
     let selector = Selector::RoleAndLabel {
         role: "button".to_owned(),
-        label: "Probe Input".to_owned(),
+        label: "Plate".to_owned(),
         window: None,
     };
 
@@ -115,10 +113,10 @@ fn test_selector_given_role_and_label_matches_the_role_case_insensitively() {
 #[test]
 fn test_selector_given_a_label_mismatch_errs() {
     // Arrange
-    let candidates = [candidate("Button", Some("Probe Echo"), button_bounds())];
+    let candidates = [candidate("Button", Some("Start Ride"), button_bounds())];
     let selector = Selector::RoleAndLabel {
         role: "Button".to_owned(),
-        label: "Probe Input".to_owned(),
+        label: "Plate".to_owned(),
         window: None,
     };
 
@@ -128,7 +126,7 @@ fn test_selector_given_a_label_mismatch_errs() {
     // Assert
     assert_eq!(
         resolved,
-        Err("no node matches role `Button` and label `Probe Input`".to_owned())
+        Err("no node matches role `Button` and label `Plate`".to_owned())
     );
 }
 
@@ -138,7 +136,7 @@ fn test_selector_given_a_candidate_without_a_label_errs() {
     let candidates = [candidate("Button", None, button_bounds())];
     let selector = Selector::RoleAndLabel {
         role: "Button".to_owned(),
-        label: "Probe Echo".to_owned(),
+        label: "Start Ride".to_owned(),
         window: None,
     };
 
@@ -148,7 +146,7 @@ fn test_selector_given_a_candidate_without_a_label_errs() {
     // Assert
     assert_eq!(
         resolved,
-        Err("no node matches role `Button` and label `Probe Echo`".to_owned())
+        Err("no node matches role `Button` and label `Start Ride`".to_owned())
     );
 }
 
@@ -156,12 +154,12 @@ fn test_selector_given_a_candidate_without_a_label_errs() {
 fn test_selector_given_duplicates_without_a_window_errs() {
     // Arrange
     let candidates = [
-        candidate("Button", Some("Probe Echo"), button_bounds()),
-        candidate("Button", Some("Probe Echo"), input_bounds()),
+        candidate("Button", Some("Start Ride"), button_bounds()),
+        candidate("Button", Some("Start Ride"), input_bounds()),
     ];
     let selector = Selector::RoleAndLabel {
         role: "Button".to_owned(),
-        label: "Probe Echo".to_owned(),
+        label: "Start Ride".to_owned(),
         window: None,
     };
 
@@ -172,7 +170,7 @@ fn test_selector_given_duplicates_without_a_window_errs() {
     assert_eq!(
         resolved,
         Err(
-            "2 nodes match role `Button` and label `Probe Echo`; a window scope is required"
+            "2 nodes match role `Button` and label `Start Ride`; a window scope is required"
                 .to_owned()
         )
     );
@@ -181,10 +179,10 @@ fn test_selector_given_duplicates_without_a_window_errs() {
 #[test]
 fn test_selector_given_a_window_scope_errs() {
     // Arrange
-    let candidates = [candidate("Button", Some("Probe Echo"), button_bounds())];
+    let candidates = [candidate("Button", Some("Start Ride"), button_bounds())];
     let selector = Selector::RoleAndLabel {
         role: "Button".to_owned(),
-        label: "Probe Echo".to_owned(),
+        label: "Start Ride".to_owned(),
         window: Some("main".to_owned()),
     };
 
@@ -203,7 +201,7 @@ fn test_selector_given_no_candidates_errs() {
     // Arrange
     let selector = Selector::RoleAndLabel {
         role: "TextInput".to_owned(),
-        label: "Probe Input".to_owned(),
+        label: "Plate".to_owned(),
         window: None,
     };
 
@@ -213,7 +211,7 @@ fn test_selector_given_no_candidates_errs() {
     // Assert
     assert_eq!(
         resolved,
-        Err("no node matches role `TextInput` and label `Probe Input`".to_owned())
+        Err("no node matches role `TextInput` and label `Plate`".to_owned())
     );
 }
 
@@ -388,49 +386,4 @@ fn remove_write_root(root: &Path) {
     if let Some(parent) = root.parent() {
         fs::remove_dir(parent).ok();
     }
-}
-
-#[test]
-fn test_probe_command_echo_returns_the_params() {
-    // Act
-    let outcome = probe_command("probe_echo", &json!({"x": 1}));
-
-    // Assert
-    assert_eq!(outcome, Ok(ProbeOutcome::Echo(json!({"x": 1}))));
-}
-
-#[test]
-fn test_probe_command_echo_without_params_reads_the_probe_field() {
-    // Act
-    let outcome = probe_command("probe_echo", &json!(null));
-
-    // Assert
-    assert_eq!(outcome, Ok(ProbeOutcome::EchoField));
-}
-
-#[test]
-fn test_probe_command_echo_with_an_empty_object_echoes_it() {
-    // Act
-    let outcome = probe_command("probe_echo", &json!({}));
-
-    // Assert
-    assert_eq!(outcome, Ok(ProbeOutcome::Echo(json!({}))));
-}
-
-#[test]
-fn test_probe_command_quit_requests_close() {
-    // Act
-    let outcome = probe_command("probe_quit", &json!({}));
-
-    // Assert
-    assert_eq!(outcome, Ok(ProbeOutcome::Quit(json!({"bye": true}))));
-}
-
-#[test]
-fn test_probe_command_unknown_errs() {
-    // Act
-    let outcome = probe_command("nope", &json!({}));
-
-    // Assert
-    assert_eq!(outcome, Err("unknown command `nope`".to_owned()));
 }

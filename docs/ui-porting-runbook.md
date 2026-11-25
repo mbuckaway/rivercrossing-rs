@@ -7,8 +7,37 @@ accumulated knowledge instead of re-learning it.
 ## Status
 
 - [x] EPIC-1 empty egui shell — done
-- [ ] EPIC-10 UI automation & Python-parity harness — next (the mechanism first; no screens)
-- [ ] EPIC-12 egui UI panels + Action registry — not started (inherits the EPIC-10 harness)
+- [x] EPIC-10 UI automation & Python-parity harness — done (Tier A harness, shell golden, live control
+  channel)
+- [ ] EPIC-12 egui UI panels + Action registry — in progress, five PRs: **12a** foundation
+  (`gui-windows.md`, settings, registry, dialogs, state/worker, ride setup + `main_frame` console,
+  sound, logging, theme/zoom, automation), **12b** editors/CSV, **12c** lifecycle/corrections/system,
+  **12d** results/exports/publish/simulator, **12e** close-out (R-73 sweep, R-76 per dialog, Tier C).
+
+## Build prerequisites and the platform split
+
+- **Linux (the build/gate host).** `libasound2-dev` is required once `rodio` lands (cpal's ALSA
+  backend); install it before the first build (`sudo apt-get install -y libasound2-dev`;
+  `pkg-config --exists alsa` must succeed). Offscreen rendering uses Mesa lavapipe, and the Tier B
+  smokes run under `Xvfb` — no display or GPU is needed.
+- **Windows cross-check (not the gate).** `rustup target add x86_64-pc-windows-gnu` plus
+  `gcc-mingw-w64-x86-64`; `scripts/check-windows.sh` wraps
+  `cargo check -p rivercrossing-ui-egui --target x86_64-pc-windows-gnu --locked`. Bundled SQLite is
+  the C dependency; `ring` arrives with the WordPress crate and is re-checked. The authoritative
+  Windows run is at EPIC-13 on a Windows host.
+- **macOS.** CoreAudio needs nothing extra. The Mac checkout is used per PR for the unit+ui legs over
+  SSH; the visual acceptance pass is run at the Mac itself (a GUI app launched over SSH may not
+  attach to the Aqua session).
+- **What the headless host can and cannot verify.** It runs the unit sweep, the snapshot goldens, the
+  Xvfb real-window smokes and every gate item. It cannot play audio (`/dev/snd` is absent — the sound
+  backend must fall back to silence), show a real native dialog without a portal (rfd may answer
+  `Unavailable`), or give a human the visual acceptance judgement. Those are Mac steps; Tier C parity
+  is the Mac's by design.
+- **Recorded decisions.** Geometry lives in craft-window's `window.json` (`splitter_sash` in
+  `settings.json`); settings stay Python-schema JSON in `rivercrossing-store`; WordPress credentials
+  stay plaintext at parity; empty Enter on the plate field is **silent** (Python behaviour —
+  `spec.md:242`'s buzz is the recorded discrepancy); `verbose_logging` gates an NDJSON per-launch log
+  (prune 20).
 
 ## The translation one-liner
 
@@ -112,10 +141,57 @@ the scenario JSON is the cross-language contract.
 - Register every §15/§15b id in the `ActionRegistry` and keep the ids-drift check green.
 - Add one semantic `Fixture` test and one snapshot golden per screen state; call
   `craft::ui::testing::access::violations` on every settled frame.
-- Replace the EPIC-10 probe panel with the real console and regenerate
-  `crates/rivercrossing-ui-egui/tests/snapshots/shell.png` on the golden host.
+- Replace the EPIC-10 probe panel with the real console: the probe is gone, and
+  `crates/rivercrossing-ui-egui/tests/snapshots/console_empty.png` plus `setup_open.png` replace
+  the retired `shell.png` on the golden host.
 - Add real `ui.inspect`/`ui.set` fields and wire `ui.dialog.*` to the dialogs; R-88's dialog clause
   completes here.
 - Run Tier C on the Mac at exit and remove `docs/parity/SKIP.md` when the parity run is green.
 - Keep exactly the two Tier B smokes (open/quit and control channel); do not add a third real-window
   test.
+
+## EPIC-12 Phase 6 renderer choices
+
+- **Menu renderer: `craft::ui::menu` (`MenuBar`/`MenuTitle`/`MenuItem`), no fallback.** The §15
+  table projects onto one `MenuTitle` per section (`File`, `Ride`, `Riders`, `Cards`, `Results`,
+  `View`, `Help`), ordered by `action::spec::MenuSection::ALL`. `action::spec::section(id)` is the
+  one place that maps the 53 frozen ids to their menu, so the drift snapshot and the rendered bar
+  cannot disagree. Each row takes its label and shortcut text from the registry, its enabled state
+  from `enable::enabled(id, &state.gate()) && state.implemented(id)`, its check mark from the
+  persisted setting (`CheckKind`) and its radio mark from the zoom percentage. The automation-only
+  fallback (plain `egui::MenuBar` with `egui::Button` rows) was not needed.
+- **The console and the setup form are plain egui widgets**, each wrapped in
+  `ui.push_id("<frozen id>", …)` with an explicit `.accessible_name(...)`. Checkable rows and
+  radios use egui's own widgets; `value()` and `clock_column()` helpers keep one frozen id per
+  widget. The clock dials are hand-painted (a circle plus a needle) because craft ships no
+  `RaceClock`; the numeric readout beside each dial carries the value that the tests assert.
+- **The setup form writes through `DialogStack`'s field map.** Every field read (`ui.inspect`) and
+  write (`ui.set`, `ui.dialog.set`) addresses the same value the widget edits, so the automation
+  contract and the form cannot drift. The OK button runs `AppState::submit_setup`, which collects
+  `RideConfigParams`, validates through `presenters::setup` and stores the config for the app to
+  persist.
+- **Goldens:** `shell.png` was retired and replaced by `console_empty.png` (the empty console) and
+  `setup_open.png` (the setup dialog over it), both regenerated on this golden host with
+  `UPDATE_SNAPSHOTS=force WGPU_BACKEND=vulkan cargo nextest run -P ui -p rivercrossing-ui-egui --locked`.
+- **Phase 6 deviations, deliberate:**
+  - Native confirms (Stop, Undo, Finish, Clear, Reopen, Exit, the new-location prompts) render as an
+    in-app `egui::Modal` until `craft_dialogs` lands in PR C: the modal names the action, focuses
+    Cancel by default and only a confirm queues `then`; Esc, Cancel and the backdrop run nothing.
+    `ui.dialog.confirm`/`cancel` drive it whenever the `DialogStack` is empty. PR C swaps the modal
+    for the native dialog and the `Answer::Unavailable` notice.
+  - The sound device adapter (`RodioBackend::open`/`play`, `SoundPlayer::with_default_backend`) is
+    the one unexercised path: this headless host has no `/dev/snd`, so the adapter cannot open. The
+    cue bytes, the mute/error fallbacks and the silent backend are unit-tested; the workspace
+    coverage gate holds at 95.69 % line / 97.07 % branch with the adapter included.
+  - The console does not yet request a repaint for the wall clock; it redraws on input. The
+    one-second tick and the `RideEngine.closed_elapsed()` freeze arrive with the settings/lifecycle
+    PR that owns the clock settings.
+  - `app_quit` replaces `probe_quit`; `ui.command` dispatches any action id, so the Tier B smoke
+    opens the setup dialog with `mi_new_ride` and types into its name field.
+- **Known craft-libs race (recorded, not ours to fix at this rev).**
+  `craft_automation::server::serve_connection` calls `WindowHost::repaint_in` on the connection
+  thread, which reads the frame clock through the context's pass state and panics with "another
+  thread holds this context's pass state" when a request lands inside a pass. The control smoke
+  therefore waits two seconds after the listening line, before its first request, so the first
+  (window- and device-building) pass has ended. A fix belongs in craft-libs: the server should
+  request a repaint without taking the pass state.
