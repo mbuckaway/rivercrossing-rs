@@ -12,7 +12,9 @@ unmaintained = "workspace"
 ignore = []
 
 [licenses]
-allow = ["GPL-3.0-only", "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "Zlib", "Unicode-3.0", "ISC", "BSD-2-Clause", "BSD-3-Clause", "OFL-1.1", "Ubuntu-font-1.0", "MPL-2.0"]
+# CDLA-Permissive-2.0 covers the Mozilla root-store data in `webpki-roots`, which
+# `ureq`'s rustls TLS feature pulls in (EPIC-11). It is a permissive data licence.
+allow = ["GPL-3.0-only", "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "Zlib", "Unicode-3.0", "ISC", "BSD-2-Clause", "BSD-3-Clause", "OFL-1.1", "Ubuntu-font-1.0", "MPL-2.0", "CDLA-Permissive-2.0"]
 confidence-threshold = 0.8
 exceptions = []
 

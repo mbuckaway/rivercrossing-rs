@@ -36,8 +36,11 @@ the global standard wins unless this file explicitly tightens a rule.
   The egui view layer and thin entry points are excluded via `--ignore-filename-regex`
   (mirroring the Python `[tool.coverage.run] omit` list). The Rust paths, as wired in
   `scripts/validate-rust.sh`, are `(^|/)src/main\.rs`, `xtask/src/main\.rs`,
-  `crates/rivercrossing-ui-egui/src/ui/app\.rs`, `crates/rivercrossing-ui-egui/src/ui/views/` and
-  `crates/rivercrossing-ui-egui/src/ui/ids\.rs`; every other file must hold 90% of both. The
+  `crates/rivercrossing-ui-egui/src/ui/app\.rs`, `crates/rivercrossing-ui-egui/src/ui/views/`,
+  `crates/rivercrossing-ui-egui/src/ui/ids\.rs` and
+  `crates/rivercrossing-wordpress/src/transport\.rs` (the WordPress network adapter — its agent
+  policy is unit-tested, only the socket call is unreachable offline); every other file must hold
+  90% of both. The
   automation production module (`crates/rivercrossing-ui-egui/src/ui/automation/`) stays **measured**
   — it is not on that list and the aggregate 90/90 holds with it; test-support under `tests/` (e.g.
   `tests/ui/scenario.rs`) is not measured, because the `unit` profile never runs it. The line floor

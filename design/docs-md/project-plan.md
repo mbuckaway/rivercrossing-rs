@@ -128,7 +128,9 @@ harness it lands.
 
 ### EPIC-11 — WordPress (`rivercrossing-wordpress`)
 - **Scope:** single-site REST client (`BasicAuth`/`discover`/`publish_page`).
-- **Acceptance:** discover/publish match the oracle; credential handling decided (parity vs keychain).
+- **Acceptance:** discover/publish match the oracle; credential handling decided — **parity
+  (plaintext settings JSON)**, persisted by the settings layer in EPIC-12; the crate itself holds
+  credentials in memory only.
 - **R-ids:** R-86.
 
 ### EPIC-12 — egui UI + Action registry (`rivercrossing-ui-egui`)

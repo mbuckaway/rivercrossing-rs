@@ -56,10 +56,11 @@ cargo +"$NIGHTLY" llvm-cov clean --workspace
 cargo +"$NIGHTLY" llvm-cov nextest --workspace --branch --no-report -P unit --locked || fail "llvm-cov nextest" "$?"
 # The egui view layer and thin entry points are excluded, per CODINGSTANDARDS-RUST.md:
 # the binaries' main, the shell app (which owns the untestable eframe entry point), the
-# xtask entry point, the view/widget-id modules EPIC-12 adds, and the control-channel
-# glue (Tier B only; its pure helpers are unit-tested). Everything else must hold
-# 90% line AND 90% branch.
-COVERAGE_IGNORE='src/main\.rs|xtask/src/main\.rs|crates/rivercrossing-ui-egui/src/ui/app\.rs|crates/rivercrossing-ui-egui/src/ui/views/|crates/rivercrossing-ui-egui/src/ui/ids\.rs|crates/rivercrossing-ui-egui/src/ui/automation/channel\.rs'
+# xtask entry point, the view/widget-id modules EPIC-12 adds, the control-channel
+# glue (Tier B only; its pure helpers are unit-tested), and the WordPress network
+# adapter (its agent policy is unit-tested; only the socket call is unreachable offline).
+# Everything else must hold 90% line AND 90% branch.
+COVERAGE_IGNORE='src/main\.rs|xtask/src/main\.rs|crates/rivercrossing-ui-egui/src/ui/app\.rs|crates/rivercrossing-ui-egui/src/ui/views/|crates/rivercrossing-ui-egui/src/ui/ids\.rs|crates/rivercrossing-ui-egui/src/ui/automation/channel\.rs|crates/rivercrossing-wordpress/src/transport\.rs'
 cargo +"$NIGHTLY" llvm-cov report --fail-under-lines 90 \
   --ignore-filename-regex "$COVERAGE_IGNORE" \
   || fail "line coverage" "$?"

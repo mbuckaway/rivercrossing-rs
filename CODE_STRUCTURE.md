@@ -161,8 +161,17 @@ model + a thin `writer` keep the parity surface unit-testable. Rust-owned PDF go
 are a section-keyed content oracle (cross-engine byte parity is impossible).
 
 ### rivercrossing-wordpress
-`BasicAuth`, `SiteInfo`, `PublishedPage`, `discover`, `find_page_by_slug`, `publish_page` — a
-single-site REST client. stdlib `urllib` → **reqwest/ureq**.
+`BasicAuth`, `SiteInfo`, `PublishedPage`, `PageDraft`, `WordPressError`, `discover`,
+`find_page_by_slug`, `publish_page` — a blocking, single-site REST client. stdlib `urllib` →
+**ureq 3.5.2** (`rustls`, `http_status_as_error(false)`, 30 s global timeout, 64 MiB body limit);
+`url` supplies only `form_urlencoded` for the query encoding. `PageDraft { title, slug, content,
+status, parent, page_id }` replaces the oracle's eight positional parameters (`parent` defaults to 0,
+`page_id: None` creates, `Some` updates).
+The HTTP boundary is the `pub(crate) trait Transport` seam in `http.rs` (one production impl
+`UreqTransport` in `transport.rs` plus a mock in tests); the `*_with` variants are crate-private. The
+adapter is the only network code and is excluded from coverage
+(`crates/rivercrossing-wordpress/src/transport\.rs`); its agent config is unit-tested. Credentials
+are held in memory only — persistence is EPIC-12, at parity (plaintext settings JSON).
 
 ### rivercrossing-ui-egui
 The egui front end: panels/dialogs for the Python window inventory, the `Action`/command registry

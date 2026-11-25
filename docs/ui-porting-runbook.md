@@ -99,7 +99,10 @@ the scenario JSON is the cross-language contract.
   the golden host with
   `UPDATE_SNAPSHOTS=force WGPU_BACKEND=vulkan cargo nextest run -P ui -p rivercrossing-ui-egui --locked`;
   there is no second golden set and no skip path.
-- WordPress credential storage: parity (plaintext settings JSON) vs OS keychain.
+- **Resolved — WordPress credential storage (EPIC-11):** parity, i.e. the password lives in the
+  plaintext settings JSON exactly as in the Python app. `rivercrossing-wordpress` stores nothing and
+  keeps credentials in memory only; the settings layer persists them. Revisit an OS keychain only
+  as a separate product decision.
 - Tailwind/Node CSS build: keep the Node step as an xtask, or vendor the already-compiled CSS.
 
 ## EPIC-12 handoff (from EPIC-10)
