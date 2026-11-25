@@ -2,19 +2,24 @@
 
 //! The crate-private HTTP seam and the URL helpers that every request uses.
 
+// Only the unit tests drive this pipeline until the public `discover` and
+// `pages` entry points land in later phases.
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the public discover and pages entry points, which land in later phases, call this pipeline"
+    )
+)]
+
+use serde_json::Value;
 use url::form_urlencoded::Serializer;
 
 use crate::auth::BasicAuth;
 use crate::error::WordPressError;
+use crate::json::{decode_json, error_body};
 
 /// The HTTP method that the crate sends.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the discover, pages and transport modules, which land in later phases, use the seam"
-    )
-)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Method {
     /// A read with no request body.
@@ -24,13 +29,6 @@ pub(crate) enum Method {
 }
 
 /// One request handed to the [`Transport`] seam.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the discover, pages and transport modules, which land in later phases, use the seam"
-    )
-)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct HttpRequest {
     /// The method.
@@ -44,10 +42,6 @@ pub(crate) struct HttpRequest {
 }
 
 /// One response from the [`Transport`] seam.
-#[expect(
-    dead_code,
-    reason = "the transport module, which lands in a later phase, returns this type"
-)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct HttpResponse {
     /// The HTTP status that the site answered with.
@@ -60,10 +54,6 @@ pub(crate) struct HttpResponse {
 ///
 /// The unit tests substitute a recording mock; the production implementation
 /// is `transport::UreqTransport`.
-#[expect(
-    dead_code,
-    reason = "the discover, pages and transport modules, which land in later phases, use the trait"
-)]
 pub(crate) trait Transport {
     /// Send one request and return its status and body.
     ///
@@ -80,13 +70,6 @@ pub(crate) trait Transport {
 /// is a scheme only when it starts with an ASCII letter and holds only ASCII
 /// alphanumerics, `+`, `-` and `.`. A URL with no scheme is not `https`, so
 /// the credential gate never trusts a `Url::parse` failure.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the discover, pages and transport modules, which land in later phases, use this helper"
-    )
-)]
 pub(crate) fn scheme_is_https(url: &str) -> bool {
     let Some((scheme, _rest)) = url.split_once(':') else {
         return false;
@@ -112,13 +95,6 @@ pub(crate) fn scheme_is_https(url: &str) -> bool {
 /// # Errors
 ///
 /// Return [`WordPressError::InsecureUrl`] when [`scheme_is_https`] is false.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the discover, pages and transport modules, which land in later phases, call this gate"
-    )
-)]
 pub(crate) fn require_https(url: &str) -> Result<(), WordPressError> {
     if scheme_is_https(url) {
         return Ok(());
@@ -130,13 +106,6 @@ pub(crate) fn require_https(url: &str) -> Result<(), WordPressError> {
 ///
 /// The pairs keep their order, and the encoding matches Python's
 /// `urlencode`: a space becomes `+`.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the discover and pages modules, which land in later phases, build URLs with this helper"
-    )
-)]
 pub(crate) fn rest_url(base_url: &str, path: &str, params: &[(&str, &str)]) -> String {
     let base = base_url.trim_end_matches('/');
     let mut url = format!("{base}/{path}");
@@ -159,13 +128,6 @@ pub(crate) fn rest_url(base_url: &str, path: &str, params: &[(&str, &str)]) -> S
 /// # Errors
 ///
 /// Return [`WordPressError::InsecureUrl`] for a URL that is not `https`.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the discover and pages modules, which land in later phases, build requests with this helper"
-    )
-)]
 pub(crate) fn build_request(
     url: &str,
     auth: &BasicAuth,
@@ -194,6 +156,55 @@ pub(crate) fn build_request(
         headers,
         body: Some(body),
     })
+}
+
+/// Return the JSON document that one request to `url` returns.
+///
+/// The HTTPS gate runs before the credential header is built. A transport
+/// failure becomes [`WordPressError::Unavailable`], an HTTP error status maps
+/// through the status mapper, and any other status decodes the body as JSON.
+///
+/// # Errors
+///
+/// Return [`WordPressError::InsecureUrl`] for a non-https URL, and the mapped
+/// error for a failed transport, an HTTP error status or a non-JSON body.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the pipeline mirrors the oracle's _request_json(transport, url, auth, body)"
+)]
+pub(crate) fn request_json_with(
+    transport: &dyn Transport,
+    url: &str,
+    auth: &BasicAuth,
+    body: Option<Vec<u8>>,
+) -> Result<Value, WordPressError> {
+    let request = build_request(url, auth, body)?;
+    let response = transport.send(&request).map_err(|reason| {
+        WordPressError::unavailable(format!("WordPress site {url} is unavailable: {reason}"))
+    })?;
+    if response.status >= 400 {
+        return Err(status_error(url, response.status, &response.body));
+    }
+    decode_json(&response.body, url)
+}
+
+/// Return the error for an HTTP status of 400 or above.
+///
+/// A 401 or 403 refuses the credentials, with the error document's
+/// `code`/`message` appended when both are strings. Any other status reports
+/// `WordPress`'s own error document, or an unavailable site when the body is
+/// not one.
+fn status_error(url: &str, status: u16, body: &[u8]) -> WordPressError {
+    let detail = error_body(body);
+    if matches!(status, 401 | 403) {
+        return WordPressError::refused(url, status, detail);
+    }
+    match detail {
+        Some((code, message)) => WordPressError::response(code, message, status),
+        None => WordPressError::unavailable(format!(
+            "WordPress site {url} returned HTTP {status} without a JSON error body"
+        )),
+    }
 }
 
 #[cfg(test)]

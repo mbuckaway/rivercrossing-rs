@@ -3,10 +3,14 @@
 //! Tests for the HTTP seam, the scheme gate and the URL helpers.
 
 use pretty_assertions::assert_eq;
+use serde_json::json;
 
-use super::{HttpRequest, Method, build_request, require_https, rest_url, scheme_is_https};
+use super::{
+    HttpRequest, Method, build_request, request_json_with, require_https, rest_url, scheme_is_https,
+};
 use crate::auth::BasicAuth;
 use crate::error::WordPressError;
+use crate::mock::MockTransport;
 
 #[test]
 fn test_rest_url_strips_all_trailing_slashes() {
@@ -195,4 +199,149 @@ fn test_build_request_refuses_a_non_https_url() {
                 .to_owned()
         )
     );
+}
+
+#[test]
+fn test_request_json_maps_401_with_and_without_a_body() {
+    // Arrange
+    let auth = BasicAuth::new("user", "password");
+    let with_body =
+        MockTransport::answering(401, r#"{"code": "rest_forbidden", "message": "Sorry"}"#);
+    let without_body = MockTransport::answering(401, "not json");
+
+    // Act
+    let detailed = request_json_with(&with_body, "https://example.test/wp-json/", &auth, None)
+        .map_err(|error| error.to_string());
+    let plain = request_json_with(&without_body, "https://example.test/wp-json/", &auth, None)
+        .map_err(|error| error.to_string());
+
+    // Assert
+    assert_eq!(
+        [detailed, plain],
+        [
+            Err(
+                "WordPress rejected the credentials for https://example.test/wp-json/ (HTTP 401): rest_forbidden: Sorry"
+                    .to_owned()
+            ),
+            Err(
+                "WordPress rejected the credentials for https://example.test/wp-json/ (HTTP 401)"
+                    .to_owned()
+            ),
+        ]
+    );
+}
+
+#[test]
+fn test_request_json_maps_500_with_a_body() {
+    // Arrange
+    let auth = BasicAuth::new("user", "password");
+    let transport = MockTransport::answering(
+        500,
+        r#"{"code": "internal_server_error", "message": "Boom"}"#,
+    );
+
+    // Act
+    let result = request_json_with(&transport, "https://example.test/wp-json/", &auth, None)
+        .map_err(|error| error.to_string());
+
+    // Assert
+    assert_eq!(
+        result,
+        Err("WordPress error internal_server_error (HTTP 500): Boom".to_owned())
+    );
+}
+
+#[test]
+fn test_request_json_maps_other_status_without_a_body() {
+    // Arrange
+    let auth = BasicAuth::new("user", "password");
+    let transport = MockTransport::answering(404, r#"["not", "an", "error", "body"]"#);
+
+    // Act
+    let result = request_json_with(&transport, "https://example.test/wp-json/", &auth, None)
+        .map_err(|error| error.to_string());
+
+    // Assert
+    assert_eq!(
+        result,
+        Err(
+            "WordPress site https://example.test/wp-json/ returned HTTP 404 without a JSON error body"
+                .to_owned()
+        )
+    );
+}
+
+#[test]
+fn test_request_json_maps_a_transport_failure() {
+    // Arrange
+    let auth = BasicAuth::new("user", "password");
+    let transport = MockTransport::failing("connection refused");
+
+    // Act
+    let result = request_json_with(&transport, "https://example.test/wp-json/", &auth, None)
+        .map_err(|error| error.to_string());
+
+    // Assert
+    assert_eq!(
+        result,
+        Err(
+            "WordPress site https://example.test/wp-json/ is unavailable: connection refused"
+                .to_owned()
+        )
+    );
+}
+
+#[test]
+fn test_request_json_posts_the_body_when_present() {
+    // Arrange
+    let auth = BasicAuth::new("user", "password");
+    let transport = MockTransport::answering(200, r#"{"id": 7}"#);
+    let url = "https://example.test/wp-json/wp/v2/pages";
+    let payload = b"{\"title\":\"Race results\"}".to_vec();
+
+    // Act
+    let result = request_json_with(&transport, url, &auth, Some(payload.clone()));
+
+    // Assert
+    assert_eq!(result, Ok(json!({"id": 7})));
+    assert_eq!(
+        transport.calls(),
+        vec![HttpRequest {
+            method: Method::Post,
+            url: "https://example.test/wp-json/wp/v2/pages".to_owned(),
+            headers: vec![
+                (
+                    "Authorization".to_owned(),
+                    "Basic dXNlcjpwYXNzd29yZA==".to_owned(),
+                ),
+                ("Accept".to_owned(), "application/json".to_owned()),
+                (
+                    "Content-Type".to_owned(),
+                    "application/json; charset=utf-8".to_owned(),
+                ),
+            ],
+            body: Some(payload),
+        }]
+    );
+}
+
+#[test]
+fn test_request_json_refuses_a_non_https_url_without_sending() {
+    // Arrange
+    let auth = BasicAuth::new("user", "password");
+    let transport = MockTransport::answering(200, "{}");
+
+    // Act
+    let result = request_json_with(&transport, "http://example.test/wp-json/", &auth, None)
+        .map_err(|error| error.to_string());
+
+    // Assert
+    assert_eq!(
+        result,
+        Err(
+            "refusing to send WordPress credentials to a non-https URL: http://example.test/wp-json/"
+                .to_owned()
+        )
+    );
+    assert_eq!(transport.calls(), Vec::new());
 }

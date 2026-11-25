@@ -21,8 +21,13 @@
 #![forbid(unsafe_code)]
 
 mod auth;
+mod discover;
 mod error;
 mod http;
+mod json;
+
+#[cfg(test)]
+pub(crate) mod mock;
 
 pub use auth::BasicAuth;
 pub use error::WordPressError;
