@@ -18,13 +18,15 @@ pub mod paths;
 pub mod row;
 pub mod schema;
 pub mod session;
+pub mod settings;
 pub mod store;
 
 pub use backup::{DEFAULT_KEEP, HourlyBackup, restore, run, schedule_hourly};
 pub use error::StoreError;
 pub use migrations::{MIGRATIONS, Migration, run_migrations};
-pub use paths::default_db_path;
+pub use paths::{config_dir_for, default_db_path, default_settings_path};
 pub use row::{AuditRow, RideRow};
 pub use schema::{SCHEMA_VERSION, apply_pragmas, ensure_schema};
 pub use session::{PreviousSession, SessionState};
+pub use settings::{AppSettings, default_settings, load_settings, save_settings};
 pub use store::Store;
