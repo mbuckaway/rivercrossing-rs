@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: GPL-3.0-only
+
+//! The frozen dialog contracts: the eight dialogs EPIC-12 Phase 3 opens, and their button rules.
+
+/// The stock buttons a dialog can carry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Button {
+    /// The affirmative stock button.
+    Ok,
+    /// The safe stock button that Esc activates.
+    Cancel,
+    /// The stock button that dismisses an information dialog.
+    Close,
+    /// The destructive stock button.
+    Delete,
+    /// A custom button, by its frozen control id.
+    Custom(&'static str),
+}
+
+impl Button {
+    /// Return the label of the button; a custom button returns its frozen control id.
+    #[must_use]
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "OK",
+            Self::Cancel => "Cancel",
+            Self::Close => "Close",
+            Self::Delete => "Delete",
+            Self::Custom(id) => id,
+        }
+    }
+}
+
+/// One dialog's frozen contract.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DialogSpec {
+    /// The frozen window id, such as `delete_ride_dlg`.
+    pub(crate) id: &'static str,
+    /// The window title.
+    pub(crate) title: &'static str,
+    /// The button Enter activates.
+    pub(crate) default: Button,
+    /// The button Esc activates; always the safe one.
+    pub(crate) cancel: Button,
+    /// Whether the dialog confirms a destructive action.
+    pub(crate) destructive: bool,
+    /// The first field of a form dialog, which holds focus when the dialog opens.
+    pub(crate) first_field: Option<&'static str>,
+    /// The focusable buttons, in visual order from left to right.
+    pub(crate) buttons: &'static [Button],
+}
+
+/// The dialogs EPIC-12 Phase 3 opens, in declaration order.
+///
+/// `resume_dlg` renders no cancel button; Esc still cancels through `Button::Cancel`, as the wx
+/// dialog did. `delete_ride_dlg` is a destructive confirm, so it opens on Cancel and leaves
+/// `first_field` empty; its typed-name field stays settable by its frozen control id.
+pub(crate) const DIALOGS: &[DialogSpec] = &[
+    DialogSpec {
+        id: "ride_setup_dlg",
+        title: "Ride Setup",
+        default: Button::Ok,
+        cancel: Button::Cancel,
+        destructive: false,
+        first_field: Some("name_input"),
+        buttons: &[Button::Ok, Button::Cancel],
+    },
+    DialogSpec {
+        id: "start_blocked_dlg",
+        title: "Cannot Start Ride",
+        default: Button::Ok,
+        cancel: Button::Cancel,
+        destructive: false,
+        first_field: None,
+        buttons: &[Button::Ok, Button::Cancel],
+    },
+    DialogSpec {
+        id: "exit_running_dlg",
+        title: "Ride Is Running",
+        default: Button::Cancel,
+        cancel: Button::Cancel,
+        destructive: false,
+        first_field: None,
+        buttons: &[
+            Button::Cancel,
+            Button::Custom("finish_first_btn"),
+            Button::Ok,
+        ],
+    },
+    DialogSpec {
+        id: "delete_ride_dlg",
+        title: "Delete Ride",
+        default: Button::Cancel,
+        cancel: Button::Cancel,
+        destructive: true,
+        first_field: None,
+        buttons: &[Button::Delete, Button::Cancel],
+    },
+    DialogSpec {
+        id: "resume_dlg",
+        title: "Resume Ride",
+        default: Button::Custom("continue_btn"),
+        cancel: Button::Cancel,
+        destructive: false,
+        first_field: None,
+        buttons: &[
+            Button::Custom("continue_btn"),
+            Button::Custom("library_btn"),
+        ],
+    },
+    DialogSpec {
+        id: "set_start_dlg",
+        title: "Set Start Time",
+        default: Button::Ok,
+        cancel: Button::Cancel,
+        destructive: false,
+        first_field: Some("start_date_picker"),
+        buttons: &[Button::Ok, Button::Cancel],
+    },
+    DialogSpec {
+        id: "about_dlg",
+        title: "About RiverCrossing",
+        default: Button::Close,
+        cancel: Button::Close,
+        destructive: false,
+        first_field: None,
+        buttons: &[Button::Close],
+    },
+    DialogSpec {
+        id: "shortcuts_dlg",
+        title: "Keyboard Shortcuts",
+        default: Button::Close,
+        cancel: Button::Close,
+        destructive: false,
+        first_field: None,
+        buttons: &[Button::Close],
+    },
+];
+
+/// Return the contract of the dialog id, or `None` when the id is not a dialog.
+#[must_use]
+pub(crate) fn spec(id: &str) -> Option<&'static DialogSpec> {
+    DIALOGS.iter().find(|dialog| dialog.id == id)
+}
+
+#[cfg(test)]
+mod tests;

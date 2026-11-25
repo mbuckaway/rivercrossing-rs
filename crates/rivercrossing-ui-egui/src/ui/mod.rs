@@ -16,6 +16,14 @@ pub mod automation;
     not(test),
     expect(
         dead_code,
+        reason = "Phase 6 renders the dialog stack; today only the tests read it"
+    )
+)]
+pub(crate) mod dialogs;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
         reason = "Phase 6 addresses each control by these frozen ids, so only the tests read them today"
     )
 )]
