@@ -168,6 +168,8 @@ harness it lands.
   `.deb` + `.rpm` (`nfpm`); `SHA256SUMS.txt`; signing/notarization in a release EPIC.
 - **Acceptance:** each installer builds and smoke-installs; release assets + checksums produced.
 - **R-ids:** R-01, R-75.
+- **Delivered:** `topic/epic-13-installers` — `packaging/` scripts, the card-asset resolver fix, and
+  the GitHub Actions `gate.yml` + `installers.yml` workflows.
 
 ### EPIC-14 — CLI + MCP (parity complete)
 - **Scope:** expose the `Action` registry via `apps/rivercrossing-cli` (hand-rolled subcommands, no

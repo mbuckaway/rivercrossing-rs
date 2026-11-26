@@ -38,12 +38,42 @@ mod tests;
 
 /// The packaged card bitmaps that a team's logo card resolves to.
 ///
-/// The bitmaps ship in the source tree's `design/assets/cards`; a packaged
-/// build will need them installed beside the binary.
-const CARD_ASSETS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../design/assets/cards");
-
+/// A release install ships the bitmaps beside the binary in a platform-specific
+/// spot: `cards/` on Windows, `Contents/Resources/cards` in the macOS app
+/// bundle, and `../lib/rivercrossing/cards` under a Linux `.deb`/`.rpm`. The
+/// first existing layout wins; the `CARGO_MANIFEST_DIR` fallback keeps
+/// `cargo test` and a source-tree `cargo run` working.
+///
 /// The bitmap scale the page embeds: the 2x variant stays crisp at ~48 px.
 const LOGO_SCALE: &str = "-2x";
+
+/// Return the first existing packaged card-asset directory rooted at *`exe_dir`*.
+///
+/// `None` when none of the three install layouts is present, so the caller can
+/// fall back to the source-tree layout during development.
+fn packaged_card_assets_dir(exe_dir: &Path) -> Option<PathBuf> {
+    [
+        exe_dir.join("cards"),
+        exe_dir.join("../Resources/cards"),
+        exe_dir.join("../lib/rivercrossing/cards"),
+    ]
+    .into_iter()
+    .find(|candidate| candidate.is_dir())
+}
+
+/// Return the packaged card-asset directory, or the source-tree fallback.
+fn card_assets_dir() -> PathBuf {
+    let fallback = PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../design/assets/cards"
+    ));
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf));
+    exe_dir
+        .and_then(|dir| packaged_card_assets_dir(&dir))
+        .unwrap_or(fallback)
+}
 
 /// The stored code of the joker, which has its own asset name.
 const JOKER_CODE: &str = "JK";
@@ -161,7 +191,7 @@ fn ride_logo_src(config: &RideConfig) -> Option<String> {
 
 /// Return the path of the bitmap for asset *key*.
 fn card_asset_path(key: &str) -> PathBuf {
-    Path::new(CARD_ASSETS_DIR).join(format!("{key}{LOGO_SCALE}.png"))
+    card_assets_dir().join(format!("{key}{LOGO_SCALE}.png"))
 }
 
 /// Return the bitmap filename stem for the stored card *code*.

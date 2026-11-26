@@ -121,11 +121,12 @@ Source files carry a single SPDX line and no other licence header:
   "=0.1.0"`), egui/eframe `0.37.0` at `7e1c30d142bc7879d043e74b5ceb3ecfe7f51329`, winit `0.30.13` at
   `a517b3846ee8457d84ee4975110bfda6797c44dc`, wgpu `30.0`. The egui/winit forks are repeated in this
   workspace's `[patch.crates-io]` because they do not propagate from craft-libs.
-- **Where the build runs.** This repo has no CI workflow: the fleet runners' golden AMI carries no Rust
-  toolchain, and the forge host runner executes as user `git`. Builds and gates run on the forge box
-  (`dev`) and on the Mac over SSH. If this repo is later mirrored to the Forge, the job must target the
-  host runner (`runs-on: [linux, ARM64]`), never a `box`/`fleet` label, and needs a `git`-owned
-  toolchain.
+- **Where the build runs.** GitHub Actions runs the gate (`.github/workflows/gate.yml`, per PR/push)
+  and the installers (`.github/workflows/installers.yml`, on main, tags and manual dispatch). The fleet
+  runners' golden AMI carries no Rust toolchain and the forge host runner executes as user `git`, so the
+  forge box (`dev`) and the Mac remain the manual build and smoke-install hosts. If this repo is later
+  mirrored to the Forge, the job must target the host runner (`runs-on: [linux, ARM64]`), never a
+  `box`/`fleet` label, and needs a `git`-owned toolchain.
 - **`forbid(unsafe_code)`** per domain-crate root; no `unwrap`/`expect`/`panic` in production.
 - **Agent surface (EPIC-14).** The CLI and the MCP server both dispatch the same `Action` registry; the
   MCP server uses the shared **`craft-mcp-server`** crate (craft-libs), and the CLI is a hand-rolled

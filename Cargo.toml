@@ -97,6 +97,10 @@ debug = false
 opt-level = 1
 debug = "line-tables-only"
 
+# Release installers ship stripped binaries (EPIC-13).
+[profile.release]
+strip = true
+
 # Workspace deps whose crates land in later EPICs (craft-mcp-server: EPIC-13).
 [workspace.metadata.cargo-machete]
 ignored = ["craft-mcp-server"]

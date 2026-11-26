@@ -1,0 +1,36 @@
+name: Gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vulkan (lavapipe), EGL and Python
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            mesa-vulkan-drivers libegl1 libgl1 libxkbcommon0 python3
+
+      - name: Install Rust toolchains
+        run: |
+          rustup component add rustfmt clippy llvm-tools
+          rustup toolchain install nightly-2026-11-05 --profile minimal -c llvm-tools
+          rustup toolchain install 1.95.0 --profile minimal
+
+      - name: Install cargo tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest,cargo-llvm-cov,cargo-deny,cargo-machete,cargo-hack
+
+      - name: Run the gate
+        env:
+          WGPU_BACKEND: vulkan
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        run: ./scripts/validate-rust.sh

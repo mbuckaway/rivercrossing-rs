@@ -27,8 +27,8 @@ use serde_json::json;
 use time::{Date, Month, OffsetDateTime, Time};
 
 use super::{
-    PdfOptions, build, export_standings_csv, render_html, render_poster, render_wordpress_full,
-    render_wordpress_podium, write_html, write_pdf, write_poster_pdf,
+    PdfOptions, build, export_standings_csv, packaged_card_assets_dir, render_html, render_poster,
+    render_wordpress_full, render_wordpress_podium, write_html, write_pdf, write_poster_pdf,
 };
 
 /// The ride name every fixture uses.
@@ -535,6 +535,76 @@ fn test_build_given_a_team_without_a_logo_card_leaves_no_entry() -> Result<(), S
 
     // Assert
     assert_eq!(input.team_logos.len(), 0);
+    Ok(())
+}
+
+// ---------------------------------------------- composition: card assets
+
+#[test]
+fn test_packaged_card_assets_dir_prefers_cards_beside_the_binary() -> Result<(), String> {
+    // Arrange: the Windows/portable-zip layout — `cards/` next to the binary.
+    let root = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let cards = root.path().join("cards");
+    std::fs::create_dir(&cards).map_err(|error| error.to_string())?;
+
+    // Act
+    let found = packaged_card_assets_dir(root.path());
+
+    // Assert
+    assert_eq!(found.as_deref(), Some(cards.as_path()));
+    Ok(())
+}
+
+#[test]
+fn test_packaged_card_assets_dir_finds_the_macos_resources_layout() -> Result<(), String> {
+    // Arrange: the macOS app-bundle layout — `Contents/Resources/cards` reached
+    // from the binary at `Contents/MacOS/rivercrossing`.
+    let app = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let macos = app.path().join("Contents/MacOS");
+    let resources_cards = app.path().join("Contents/Resources/cards");
+    std::fs::create_dir_all(&macos).map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(&resources_cards).map_err(|error| error.to_string())?;
+
+    // Act
+    let found = packaged_card_assets_dir(&macos);
+
+    // Assert
+    let expected = macos.join("../Resources/cards");
+    assert_eq!(found.as_deref(), Some(expected.as_path()));
+    Ok(())
+}
+
+#[test]
+fn test_packaged_card_assets_dir_finds_the_linux_usr_lib_layout() -> Result<(), String> {
+    // Arrange: the Linux `.deb`/`.rpm` layout — `/usr/bin/rivercrossing` beside
+    // `/usr/lib/rivercrossing/cards`.
+    let root = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let bin = root.path().join("usr/bin");
+    let lib_cards = root.path().join("usr/lib/rivercrossing/cards");
+    std::fs::create_dir_all(&bin).map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(&lib_cards).map_err(|error| error.to_string())?;
+
+    // Act
+    let found = packaged_card_assets_dir(&bin);
+
+    // Assert
+    let expected = bin.join("../lib/rivercrossing/cards");
+    assert_eq!(found.as_deref(), Some(expected.as_path()));
+    Ok(())
+}
+
+#[test]
+fn test_packaged_card_assets_dir_returns_none_without_any_layout() -> Result<(), String> {
+    // Arrange: a bare directory with none of the three install layouts.
+    let root = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let bin = root.path().join("usr/bin");
+    std::fs::create_dir_all(&bin).map_err(|error| error.to_string())?;
+
+    // Act
+    let found = packaged_card_assets_dir(&bin);
+
+    // Assert
+    assert_eq!(found, None);
     Ok(())
 }
 

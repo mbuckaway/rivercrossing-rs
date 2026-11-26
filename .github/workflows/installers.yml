@@ -1,0 +1,117 @@
+name: Installers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the macOS DMG
+        run: bash packaging/package-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: target/package/rivercrossing-macos-arm64.dmg
+
+  windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the Windows x64 installer
+        shell: pwsh
+        run: ./packaging/package-windows.ps1 -Arch x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: |
+            target/package/rivercrossing-x64.msi
+            target/package/rivercrossing-x64-portable.zip
+
+  windows-arm64:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the Windows arm64 installer
+        shell: pwsh
+        run: ./packaging/package-windows.ps1 -Arch arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-arm64
+          path: |
+            target/package/rivercrossing-arm64.msi
+            target/package/rivercrossing-arm64-portable.zip
+
+  # ubuntu-22.04 gives the glibc 2.35 portability floor. The hosted label is
+  # deprecated (retirement Apr 2027); migrate to ubuntu-24.04 + a
+  # container: ubuntu:22.04 build step before then.
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nfpm
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Build the Linux packages
+        run: bash packaging/package-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: |
+            target/package/rivercrossing_0.1.0_amd64.deb
+            target/package/rivercrossing_0.1.0_amd64.rpm
+
+  checksums:
+    needs: [macos, windows-x64, windows-arm64, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Generate SHA256SUMS.txt
+        run: |
+          cd artifacts
+          find . -type f \( -name 'rivercrossing-*' -o -name 'rivercrossing_*' \) \
+            | sort \
+            | xargs sha256sum > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SHA256SUMS
+          path: artifacts/SHA256SUMS.txt
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [checksums]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the tag matches the workspace version
+        run: |
+          version="$(grep -m1 '^version = ' Cargo.toml | sed 's/^version = "\(.*\)"/\1/')"
+          tag="${GITHUB_REF_NAME#v}"
+          if [[ "${version}" != "${tag}" ]]; then
+            printf 'tag %s != Cargo.toml version %s\n' \
+              "${GITHUB_REF_NAME}" "${version}" >&2
+            exit 1
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish the unsigned release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.msi
+            artifacts/**/*.zip
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
+            artifacts/**/SHA256SUMS.txt

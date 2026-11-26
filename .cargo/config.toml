@@ -1,3 +1,8 @@
 # The `cargo xtask` alias: run the workspace maintenance binary.
 [alias]
 xtask = "run --package xtask --"
+
+# Windows installers link the MSVC static CRT (no VC++ redist dependency).
+# One entry covers both x86_64 and aarch64 msvc targets (EPIC-13).
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]
