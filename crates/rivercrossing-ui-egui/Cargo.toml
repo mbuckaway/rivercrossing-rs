@@ -10,8 +10,11 @@ repository.workspace = true
 [dependencies]
 craft = { workspace = true, features = ["automation", "window"] }
 eframe = { workspace = true }
+rivercrossing-csvio = { path = "../rivercrossing-csvio", version = "=0.1.0" }
 rivercrossing-ride = { path = "../rivercrossing-ride", version = "=0.1.0" }
+rivercrossing-rider-issues = { path = "../rivercrossing-rider-issues", version = "=0.1.0" }
 rivercrossing-roster = { path = "../rivercrossing-roster", version = "=0.1.0" }
+rivercrossing-standings = { path = "../rivercrossing-standings", version = "=0.1.0" }
 rivercrossing-store = { path = "../rivercrossing-store", version = "=0.1.0" }
 rodio = { workspace = true }
 serde = { workspace = true }

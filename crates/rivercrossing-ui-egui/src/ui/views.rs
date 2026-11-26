@@ -6,11 +6,23 @@
 //! presenter results and forward each activation to the §15 action registry.
 
 pub(crate) mod console;
+pub(crate) mod csv;
 pub(crate) mod dialogs;
+pub(crate) mod issues;
 pub(crate) mod menu;
+pub(crate) mod riders;
 pub(crate) mod setup;
+pub(crate) mod teams;
 
 use craft::egui::Ui;
+
+/// Show one clickable list cell.
+///
+/// An empty cell shows an em dash, so the control always carries a non-empty accessible name.
+pub(crate) fn cell(ui: &mut Ui, selected: bool, text: &str) -> bool {
+    let shown = if text.trim().is_empty() { "—" } else { text };
+    ui.selectable_label(selected, shown).clicked()
+}
 
 /// Show a plain text label.
 ///

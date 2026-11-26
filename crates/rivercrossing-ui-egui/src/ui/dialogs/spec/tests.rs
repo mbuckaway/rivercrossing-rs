@@ -9,8 +9,8 @@ use rstest::rstest;
 use super::{Button, DIALOGS, spec};
 use crate::ui::ids;
 
-/// The eight dialogs EPIC-12 Phase 3 declares, in table order.
-const PHASE_3_IDS: [&str; 8] = [
+/// The dialogs the registry declares, in table order.
+const DIALOG_IDS: [&str; 14] = [
     "ride_setup_dlg",
     "start_blocked_dlg",
     "exit_running_dlg",
@@ -19,6 +19,12 @@ const PHASE_3_IDS: [&str; 8] = [
     "set_start_dlg",
     "about_dlg",
     "shortcuts_dlg",
+    "rider_editor_dlg",
+    "add_rider_dlg",
+    "csv_preview_dlg",
+    "team_editor_dlg",
+    "add_team_dlg",
+    "rider_issues_dlg",
 ];
 
 /// Return true when the window declares the control id.
@@ -42,12 +48,12 @@ fn custom_id(button: Button) -> Option<&'static str> {
 }
 
 #[test]
-fn test_the_table_holds_the_eight_phase_3_dialogs() {
+fn test_the_table_holds_the_fourteen_dialogs() {
     // Act
     let ids: Vec<&'static str> = DIALOGS.iter().map(|dialog| dialog.id).collect();
 
     // Assert
-    assert_eq!(ids, PHASE_3_IDS.to_vec());
+    assert_eq!(ids, DIALOG_IDS.to_vec());
 }
 
 #[test]
@@ -169,6 +175,12 @@ fn test_every_spec_has_the_same_default_and_cancel_family() {
 #[case("set_start_dlg", "Set Start Time")]
 #[case("about_dlg", "About RiverCrossing")]
 #[case("shortcuts_dlg", "Keyboard Shortcuts")]
+#[case("rider_editor_dlg", "Rider Editor")]
+#[case("add_rider_dlg", "Add Rider")]
+#[case("csv_preview_dlg", "Import Riders")]
+#[case("team_editor_dlg", "Teams Editor")]
+#[case("add_team_dlg", "Add Team")]
+#[case("rider_issues_dlg", "Rider Issues")]
 fn test_every_dialog_has_the_documented_title(#[case] id: &str, #[case] title: &str) {
     // Act
     let found = spec(id).map(|dialog| dialog.title);

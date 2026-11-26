@@ -8,4 +8,7 @@
 
 pub(crate) mod console;
 pub(crate) mod data_source;
+pub(crate) mod rider_issues;
+pub(crate) mod riders;
 pub(crate) mod setup;
+pub(crate) mod teams;

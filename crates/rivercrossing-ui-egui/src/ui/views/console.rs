@@ -423,6 +423,7 @@ fn riders_tab(ui: &mut Ui, state: &mut AppState) {
         Some(ride) => RosterView::entries(&ride.roster).clone(),
         None => Vec::new(),
     };
+    let mut open_plate = None;
     ui.push_id("console_riders_list", |ui| {
         egui::ScrollArea::vertical()
             .id_salt("console_riders_scroll")
@@ -442,14 +443,22 @@ fn riders_tab(ui: &mut Ui, state: &mut AppState) {
                             } else {
                                 String::new()
                             };
-                            for rider in &entry.riders {
+                            for (index, rider) in entry.riders.iter().enumerate() {
                                 let plate = rider
                                     .plate
                                     .clone()
                                     .filter(|plate| !plate.is_empty())
                                     .unwrap_or_else(|| entry.plate.clone());
                                 text(ui, &plate);
-                                text(ui, &rider.full_name);
+                                let clicked = ui
+                                    .push_id(
+                                        ("console_rider_row", entry.id.0.as_str(), index),
+                                        |ui| super::cell(ui, false, &rider.full_name),
+                                    )
+                                    .inner;
+                                if clicked {
+                                    open_plate = Some(plate.clone());
+                                }
                                 text(ui, &team);
                                 ui.end_row();
                             }
@@ -457,6 +466,9 @@ fn riders_tab(ui: &mut Ui, state: &mut AppState) {
                     });
             });
     });
+    if let Some(plate) = open_plate {
+        state.open_rider_at(&plate);
+    }
 }
 
 /// Show the "Needs Review" tab: the flagged rows, the held-only filter and the review button.
@@ -465,13 +477,22 @@ fn review_tab(ui: &mut Ui, state: &mut AppState) {
         Some(ride) => data_source::review_rows(&ride.engine, &ride.roster, state.held_only),
         None => Vec::new(),
     };
+    let first_plate = rows.first().map(|row| row.plate.clone());
+    let mut open_plate = None;
     ui.horizontal(|ui| {
         ui.push_id("show_held_only_chk", |ui| {
             ui.checkbox(&mut state.held_only, "Show held only");
         });
-        ui.push_id("review_btn", |ui| {
-            ui.add_enabled(false, egui::Button::new("Review…"));
-        });
+        let review = ui
+            .push_id("review_btn", |ui| {
+                ui.add_enabled(first_plate.is_some(), egui::Button::new("Review…"))
+            })
+            .inner;
+        if review.clicked()
+            && let Some(plate) = first_plate.clone()
+        {
+            open_plate = Some(plate);
+        }
     });
     ui.push_id("flagged_list", |ui| {
         egui::ScrollArea::vertical()
@@ -486,18 +507,29 @@ fn review_tab(ui: &mut Ui, state: &mut AppState) {
                             text(ui, heading);
                         }
                         ui.end_row();
-                        for row in &rows {
+                        for (index, row) in rows.iter().enumerate() {
                             text(ui, &row.issue);
                             text(ui, &row.card);
                             text(ui, &row.plate);
                             text(ui, &row.lap.to_string());
                             text(ui, &format_duration(row.lap_time));
-                            text(ui, &row.rider);
+                            let clicked = ui
+                                .push_id(("flagged_rider_row", index), |ui| {
+                                    ui.selectable_label(false, &row.rider)
+                                })
+                                .inner
+                                .clicked();
+                            if clicked {
+                                open_plate = Some(row.plate.clone());
+                            }
                             ui.end_row();
                         }
                     });
             });
     });
+    if let Some(plate) = open_plate {
+        state.open_rider_at(&plate);
+    }
 }
 
 // ----------------------------------------------------------- status bar

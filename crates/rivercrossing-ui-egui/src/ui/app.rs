@@ -9,7 +9,7 @@
 
 use std::fmt;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -25,7 +25,7 @@ use super::action::spec::CommandId;
 use super::automation::{self, Control, ControlConfig};
 use super::logging::LaunchLog;
 use super::sound::{SilentBackend, SoundPlayer};
-use super::state::{AppState, LoadedRide, new_ride_seed};
+use super::state::{AppState, FILE_PICKER_UNAVAILABLE, LoadedRide, new_ride_seed};
 use super::views;
 use super::window::{self, APP_ID};
 use super::worker::{StoreCommand, StoreReply, StoreWorker};
@@ -190,6 +190,59 @@ impl RiverCrossingApp {
         automation::command(&mut self.state, name)
     }
 
+    /// Load one ride from *path*'s database into the state, synchronously.
+    ///
+    /// A headless host and the snapshot tests seed a fixture ride this way; the running app loads
+    /// rides through the store worker instead.
+    ///
+    /// # Errors
+    ///
+    /// Return the store's failure when the database, the ride or its roster cannot be read.
+    pub fn load_ride_from(
+        &mut self,
+        path: &Path,
+        ride_id: i64,
+    ) -> Result<(), rivercrossing_store::StoreError> {
+        let store = rivercrossing_store::Store::open(path)?;
+        let engine = store.load_engine(ride_id)?;
+        let roster = store.roster_for(ride_id)?;
+        let config = engine.config().clone();
+        let mut ride = LoadedRide {
+            ride_id,
+            config,
+            roster,
+            engine,
+        };
+        ride.roster.set_status(ride.engine.state());
+        self.state.ride = Some(ride);
+        self.state.audit_row_count = 0;
+        self.state.refresh_models();
+        Ok(())
+    }
+
+    /// Export the open ride's roster as CSV.
+    ///
+    /// The OS save picker that chooses *path* arrives with PR D's `craft_dialogs`; a headless host
+    /// and the snapshot tests call this directly.
+    ///
+    /// # Errors
+    ///
+    /// Return the no-ride refusal and the CSV crate's refusal.
+    pub fn export_csv(&mut self, path: &Path) -> Result<(), String> {
+        self.state.export_csv(path)
+    }
+
+    /// Preview *path* and open the CSV preview dialog.
+    ///
+    /// The OS open picker that chooses *path* arrives with PR D's `craft_dialogs`.
+    ///
+    /// # Errors
+    ///
+    /// Return the CSV reader's refusal.
+    pub fn open_csv_preview(&mut self, path: &Path) -> Result<(), String> {
+        self.state.preview_csv(path)
+    }
+
     /// Write one field on the top dialog, as `ui.set` does.
     ///
     /// # Errors
@@ -229,15 +282,17 @@ impl RiverCrossingApp {
                     roster,
                     engine,
                 }) => {
-                    let ride = LoadedRide {
+                    let mut ride = LoadedRide {
                         ride_id: id,
                         config,
                         roster: *roster,
                         engine: *engine,
                     };
+                    ride.roster.set_status(ride.engine.state());
                     self.event("ride-loaded", json!({ "ride_id": ride.ride_id }));
                     self.state.ride = Some(ride);
                     self.state.audit_row_count = 0;
+                    self.state.refresh_models();
                 }
                 Ok(StoreReply::RideCreated(id)) => {
                     self.event("ride-created", json!({ "ride_id": id }));
@@ -303,10 +358,21 @@ impl RiverCrossingApp {
             CommandId::ReopenRide => self.state.reopen_ride(),
             CommandId::ClearRide => self.state.clear_ride(),
             CommandId::AppQuit => ctx.send_viewport_cmd(ViewportCommand::Close),
+            CommandId::ExportCsv => self.state.note(FILE_PICKER_UNAVAILABLE),
             other => self.state.note(format!(
                 "{} is not available in this release",
                 other.as_str()
             )),
+        }
+    }
+
+    /// Send the store commands that the views queued.
+    fn drain_pending_store(&mut self) {
+        let commands = std::mem::take(&mut self.state.pending_store);
+        if let Some(worker) = &self.worker {
+            for command in commands {
+                worker.send(command);
+            }
         }
     }
 
@@ -382,6 +448,7 @@ impl ShellApp for RiverCrossingApp {
 
     fn logic(&mut self, ctx: &Context) {
         self.drain_worker();
+        self.drain_pending_store();
         self.start_pending_create();
         self.run_pending_command(ctx);
         self.play_pending_cues();
