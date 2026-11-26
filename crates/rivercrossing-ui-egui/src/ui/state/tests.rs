@@ -15,6 +15,7 @@ use rivercrossing_roster::types::{Entry, Rider};
 use rivercrossing_store::Store;
 use rstest::rstest;
 
+use super::exports::ExportKind;
 use super::{
     AppState, ExportPresence, LoadedRide, NativeTask, PendingNative, RiderSelection, new_ride_seed,
 };
@@ -31,6 +32,7 @@ use crate::ui::action::spec::{CheckKind, CommandId, NativeDialog};
 use crate::ui::dialogs::stack::Focus;
 use crate::ui::presenters::console::RIDE_STARTED;
 use crate::ui::presenters::rider_issues;
+use crate::ui::presenters::simulator;
 use crate::ui::sound::Cue;
 use crate::ui::worker::StoreCommand;
 
@@ -207,6 +209,9 @@ fn test_gate_reports_teams_crossings_audit_and_show_times() -> Result<(), String
         html: true,
         poster_html: true,
         pdf: true,
+        last_html: None,
+        last_poster_html: None,
+        last_pdf: None,
     };
     state.settings.publish_show_times = true;
 
@@ -424,17 +429,20 @@ fn test_act_queues_a_plain_command() {
 }
 
 #[test]
-fn test_act_reports_a_window_not_built_in_this_release() -> Result<(), String> {
+fn test_act_opens_the_results_window_in_any_state() -> Result<(), String> {
     // Arrange
     let mut state = empty_state();
     state.ride = loaded_ride(RidePhase::Draft)?;
 
-    // Act: the results dialog is not built in this release.
+    // Act
     let result = state.act(MI_STANDINGS);
 
     // Assert
-    assert_eq!(result, Err(DispatchError::NotImplemented("results_dlg")));
-    assert!(state.dialogs.is_empty());
+    assert_eq!(result, Ok(Effect::OpenWindow("results_dlg")));
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("results_dlg")
+    );
     Ok(())
 }
 
@@ -449,8 +457,8 @@ fn test_act_reports_a_window_not_built_in_this_release() -> Result<(), String> {
 #[case(MI_RIDER_EDITOR, true)]
 #[case(MI_TEAM_EDITOR, true)]
 #[case(MI_CHECK_RIDER_ISSUES, true)]
-#[case(MI_STANDINGS, false)]
-#[case(MI_PUBLISH_WORDPRESS, false)]
+#[case(MI_STANDINGS, true)]
+#[case(MI_PUBLISH_WORDPRESS, true)]
 #[case(ActionId::from_name("not_an_action"), false)]
 fn test_implemented_is_true_for_the_built_targets_and_false_for_the_rest(
     #[case] id: ActionId,
@@ -941,6 +949,9 @@ fn test_clear_ride_unloads_the_ride() -> Result<(), String> {
         html: true,
         poster_html: true,
         pdf: true,
+        last_html: None,
+        last_poster_html: None,
+        last_pdf: None,
     };
 
     // Act
@@ -3232,5 +3243,484 @@ fn test_clear_ride_clears_the_active_ride() -> Result<(), String> {
             .any(|command| matches!(command, StoreCommand::ClearActiveRide))
     );
     assert_eq!(state.crossing_detail, None);
+    Ok(())
+}
+
+// ------------------------------------------------- results, exports, jobs
+
+#[test]
+fn test_open_results_ranks_the_finished_ride() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Finished)?;
+
+    // Act
+    state.open_results();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("results_dlg")
+    );
+    assert!(state.results.model.is_some());
+    assert_eq!(state.results.error, None);
+    Ok(())
+}
+
+#[test]
+fn test_open_results_given_no_ride_shows_an_empty_board() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.open_results();
+
+    // Assert
+    assert_eq!(
+        state.results.model.as_ref().map(|model| model.solo.len()),
+        Some(0)
+    );
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("results_dlg")
+    );
+}
+
+#[test]
+fn test_mark_exported_clears_the_stale_flag() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+    let start = epoch_start();
+    if let Some(ride) = state.ride.as_mut() {
+        ride.engine
+            .add_crossing_at(
+                "101",
+                start + time::Duration::hours(3),
+                "missed at the line",
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    state.open_results();
+    if let Some(ride) = state.ride.as_ref() {
+        let watermark = ride.engine.events().len();
+        state.results.watermark.mark_exported(watermark);
+    }
+    if let Some(ride) = state.ride.as_mut() {
+        ride.engine
+            .add_crossing_at(
+                "101",
+                start + time::Duration::hours(4),
+                "correction after export",
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    // Act
+    state.refresh_results();
+    let stale_after_correction = state
+        .results
+        .model
+        .as_ref()
+        .is_some_and(|model| model.stale);
+    state.mark_exported();
+
+    // Assert
+    assert!(stale_after_correction);
+    assert_eq!(
+        state
+            .results
+            .model
+            .as_ref()
+            .is_some_and(|model| model.stale),
+        false
+    );
+    Ok(())
+}
+
+#[test]
+fn test_queue_export_composes_the_job() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Finished)?;
+    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let path = directory.path().join("results.html");
+
+    // Act
+    state.queue_export(ExportKind::Html, &path)?;
+
+    // Assert
+    let job = state.pending_export.as_ref().ok_or("the job is queued")?;
+    assert_eq!(job.kind, ExportKind::Html);
+    assert_eq!(job.path, path);
+    Ok(())
+}
+
+#[test]
+fn test_queue_export_given_no_ride_refuses() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    let result = state.queue_export(ExportKind::Csv, std::path::Path::new("x.csv"));
+
+    // Assert
+    assert_eq!(result, Err("Open a ride first".to_owned()));
+    assert!(state.pending_export.is_none());
+}
+
+#[test]
+fn test_record_export_marks_presence_and_the_preview_target() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Finished)?;
+    let path = std::path::Path::new("/tmp/results.html");
+
+    // Act
+    state.record_export(ExportKind::Html, path);
+
+    // Assert
+    assert!(state.exports.html);
+    assert_eq!(
+        state.preview_target(ExportKind::Html),
+        Ok(path.to_path_buf())
+    );
+    assert_eq!(
+        state.preview_target(ExportKind::PosterHtml),
+        Err("Export the file first".to_owned())
+    );
+    assert_eq!(state.notice, Some("Exported /tmp/results.html".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn test_open_publish_prefills_the_form_from_the_settings_and_ride() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Finished)?;
+    state.settings.wp_url = "https://example.test".to_owned();
+    state.settings.wp_username = "organizer".to_owned();
+
+    // Act
+    state.open_publish();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("publish_wordpress_dlg")
+    );
+    let form = state.publish_form();
+    assert_eq!(form.base_url, "https://example.test");
+    assert_eq!(form.username, "organizer");
+    assert_eq!(form.kind, "full");
+    assert!(form.title.contains("Full Results"));
+    assert!(form.slug.contains("full-results"));
+    Ok(())
+}
+
+#[test]
+fn test_submit_publish_given_an_empty_form_keeps_the_dialog() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Finished)?;
+    state.open_publish();
+
+    // Act
+    let result = state.submit_publish();
+
+    // Assert
+    assert!(result.is_err());
+    assert!(state.publish_errors.is_some());
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("publish_wordpress_dlg")
+    );
+    assert!(state.pending_publish.is_none());
+    Ok(())
+}
+
+#[test]
+fn test_submit_publish_given_a_valid_form_persists_and_queues_the_job() -> Result<(), String> {
+    // Arrange
+    let (_directory, mut state) = state_with_temp_settings()?;
+    state.ride = loaded_ride(RidePhase::Finished)?;
+    state.open_publish();
+    for (field, value) in [
+        ("wp_url_input", "https://example.test"),
+        ("wp_username_input", "organizer"),
+        ("wp_password_input", "abcd efgh"),
+    ] {
+        state
+            .dialogs
+            .set_field(field, value)
+            .map_err(|_| "the field".to_owned())?;
+    }
+
+    // Act
+    state.submit_publish()?;
+
+    // Assert
+    assert_eq!(state.settings.wp_url, "https://example.test");
+    assert_eq!(state.settings.wp_username, "organizer");
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("publish_running_dlg")
+    );
+    assert!(state.pending_publish.is_some());
+    let stored = rivercrossing_store::load_settings(&state.settings_path).0;
+    assert_eq!(stored.wp_url, "https://example.test");
+    Ok(())
+}
+
+#[test]
+fn test_retry_publish_rebuilds_the_kept_form() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Finished)?;
+    state.open_publish();
+    for (field, value) in [
+        ("wp_url_input", "https://example.test"),
+        ("wp_username_input", "organizer"),
+        ("wp_password_input", "abcd efgh"),
+    ] {
+        state
+            .dialogs
+            .set_field(field, value)
+            .map_err(|_| "the field".to_owned())?;
+    }
+    state.submit_publish()?;
+    state.pending_publish = None;
+
+    // Act
+    state.retry_publish()?;
+
+    // Assert
+    assert!(state.pending_publish.is_some());
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("publish_running_dlg")
+    );
+    Ok(())
+}
+
+#[test]
+fn test_request_publish_cancel_sets_the_flag_and_the_status() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.request_publish_cancel();
+
+    // Assert
+    assert!(state.publish_cancel);
+    assert_eq!(state.publish_status, "Cancelling…");
+}
+
+#[test]
+fn test_open_simulation_prefills_the_saved_settings() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Draft)?;
+    state.settings.sim_riders = 120;
+    state.settings.sim_teams = 20;
+    state.settings.sim_laps = 3;
+
+    // Act
+    state.open_simulation();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("simulation_dlg")
+    );
+    assert_eq!(state.dialogs.field("riders_spin"), Some("120"));
+    let (riders, teams, _solo, laps, _interval, _a, _b, _c) = state.simulation_counts();
+    assert_eq!((riders, teams, laps), (120, 20, 3));
+    Ok(())
+}
+
+#[test]
+fn test_check_simulation_fills_the_infobar() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Draft)?;
+    state.open_simulation();
+
+    // Act
+    state.check_simulation();
+
+    // Assert
+    assert!(
+        state
+            .sim_message
+            .as_deref()
+            .is_some_and(|message| message.contains("Team riders = teams"))
+    );
+    Ok(())
+}
+
+#[test]
+fn test_submit_simulation_given_bad_laps_keeps_the_dialog() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Draft)?;
+    state.open_simulation();
+    state
+        .dialogs
+        .set_field("laps_spin", "0")
+        .map_err(|_| "the field".to_owned())?;
+
+    // Act
+    let result = state.submit_simulation();
+
+    // Assert
+    assert_eq!(result, Err("laps must be at least 1".to_owned()));
+    assert!(state.sim_message.is_some());
+    assert!(state.pending_sim.is_none());
+    Ok(())
+}
+
+#[test]
+fn test_submit_simulation_given_valid_counts_persists_and_queues_the_run() -> Result<(), String> {
+    // Arrange
+    let (_directory, mut state) = state_with_temp_settings()?;
+    state.ride = loaded_ride(RidePhase::Draft)?;
+    state.open_simulation();
+    state
+        .dialogs
+        .set_field("laps_spin", "2")
+        .map_err(|_| "the field".to_owned())?;
+    state
+        .dialogs
+        .set_field("interval_spin", "15")
+        .map_err(|_| "the field".to_owned())?;
+
+    // Act
+    state.submit_simulation()?;
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("sim_running_dlg")
+    );
+    assert!(state.pending_sim.is_some());
+    let stored = rivercrossing_store::load_settings(&state.settings_path).0;
+    assert_eq!((stored.sim_laps, stored.sim_interval), (2, 15));
+    Ok(())
+}
+
+#[test]
+fn test_generate_sim_riders_fills_the_draft_roster() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Draft)?;
+    state.open_simulation();
+    for (field, value) in [
+        ("riders_spin", "6"),
+        ("teams_spin", "1"),
+        ("solo_spin", "2"),
+    ] {
+        state
+            .dialogs
+            .set_field(field, value)
+            .map_err(|_| "the field".to_owned())?;
+    }
+
+    // Act
+    state.generate_sim_riders()?;
+
+    // Assert
+    let roster = state.ride.as_ref().map(|ride| ride.roster.entries().len());
+    assert!(roster.is_some_and(|entries| entries >= 2));
+    assert_eq!(state.notice, Some("Generated 6 riders".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn test_finish_simulation_persists_the_new_events_and_closes() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Draft)?;
+    state.open_simulation();
+    let mut ride = state.ride.take().ok_or("the ride")?;
+    let pre_events = ride.engine.events().len();
+    let start = epoch_start();
+    ride.engine
+        .start(Some(start))
+        .map_err(|error| error.to_string())?;
+    let _ = ride
+        .engine
+        .record_crossing("101", Some(start + time::Duration::hours(1)));
+    let outcome = simulator::SimOutcome {
+        cancelled: false,
+        recorded: 1,
+        blocked: None,
+    };
+
+    // Act
+    state.finish_simulation(ride, outcome, pre_events);
+
+    // Assert
+    assert!(state.ride.is_some());
+    assert_eq!(state.dialogs.top(), None);
+    assert_eq!(state.notice, Some("Simulated 1 crossings".to_owned()));
+    assert!(
+        state
+            .pending_store
+            .iter()
+            .any(|command| matches!(command, StoreCommand::Append { .. }))
+    );
+    Ok(())
+}
+
+#[test]
+fn test_request_sim_cancel_sets_the_flag_and_the_status() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.request_sim_cancel();
+
+    // Assert
+    assert!(state.sim_cancel);
+    assert_eq!(state.sim_status, "Cancelling…");
+}
+
+#[test]
+fn test_set_publish_kind_reseeds_the_title_and_slug() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Finished)?;
+    state.open_publish();
+
+    // Act
+    state.set_publish_kind("podium");
+
+    // Assert
+    let form = state.publish_form();
+    assert_eq!(form.kind, "podium");
+    assert!(form.title.contains("Podium Results"), "{}", form.title);
+    assert!(form.slug.contains("podium-results"), "{}", form.slug);
+    Ok(())
+}
+
+#[test]
+fn test_persist_sim_settings_saves_the_fields_without_a_run() -> Result<(), String> {
+    // Arrange
+    let (_directory, mut state) = state_with_temp_settings()?;
+    state.open_simulation();
+    for (field, value) in [("riders_spin", "77"), ("laps_spin", "4")] {
+        state
+            .dialogs
+            .set_field(field, value)
+            .map_err(|_| "the field".to_owned())?;
+    }
+
+    // Act
+    state.persist_sim_settings();
+
+    // Assert
+    let stored = rivercrossing_store::load_settings(&state.settings_path).0;
+    assert_eq!((stored.sim_riders, stored.sim_laps), (77, 4));
+    assert!(state.pending_sim.is_none());
     Ok(())
 }

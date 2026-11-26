@@ -6,7 +6,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use craft::dialogs::{Answer, Message, MessageButtons, MessageLevel, MessageResult, Request, Wake};
+use craft::dialogs::{
+    Answer, FileDialog, Message, MessageButtons, MessageLevel, MessageResult, Request, Wake,
+};
 
 use super::{NativeDialogs, accepts};
 use crate::ui::action::spec::{CommandId, NativeDialog};
@@ -141,4 +143,148 @@ fn test_a_headless_queue_answers_unavailable() {
     assert_eq!(answers.len(), 1);
     assert!(matches!(&answers[0].1, Answer::Unavailable(reason) if !reason.is_empty()));
     assert!(!accepts(&answers[0].1));
+}
+
+/// Return a pending confirmation that runs *then*.
+fn task(then: NativeTask) -> PendingNative {
+    PendingNative {
+        dialog: crate::ui::action::spec::NativeDialog::Confirm,
+        then,
+    }
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the test is one table of the button rules, kept together so a reader sees them all"
+)]
+fn test_accepted_task_reads_the_stock_and_publish_buttons() {
+    // Arrange
+    let quit = task(NativeTask::Command(CommandId::AppQuit));
+    let open = task(NativeTask::OpenPublished {
+        link: "https://example.test/?page_id=7".to_owned(),
+    });
+    let retry = task(NativeTask::RetryPublish);
+
+    // Act and assert
+    assert_eq!(
+        super::accepted_task(&quit, &Answer::Message(MessageResult::Ok)),
+        Some(NativeTask::Command(CommandId::AppQuit))
+    );
+    assert_eq!(
+        super::accepted_task(&quit, &Answer::Message(MessageResult::Cancel)),
+        None
+    );
+    assert_eq!(
+        super::accepted_task(
+            &open,
+            &Answer::Message(MessageResult::Custom("Open".to_owned()))
+        ),
+        Some(NativeTask::OpenPublished {
+            link: "https://example.test/?page_id=7".to_owned(),
+        })
+    );
+    assert_eq!(
+        super::accepted_task(&open, &Answer::Message(MessageResult::Ok)),
+        None
+    );
+    assert_eq!(
+        super::accepted_task(
+            &retry,
+            &Answer::Message(MessageResult::Custom("Retry".to_owned()))
+        ),
+        Some(NativeTask::RetryPublish)
+    );
+    assert_eq!(
+        super::accepted_task(
+            &retry,
+            &Answer::Message(MessageResult::Custom("Cancel".to_owned()))
+        ),
+        None
+    );
+    assert_eq!(
+        super::accepted_task(&retry, &Answer::Message(MessageResult::Ok)),
+        Some(NativeTask::RetryPublish)
+    );
+    assert_eq!(
+        super::accepted_task(
+            &task(NativeTask::ExportFile {
+                kind: crate::ui::state::exports::ExportKind::Html,
+            }),
+            &Answer::Paths(vec![std::path::PathBuf::from("/tmp/results.html")]),
+        ),
+        None
+    );
+}
+
+#[test]
+fn test_ask_file_queues_the_save_picker_and_returns_its_path() {
+    // Arrange
+    let wanted = std::path::PathBuf::from("/tmp/results.html");
+    let answered = wanted.clone();
+    let mut native = NativeDialogs::new(Wake::none());
+    native.set_override(Some(Box::new(move |_request| {
+        Answer::Paths(vec![answered.clone()])
+    })));
+    let pending = task(NativeTask::ExportFile {
+        kind: crate::ui::state::exports::ExportKind::Html,
+    });
+
+    // Act
+    native.ask_file(&pending, FileDialog::save().file_name("results.html"));
+    native.show_pending();
+    let answers = native.answers();
+
+    // Assert
+    assert_eq!(answers.len(), 1);
+    assert_eq!(answers[0].1, Answer::Paths(vec![wanted]));
+    assert!(matches!(
+        answers[0].0.then,
+        NativeTask::ExportFile {
+            kind: crate::ui::state::exports::ExportKind::Html
+        }
+    ));
+}
+
+#[test]
+fn test_the_publish_outcome_boxes_carry_their_custom_buttons() {
+    // Arrange
+    let seen: Rc<RefCell<Vec<Request>>> = Rc::new(RefCell::new(Vec::new()));
+    let recorded = Rc::clone(&seen);
+    let mut native = NativeDialogs::new(Wake::none());
+    native.set_override(Some(Box::new(move |request| {
+        recorded.borrow_mut().push(request.clone());
+        Answer::Message(MessageResult::Ok)
+    })));
+
+    // Act
+    native.ask(
+        &task(NativeTask::OpenPublished {
+            link: "https://example.test".to_owned(),
+        }),
+        "Published to https://example.test",
+    );
+    native.show_pending();
+    let _ = native.answers();
+    native.ask(
+        &task(NativeTask::RetryPublish),
+        "The publish failed. Retry?",
+    );
+    native.show_pending();
+    let _ = native.answers();
+
+    // Assert
+    let requests = seen.borrow();
+    assert!(matches!(
+        requests.first(),
+        Some(Request::Message(message))
+            if message.buttons
+                == MessageButtons::OkCancelCustom("Open".to_owned(), "OK".to_owned())
+    ));
+    assert!(matches!(
+        requests.get(1),
+        Some(Request::Message(message))
+            if message.buttons
+                == MessageButtons::OkCancelCustom("Retry".to_owned(), "Cancel".to_owned())
+    ));
 }

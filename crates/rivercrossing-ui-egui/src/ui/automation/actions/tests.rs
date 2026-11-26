@@ -75,7 +75,7 @@ fn test_command_given_an_unknown_name_errors() {
 }
 
 #[test]
-fn test_command_given_a_not_implemented_action_errors() {
+fn test_command_opens_the_standings_window() {
     // Arrange
     let mut state = empty_state();
 
@@ -83,11 +83,11 @@ fn test_command_given_a_not_implemented_action_errors() {
     let reply = command(&mut state, "mi_standings");
 
     // Assert
+    assert_eq!(reply, Ok(json!({ "ok": true })));
     assert_eq!(
-        reply,
-        Err("command `mi_standings` is not available in this release".to_owned())
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("results_dlg")
     );
-    assert!(state.dialogs.is_empty());
 }
 
 #[test]

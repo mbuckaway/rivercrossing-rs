@@ -10,10 +10,12 @@
 use std::fmt;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use craft::dialogs::Wake;
+use craft::dialogs::{FileDialog, Wake};
 use craft::egui::{Context, ThemePreference, Ui, ViewportCommand};
 use craft::ui::runtime::env::RootEnv;
 use craft::ui::runtime::frame::FrameInput;
@@ -23,12 +25,17 @@ use craft::window::restore::Store;
 use serde_json::json;
 use time::OffsetDateTime;
 
-use super::action::spec::CommandId;
+use super::action::spec::{CommandId, NativeDialog};
 use super::automation::{self, Control, ControlConfig};
 use super::logging::LaunchLog;
 use super::native::{self, NativeDialogs};
+use super::presenters::simulator;
+use super::publish_job::{self, PublishOutcome, WordPressWriter};
 use super::sound::{SilentBackend, SoundPlayer};
-use super::state::{AppState, FILE_PICKER_UNAVAILABLE, LoadedRide, new_ride_seed};
+use super::state::exports::ExportKind;
+use super::state::{
+    AppState, FILE_PICKER_UNAVAILABLE, LoadedRide, NativeTask, PendingNative, new_ride_seed,
+};
 use super::views;
 use super::window::{self, APP_ID};
 use super::worker::{StoreCommand, StoreReply, StoreWorker};
@@ -70,6 +77,30 @@ impl AppPaths {
     }
 }
 
+/// One running publish attempt.
+struct PublishJob {
+    /// The attempt's one report.
+    reports: Receiver<Result<PublishOutcome, String>>,
+    /// Set when the operator cancels.
+    cancel: Arc<AtomicBool>,
+}
+
+/// One progress or finished report from the simulation thread.
+enum SimReport {
+    /// The completed fraction, 0.0..=1.0.
+    Progress(f32),
+    /// The finished ride, its outcome and the event count before the run.
+    Done(Box<LoadedRide>, simulator::SimOutcome, usize),
+}
+
+/// One running simulation.
+struct SimJob {
+    /// The progress and final reports.
+    reports: Receiver<SimReport>,
+    /// Set when the operator cancels.
+    cancel: Arc<AtomicBool>,
+}
+
 /// The `RiverCrossing` app driven by the craft shell.
 pub struct RiverCrossingApp {
     /// The instant the app asks the root window to close; `None` keeps the window open.
@@ -92,6 +123,10 @@ pub struct RiverCrossingApp {
     native: NativeDialogs,
     /// Whether the operator confirmed the quit and the window may close.
     quit_confirmed: bool,
+    /// The publish attempt running on its own thread.
+    publish_job: Option<PublishJob>,
+    /// The simulation running on its own thread.
+    sim_job: Option<SimJob>,
 }
 
 impl fmt::Debug for RiverCrossingApp {
@@ -107,6 +142,8 @@ impl fmt::Debug for RiverCrossingApp {
             .field("applied_zoom", &self.applied_zoom)
             .field("native", &self.native)
             .field("quit_confirmed", &self.quit_confirmed)
+            .field("publish_job", &self.publish_job.is_some())
+            .field("sim_job", &self.sim_job.is_some())
             .finish()
     }
 }
@@ -188,6 +225,8 @@ impl RiverCrossingApp {
             applied_zoom: None,
             native,
             quit_confirmed: false,
+            publish_job: None,
+            sim_job: None,
         };
         app.sound.set_muted(!app.state.settings.sound_on);
         let (log, log_warnings) =
@@ -253,6 +292,14 @@ impl RiverCrossingApp {
         Ok(())
     }
 
+    /// Answer every save picker with *paths* (tests).
+    #[cfg(test)]
+    pub(crate) fn answer_file_pickers_with(&mut self, paths: Vec<PathBuf>) {
+        self.native.set_override(Some(Box::new(move |_request| {
+            craft::dialogs::Answer::Paths(paths.clone())
+        })));
+    }
+
     /// Export the open ride's roster as CSV.
     ///
     /// The OS save picker that chooses *path* arrives with PR D's `craft_dialogs`; a headless host
@@ -293,6 +340,11 @@ impl RiverCrossingApp {
     pub fn show_audit(&mut self, rows: Vec<rivercrossing_store::AuditRow>) {
         self.state.open_audit();
         self.state.set_audit_rows(rows);
+    }
+
+    /// Open the publish form (a headless host and the snapshot tests).
+    pub fn show_publish(&mut self) {
+        self.state.open_publish();
     }
 
     /// Open the first crossing's detail (a headless host and the snapshot tests).
@@ -347,16 +399,77 @@ impl RiverCrossingApp {
     }
 
     /// Apply the native answers: a confirm runs the task, an unavailable host restores the in-app
-    /// modal, and a cancel runs nothing.
+    /// modal, a save picker queues its export, and a cancel runs nothing.
     fn answer_native_dialogs(&mut self) {
         for (pending, answer) in self.native.answers() {
-            if native::accepts(&answer) {
-                self.state.run_native_task(pending.then);
-            } else if let craft::dialogs::Answer::Unavailable(reason) = answer {
-                self.event("native-unavailable", json!({ "reason": reason }));
-                self.state.pending_native = Some(pending);
-                self.state.native_in_app = true;
+            match (&pending.then, &answer) {
+                (NativeTask::ExportFile { kind }, craft::dialogs::Answer::Paths(paths)) => {
+                    self.pick_export(*kind, paths);
+                }
+                (NativeTask::ExportFile { .. }, craft::dialogs::Answer::Unavailable(reason)) => {
+                    self.event("native-unavailable", json!({ "reason": reason }));
+                    self.state.note(FILE_PICKER_UNAVAILABLE);
+                }
+                (_, craft::dialogs::Answer::Unavailable(reason)) => {
+                    self.restore_in_app(pending, reason);
+                }
+                _ => {
+                    self.run_accepted(&pending, &answer);
+                }
             }
+        }
+    }
+
+    /// Restore a native box as the in-app modal after an unavailable host.
+    fn restore_in_app(&mut self, pending: PendingNative, reason: &str) {
+        self.event("native-unavailable", json!({ "reason": reason }));
+        self.state.pending_native = Some(pending);
+        self.state.native_in_app = true;
+    }
+
+    /// Run the task that *answer* accepts, when it accepts one.
+    fn run_accepted(&mut self, pending: &PendingNative, answer: &craft::dialogs::Answer) {
+        if let Some(task) = native::accepted_task(pending, answer) {
+            self.run_outgoing_task(task);
+        }
+    }
+
+    /// Queue the picked export, when the picker returned a path.
+    fn pick_export(&mut self, kind: ExportKind, paths: &[PathBuf]) {
+        if let Some(path) = paths.first() {
+            self.queue_picked_export(kind, path);
+        }
+    }
+
+    /// Queue *kind*'s export to the picked *path*, noting a composition refusal.
+    fn queue_picked_export(&mut self, kind: ExportKind, path: &Path) {
+        if let Err(message) = self.state.queue_export(kind, path) {
+            self.state.note(message);
+        }
+        self.event("export-chosen", json!({ "kind": kind.as_str() }));
+    }
+
+    /// Run a confirmed task, including the publish outcomes the app itself owns.
+    fn run_outgoing_task(&mut self, task: NativeTask) {
+        match task {
+            NativeTask::OpenPublished { link } => {
+                self.open_target(&link);
+            }
+            NativeTask::RetryPublish => {
+                if let Err(message) = self.state.retry_publish() {
+                    self.state.note(message);
+                }
+            }
+            other => self.state.run_native_task(other),
+        }
+    }
+
+    /// Open *target* with the platform's handler, posting a notice when it cannot.
+    fn open_target(&mut self, target: &str) {
+        if let Some(notice) =
+            open_notice(target, &|value| craft::platform::open::open_external(value))
+        {
+            self.state.note(notice);
         }
     }
 
@@ -404,23 +517,41 @@ impl RiverCrossingApp {
                 self.state.reconcile_launch();
             }
             Ok(StoreReply::RideDeleted { id }) => {
-                self.event("ride-deleted", json!({ "ride_id": id }));
-                self.state.note("Ride deleted");
-                self.send_store(StoreCommand::Rides);
+                self.library_changed(("ride-deleted", "Ride deleted"), id);
             }
             Ok(StoreReply::RideDuplicated(id)) => {
-                self.event("ride-duplicated", json!({ "ride_id": id }));
-                self.state.note("Ride duplicated");
-                self.send_store(StoreCommand::Rides);
+                self.library_changed(("ride-duplicated", "Ride duplicated"), id);
             }
             Ok(StoreReply::AuditRows(rows)) => self.state.audit_row_count = rows.len(),
             Ok(StoreReply::Backup(path)) => self.state.note(path.display().to_string()),
+            Ok(StoreReply::Exported { kind, path }) => {
+                self.event(
+                    "export",
+                    json!({ "kind": kind.as_str(), "path": path.display().to_string() }),
+                );
+                self.state.record_export(kind, &path);
+            }
+            Ok(StoreReply::ExportFailed { kind, message }) => {
+                self.event(
+                    "export-failed",
+                    json!({ "kind": kind.as_str(), "message": message }),
+                );
+                self.state.note(message);
+            }
             Ok(_other) => {}
             Err(message) => {
                 self.state.note(message.clone());
                 self.event("store-error", json!({ "message": message }));
             }
         }
+    }
+
+    /// Report a library change and ask the store for the fresh rows.
+    fn library_changed(&mut self, change: (&str, &str), id: i64) {
+        let (event, note) = change;
+        self.event(event, json!({ "ride_id": id }));
+        self.state.note(note);
+        self.send_store(StoreCommand::Rides);
     }
 
     /// Load the ride a store reply carries, and point the store at it.
@@ -490,7 +621,18 @@ impl RiverCrossingApp {
             CommandId::BackupNow => self.state.queue_backup(),
             CommandId::ClearRide => self.state.clear_ride(),
             CommandId::AppQuit => self.state.confirm_quit(),
-            CommandId::ExportCsv => self.state.note(FILE_PICKER_UNAVAILABLE),
+            CommandId::ExportHtml
+            | CommandId::ExportPdf
+            | CommandId::ExportPoster
+            | CommandId::ExportPosterHtml
+            | CommandId::ExportCsv => {
+                if let Some(kind) = ExportKind::from_command(command) {
+                    self.raise_export_picker(kind);
+                }
+            }
+            CommandId::PreviewHtml => self.preview(ExportKind::Html),
+            CommandId::PreviewPosterHtml => self.preview(ExportKind::PosterHtml),
+            CommandId::PreviewPdf => self.preview(ExportKind::Pdf),
             other => self.state.note(format!(
                 "{} is not available in this release",
                 other.as_str()
@@ -498,10 +640,175 @@ impl RiverCrossingApp {
         }
     }
 
+    /// Ask the save picker where to write *kind*.
+    fn raise_export_picker(&mut self, kind: ExportKind) {
+        let pending = PendingNative {
+            dialog: NativeDialog::Confirm,
+            then: NativeTask::ExportFile { kind },
+        };
+        let dialog = FileDialog::save()
+            .title("Save export")
+            .filter(kind.extension().to_uppercase(), &[kind.extension()])
+            .file_name(self.state.export_file_name(kind));
+        self.event("export-picker", json!({ "kind": kind.as_str() }));
+        self.native.ask_file(&pending, dialog);
+    }
+
+    /// Open the last file that *kind* wrote, or post why it cannot.
+    fn preview(&mut self, kind: ExportKind) {
+        match self.state.preview_target(kind) {
+            Ok(path) => self.open_target(&path.to_string_lossy()),
+            Err(message) => self.state.note(message),
+        }
+    }
+
+    /// Start the publish a confirmed form queued, on its own thread.
+    fn start_pending_publish(&mut self) {
+        let Some(start) = self.state.pending_publish.take() else {
+            return;
+        };
+        if self.publish_job.is_some() {
+            self.state.pending_publish = Some(start);
+            return;
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        let thread_cancel = Arc::clone(&cancel);
+        let (sender, reports) = mpsc::channel();
+        let spawned = std::thread::Builder::new()
+            .name("rivercrossing-publish".to_owned())
+            .spawn(move || {
+                let writer = WordPressWriter;
+                let report = publish_job::run_publish(&writer, &start, &|| {
+                    thread_cancel.load(Ordering::Relaxed)
+                });
+                let _ = sender.send(report);
+            });
+        if spawned.is_err() {
+            self.state.note("the publish thread could not start");
+            let _ = self.state.dialogs.cancel();
+            return;
+        }
+        self.event("publish-started", json!({}));
+        self.publish_job = Some(PublishJob { reports, cancel });
+    }
+
+    /// Apply the publish thread's report: close the window and raise the native outcome.
+    fn drain_publish(&mut self) {
+        let Some(job) = self.publish_job.as_ref() else {
+            return;
+        };
+        let Some(report) = job.reports.try_iter().last() else {
+            return;
+        };
+        self.publish_job = None;
+        let _ = self.state.dialogs.cancel();
+        match report {
+            Ok(PublishOutcome::Published(page)) => {
+                self.event(
+                    "publish",
+                    json!({ "link": page.link, "created": page.created }),
+                );
+                self.state.publish_form = None;
+                self.state.raise_native(
+                    NativeDialog::Confirm,
+                    NativeTask::OpenPublished { link: page.link },
+                );
+            }
+            Ok(PublishOutcome::Cancelled) => {
+                self.event("publish", json!({ "cancelled": true }));
+                self.state.note("Publish cancelled");
+            }
+            Err(message) => {
+                self.event("publish", json!({ "error": message }));
+                self.state.note(message);
+                self.state
+                    .raise_native(NativeDialog::Confirm, NativeTask::RetryPublish);
+            }
+        }
+    }
+
+    /// Start the simulation a confirmed form queued, on its own thread.
+    fn start_pending_sim(&mut self) {
+        let Some(start) = self.state.pending_sim.take() else {
+            return;
+        };
+        if self.sim_job.is_some() {
+            self.state.pending_sim = Some(start);
+            return;
+        }
+        let Some(mut ride) = self.state.ride.take() else {
+            self.state.note("Open a ride first");
+            return;
+        };
+        let cancel = Arc::new(AtomicBool::new(false));
+        let thread_cancel = Arc::clone(&cancel);
+        let (sender, reports) = mpsc::channel();
+        let progress_sender = sender.clone();
+        let spawned = std::thread::Builder::new()
+            .name("rivercrossing-sim".to_owned())
+            .spawn(move || {
+                let outcome = simulator::run_simulation(
+                    &mut ride.engine,
+                    &ride.roster,
+                    &start.settings,
+                    &mut |fraction| {
+                        let _ = progress_sender.send(SimReport::Progress(fraction));
+                    },
+                    &|| thread_cancel.load(Ordering::Relaxed),
+                );
+                let _ = sender.send(SimReport::Done(Box::new(ride), outcome, start.pre_events));
+            });
+        if spawned.is_err() {
+            self.state.note("the simulation thread could not start");
+            let _ = self.state.dialogs.cancel();
+            return;
+        }
+        self.event("simulation-started", json!({}));
+        self.sim_job = Some(SimJob { reports, cancel });
+    }
+
+    /// Apply the simulation thread's progress and final report.
+    fn drain_sim(&mut self) {
+        let Some(job) = self.sim_job.as_ref() else {
+            return;
+        };
+        let mut finished = None;
+        for report in job.reports.try_iter() {
+            match report {
+                SimReport::Progress(fraction) => self.state.set_sim_progress(fraction),
+                SimReport::Done(ride, outcome, pre_events) => {
+                    finished = Some((ride, outcome, pre_events));
+                }
+            }
+        }
+        if let Some((ride, outcome, pre_events)) = finished {
+            self.sim_job = None;
+            self.event("simulation", json!({ "recorded": outcome.recorded }));
+            self.state.finish_simulation(*ride, outcome, pre_events);
+        }
+    }
+
+    /// Pass the in-app cancel requests to the running jobs.
+    fn sync_cancel_flags(&mut self) {
+        if std::mem::take(&mut self.state.publish_cancel)
+            && let Some(job) = self.publish_job.as_ref()
+        {
+            job.cancel.store(true, Ordering::Relaxed);
+        }
+        if std::mem::take(&mut self.state.sim_cancel)
+            && let Some(job) = self.sim_job.as_ref()
+        {
+            job.cancel.store(true, Ordering::Relaxed);
+        }
+    }
+
     /// Send the store commands that the views queued.
     fn drain_pending_store(&mut self) {
         let commands = std::mem::take(&mut self.state.pending_store);
         if let Some(worker) = &self.worker {
+            if let Some(job) = self.state.pending_export.take() {
+                worker.send(StoreCommand::Export(Box::new(job)));
+            }
             for command in commands {
                 worker.send(command);
             }
@@ -586,6 +893,11 @@ impl ShellApp for RiverCrossingApp {
         self.start_pending_create();
         self.raise_native_dialogs();
         self.run_pending_command();
+        self.sync_cancel_flags();
+        self.start_pending_publish();
+        self.drain_publish();
+        self.start_pending_sim();
+        self.drain_sim();
         self.play_pending_cues();
         self.apply_appearance(ctx);
         let _ = self.state.due_hourly_backup(OffsetDateTime::now_utc());
@@ -601,11 +913,14 @@ impl ShellApp for RiverCrossingApp {
     }
 
     fn tick(&mut self, now: Instant) -> Option<Instant> {
-        let backup = next_hour_instant(now);
-        Some(
-            self.quit_after
-                .map_or(backup, |deadline| deadline.min(backup)),
-        )
+        let mut next = next_hour_instant(now);
+        if let Some(deadline) = self.quit_after {
+            next = next.min(deadline);
+        }
+        if self.publish_job.is_some() || self.sim_job.is_some() {
+            next = next.min(now + JOB_POLL_INTERVAL);
+        }
+        Some(next)
     }
 
     fn close_requested(&mut self) -> CloseDecision {
@@ -642,6 +957,16 @@ pub fn run(quit_after: Option<Duration>, control: Option<ControlConfig>) -> efra
         }
         app
     })
+}
+
+/// The pause between two polls of a running job's channel.
+const JOB_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Return the notice for a failed `open`, or `None` when the handler started.
+fn open_notice(target: &str, opener: &dyn Fn(&str) -> Result<(), String>) -> Option<String> {
+    opener(target)
+        .err()
+        .map(|error| format!("cannot open {target}: {error}"))
 }
 
 /// Return the instant of the next whole UTC hour, or *now* when the clock is at it.

@@ -12,11 +12,12 @@
 //! builder calls with their own labels when a flow asks for them.
 
 use craft::dialogs::{
-    Answer, Dialogs, Message, MessageButtons, MessageLevel, MessageResult, Override, Wake,
+    Answer, Dialogs, FileDialog, Message, MessageButtons, MessageLevel, MessageResult, Override,
+    Wake,
 };
 
 use crate::ui::action::spec::NativeDialog;
-use crate::ui::state::{AppState, PendingNative};
+use crate::ui::state::{AppState, NativeTask, PendingNative};
 
 /// The app's native message boxes, one open at a time.
 pub(crate) struct NativeDialogs {
@@ -46,7 +47,12 @@ impl NativeDialogs {
     pub(crate) fn ask(&mut self, pending: &PendingNative, message: &str) {
         let title = AppState::native_title(pending.dialog);
         self.dialogs
-            .ask_message(message_box(pending.dialog, title, message), pending.clone());
+            .ask_message(message_box(pending, title, message), pending.clone());
+    }
+
+    /// Queue the save picker that *pending* names.
+    pub(crate) fn ask_file(&mut self, pending: &PendingNative, dialog: FileDialog) {
+        self.dialogs.ask(dialog, pending.clone());
     }
 
     /// Show the next queued box at the end of the frame.
@@ -85,6 +91,7 @@ impl std::fmt::Debug for NativeDialogs {
 
 /// Return whether *answer* accepts the box's question.
 #[must_use]
+#[cfg(test)]
 pub(crate) fn accepts(answer: &Answer) -> bool {
     matches!(
         answer,
@@ -92,19 +99,66 @@ pub(crate) fn accepts(answer: &Answer) -> bool {
     )
 }
 
+/// Return the task that *answer* runs, when it runs one.
+///
+/// The publish outcomes carry their own button rules: the success box's `Open` opens the page while
+/// its `OK` dismisses, and the failure box's `Retry` retries while its `Cancel` dismisses. Every
+/// other box keeps the stock rule.
+#[must_use]
+#[expect(
+    clippy::match_same_arms,
+    reason = "each arm spells one button rule; merging the dismissal arms would erase which box they dismiss"
+)]
+pub(crate) fn accepted_task(pending: &PendingNative, answer: &Answer) -> Option<NativeTask> {
+    match (&pending.then, answer) {
+        (
+            _,
+            Answer::Message(MessageResult::Cancel | MessageResult::No)
+            | Answer::Cancelled
+            | Answer::Paths(_)
+            | Answer::Unavailable(_),
+        ) => None,
+        (NativeTask::OpenPublished { .. }, Answer::Message(MessageResult::Custom(label)))
+            if label == "Open" =>
+        {
+            Some(pending.then.clone())
+        }
+        (NativeTask::RetryPublish, Answer::Message(MessageResult::Custom(label)))
+            if label == "Retry" =>
+        {
+            Some(pending.then.clone())
+        }
+        (_, Answer::Message(MessageResult::Custom(_))) => None,
+        (NativeTask::OpenPublished { .. }, _) => None,
+        (_, Answer::Message(MessageResult::Ok | MessageResult::Yes)) => Some(pending.then.clone()),
+    }
+}
+
 /// Return the override that answers every request as unavailable.
 fn unavailable_override() -> Override {
     Box::new(|_request| Answer::Unavailable("the host shows no native dialogs".to_owned()))
 }
 
-/// Build the message box that one native dialog kind asks.
-fn message_box(dialog: NativeDialog, title: &str, message: &str) -> Message {
-    let (level, buttons) = match dialog {
+/// Build the message box that one pending request asks.
+fn message_box(pending: &PendingNative, title: &str, message: &str) -> Message {
+    let (level, buttons) = match pending.dialog {
         NativeDialog::Confirm | NativeDialog::Prompt => {
             (MessageLevel::Info, MessageButtons::OkCancel)
         }
         NativeDialog::Danger => (MessageLevel::Warning, MessageButtons::OkCancel),
         NativeDialog::Error => (MessageLevel::Error, MessageButtons::Ok),
+    };
+    let (level, buttons) = match &pending.then {
+        NativeTask::OpenPublished { .. } => (
+            level,
+            MessageButtons::OkCancelCustom("Open".to_owned(), "OK".to_owned()),
+        ),
+        NativeTask::RetryPublish => (
+            MessageLevel::Error,
+            MessageButtons::OkCancelCustom("Retry".to_owned(), "Cancel".to_owned()),
+        ),
+        NativeTask::ExportFile { .. } => (level, MessageButtons::Ok),
+        _ => (level, buttons),
     };
     Message {
         level,

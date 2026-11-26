@@ -13,10 +13,13 @@ pub(crate) mod dialogs;
 pub(crate) mod issues;
 pub(crate) mod library;
 pub(crate) mod menu;
+pub(crate) mod publish;
+pub(crate) mod results;
 pub(crate) mod riders;
 pub(crate) mod selftest;
 pub(crate) mod settings;
 pub(crate) mod setup;
+pub(crate) mod simulation;
 pub(crate) mod system;
 pub(crate) mod teams;
 

@@ -351,6 +351,33 @@ fn assert_settings_round_trip(client: &mut ControlClient) -> SmokeResult {
     Ok(())
 }
 
+/// Assert `mi_standings` opens the results window and `ui.dialog.cancel` closes it.
+fn assert_results_round_trip(client: &mut ControlClient) -> SmokeResult {
+    let opened = client.call("ui.command", json!({"name": "mi_standings"}))?;
+    assert_eq!(opened, json!({"ok": true}));
+    let tree = client.call("ui.accessTree", json!({}))?;
+    assert!(
+        tree_mentions(&tree, "Standings"),
+        "the results window is open: {tree}"
+    );
+    assert!(
+        tree_mentions(&tree, "Place"),
+        "the results board shows its columns: {tree}"
+    );
+    let cancelled = client.call("ui.dialog.cancel", json!({}))?;
+    assert_eq!(
+        cancelled.get("event"),
+        Some(&json!("cancelled")),
+        "the results window reports its cancel: {cancelled}"
+    );
+    let after = client.call("ui.accessTree", json!({}))?;
+    assert!(
+        !tree_mentions(&after, "Standings"),
+        "the results window closed: {after}"
+    );
+    Ok(())
+}
+
 /// Assert the Exit row raises the native confirmation, and `ui.dialog.cancel` dismisses it.
 fn assert_native_confirm_cancels(client: &mut ControlClient) -> SmokeResult {
     let opened = client.call("ui.command", json!({"name": "wxID_EXIT"}))?;
@@ -493,6 +520,7 @@ fn control_channel_smoke() -> SmokeResult {
         "settings round trip",
         assert_settings_round_trip(&mut client),
     )?;
+    step("results round trip", assert_results_round_trip(&mut client))?;
     step("screenshot", assert_screenshot(&mut client, &workspace))?;
     step("resize", assert_resize(&mut client))?;
     step("app_quit", assert_quit(&mut client, app))

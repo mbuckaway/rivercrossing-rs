@@ -276,3 +276,45 @@ the scenario JSON is the cross-language contract.
 - **Tier B smoke:** the control smoke opens Settings with `ui.command wxID_PREFERENCES`, asserts
   the title and the Appearance section in the access tree, and closes it with `ui.dialog.cancel`.
 
+## EPIC-12d Phase 2 — results, exports, publish and simulator
+
+- **Results board.** `open_results` ranks the live engine through
+  `presenters::results::standings_model`, so a finished ride applies the stored tie-break order and
+  the DNS toggle while every other state ranks the whole field on the live board. The notebook shows
+  the Teams/Solo tabs on a mixed ride and the single `standings_list` on a solo-only ride, with the
+  stale-export infobar when a correction event lands at or after the last export's watermark
+  (`mark_exported` records the engine's event count). `mi_standings` opens it in every ride state.
+- **Exports run on the store worker.** The menu commands raise a `craft_dialogs` save picker whose
+  answer composes the `ExportInput` on the UI thread and sends one `StoreCommand::Export` job; the
+  worker renders and writes the page, the PDFs, the poster or the CSV and replies with the path or
+  the exporter's sentence. `record_export` marks the three preview gates, keeps the last path and
+  advances the results watermark. The preview rows open the last file through
+  `craft::platform::open::open_external` (the platform feature is enabled on the `craft` dep), and a
+  failed handler degrades to a status notice. Tests fake the picker with the native dialogs'
+  `set_override`; the app's test seam answers every save request with a chosen path.
+- **WordPress publish (R-86).** The form is prefilled from `wp_*` and the live ride
+  (`default_title`/`default_slug`), re-seeded when the kind changes. Submitting validates the form
+  (the dialog stays open on the messages), persists `wp_*`, and hands a `PublishStart` to a
+  dedicated thread. That thread renders `render_wordpress`/`render_poster_wordpress`, checks the
+  cancel flag before the lookup and before the publish, then calls `find_page_by_slug` and
+  `publish_page` to create or update the page. The progress window's Cancel sets the flag and the
+  worker abandons the attempt at its next checkpoint. Success raises the native "Published to
+  <link>" box with Open, failure raises Retry/Cancel (Retry re-publishes the kept form), and a
+  cancellation posts a notice. The job's orchestration is unit-tested through a `PageWriter` trait.
+- **Simulator.** The form restores the `sim_*` settings (the interval falls back to
+  `default_interval_minutes` when none is saved), Generate Riders seeds the loaded draft roster
+  through `presenters::simulator`, Check fills the infobar with `check_message`, and GO persists the
+  fields and hands a `SimStart` to a second thread. That thread replays `run_simulation` with its
+  progress channel and cancel flag; the app polls the channel on its tick, restores the ride, appends
+  only the new events and closes the progress window. The modal owns the cancel request; the ride is
+  absent from the console while the run holds it, which the progress window covers.
+- **Deferred to 12e:** the correction dialogs' goldens (the fixture needs a started ride per form),
+  the export-preview goldens (the picker path is operator-driven), and the multipart
+  parent-page-by-slug resolution (a slug parent currently publishes as a top-level page; the oracle's
+  lookup is not wired). `ride_defaults` stays presenter-only: §15 has no menu row that opens a test
+  ride, so nothing in this PR calls it.
+- **Goldens:** `results`, `publish_form` and `simulation` join the fourteen; all seventeen verify
+  without `UPDATE_SNAPSHOTS`. The results and publish fixtures use a stopped ride so the console
+  clock reads zero.
+- **Tier B smoke:** the control smoke now opens `mi_standings`, asserts the Standings board's
+  columns in the access tree, and closes it with `ui.dialog.cancel`.

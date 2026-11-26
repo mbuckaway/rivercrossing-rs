@@ -519,3 +519,88 @@ fn test_ui_crossing_detail_matches_the_golden() -> Result<(), Box<dyn Error>> {
     harness.snapshot("crossing_detail");
     Ok(())
 }
+
+/// Create a fixture ride over *roster*, start it at the epoch, record three crossings and stop it.
+///
+/// The stopped clock reads zero, so the console behind the dialog renders the same on every run.
+fn stopped_fixture_ride(
+    directory: &TempDir,
+    roster: &Roster,
+) -> Result<(std::path::PathBuf, i64), Box<dyn Error>> {
+    let path = directory.path().join("stopped.db");
+    let mut store = Store::open(&path)?;
+    let id = store.create_ride(&fixture_config()?, Some(7))?;
+    store.save_roster(id, roster)?;
+    let mut engine: RideEngine<Roster, SystemClock> = store.load_engine(id)?;
+    let date = time::Date::from_calendar_date(1970, time::Month::January, 1)?;
+    let start = time::OffsetDateTime::new_utc(date, time::Time::MIDNIGHT);
+    engine.start(Some(start))?;
+    let _ = engine.record_crossing("101", Some(start + time::Duration::minutes(40)));
+    let _ = engine.record_crossing("A1", Some(start + time::Duration::minutes(50)));
+    let _ = engine.record_crossing("101", Some(start + time::Duration::minutes(80)));
+    engine.stop()?;
+    for event in engine.events() {
+        store.append(id, event)?;
+    }
+    Ok((path, id))
+}
+
+#[test]
+fn test_ui_results_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.command("mi_standings")?;
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("results");
+    Ok(())
+}
+
+#[test]
+fn test_ui_publish_form_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.show_publish();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("publish_form");
+    Ok(())
+}
+
+#[test]
+fn test_ui_simulation_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.command("mi_simulation")?;
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("simulation");
+    Ok(())
+}

@@ -331,8 +331,8 @@ fn test_the_menu_registry_has_53_rows() {
     assert_eq!(rows.len(), 53);
     assert_eq!(
         rows.iter().filter(|row| row.enabled).count(),
-        23,
-        "the empty console enables twenty-three rows"
+        25,
+        "the empty console enables twenty-five rows"
     );
 }
 
@@ -1338,4 +1338,78 @@ fn test_the_crossing_detail_renders_from_the_feed() -> Result<(), Box<dyn std::e
         Vec::<String>::new()
     );
     Ok(())
+}
+
+// -------------------------------------------------- results, exports, jobs
+
+#[test]
+fn test_open_notice_given_a_failing_opener_names_the_target() {
+    // Act
+    let notice = super::open_notice("/tmp/results.html", &|_target| Err("no handler".to_owned()));
+
+    // Assert
+    assert_eq!(
+        notice,
+        Some("cannot open /tmp/results.html: no handler".to_owned())
+    );
+}
+
+#[test]
+fn test_open_notice_given_a_working_opener_is_silent() {
+    // Act
+    let notice = super::open_notice("/tmp/results.html", &|_target| Ok(()));
+
+    // Assert
+    assert_eq!(notice, None);
+}
+
+#[test]
+fn test_an_export_picker_answer_queues_the_worker_job() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let mut ride = loaded_running_ride(&directory)?;
+    ride.engine.finish(&[])?;
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    let target = directory.path().join("results.html");
+    app.borrow_mut()
+        .answer_file_pickers_with(vec![target.clone()]);
+    app.borrow_mut()
+        .raise_export_picker(crate::ui::state::exports::ExportKind::Html);
+    let mut fixture = app_fixture(&app);
+
+    // Act: the ui pass shows the picker, the logic passes queue and run the job.
+    for _ in 0..30 {
+        fixture.idle(1);
+        run_logic(&app, &fixture);
+    }
+
+    // Assert
+    assert!(target.exists());
+    assert!(app.borrow().state.exports.html);
+    assert_eq!(
+        app.borrow().state.exports.last_html.as_deref(),
+        Some(target.as_path())
+    );
+    Ok(())
+}
+
+#[test]
+fn test_preview_given_no_export_posts_the_notice() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+
+    // Act
+    app.borrow_mut()
+        .preview(crate::ui::state::exports::ExportKind::Html);
+
+    // Assert
+    assert_eq!(
+        app.borrow().state.notice,
+        Some("Export the file first".to_owned())
+    );
 }
