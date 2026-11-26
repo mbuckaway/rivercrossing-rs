@@ -56,6 +56,8 @@ pub(crate) enum CommandId {
     ExportPosterHtml,
     /// Export a standings CSV.
     ExportCsv,
+    /// Export the roster as a CSV.
+    ExportRosterCsv,
     /// Open the last HTML export.
     PreviewHtml,
     /// Open the last podium poster page export.
@@ -238,6 +240,7 @@ impl CommandId {
             Self::ExportPoster => "export_poster",
             Self::ExportPosterHtml => "export_poster_html",
             Self::ExportCsv => "export_csv",
+            Self::ExportRosterCsv => "export_roster_csv",
             Self::PreviewHtml => "preview_html",
             Self::PreviewPosterHtml => "preview_poster_html",
             Self::PreviewPdf => "preview_pdf",
@@ -380,7 +383,7 @@ pub(crate) const ACTIONS: &[ActionSpec] = &[
         id: id::MI_EXPORT_CSV,
         label: "Export Riders CSV…",
         shortcut: None,
-        target: Target::Command(CommandId::ExportCsv),
+        target: Target::Command(CommandId::ExportRosterCsv),
     },
     ActionSpec {
         id: id::MI_BACKUP_NOW,

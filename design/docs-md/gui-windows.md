@@ -87,7 +87,7 @@ The block below is generated from the Rust registry. `src/ui/action/drift.rs` pa
       "label": "Export Riders CSV…",
       "shortcut": null,
       "target": {
-        "command": "export_csv",
+        "command": "export_roster_csv",
         "kind": "command"
       }
     },

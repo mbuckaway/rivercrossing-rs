@@ -211,7 +211,9 @@ fn team_choice(ui: &mut Ui, state: &mut AppState) {
                     for choice in &choices {
                         ui.selectable_value(&mut selected, choice.clone(), choice.clone());
                     }
-                });
+                })
+                .response
+                .accessible_name("Team");
         });
     });
     if selected != current {
@@ -236,7 +238,9 @@ fn sex_choice(ui: &mut Ui, state: &mut AppState) {
                     for choice in ["", "M", "F"] {
                         ui.selectable_value(&mut selected, choice.to_owned(), choice);
                     }
-                });
+                })
+                .response
+                .accessible_name("Sex");
         });
     });
     if selected != current {

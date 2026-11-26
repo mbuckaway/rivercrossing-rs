@@ -16,10 +16,18 @@ accidental stop or a full restart costs at most the keystroke in flight.
 
 ## Status
 
-**Early — being rebuilt in Rust.** The Python application
+**UI-complete in Rust; release work and operator sign-off remain.** The Python application
 ([`mbuckaway/rivercrossing`](https://github.com/mbuckaway/rivercrossing)) is complete and remains the
 behaviour oracle: the Rust port reproduces its screens and functionality, and its unit tests are the
 reference for the Rust fixtures.
+
+EPIC-12 (the egui UI and Action registry) is delivered: all 30 Python windows render, the 53-action
+registry drives the menus and the on-screen buttons, and every window has a snapshot golden. The
+per-PR gate holds at Tier A unit tests, the 30 Tier A-snapshot goldens under `cargo nextest -P ui`,
+and the two Tier B real-window smokes under Xvfb. Still outstanding, and honestly recorded rather
+than claimed: the Tier C Python-parity run and the visual pass need the Mac operator and the
+Python/wxPython oracle checkout, and are not part of the gate (`docs/parity/SKIP.md`); real native
+file pickers and message boxes, and audio, are operator-checked on macOS; installers are EPIC-13.
 
 The build contract lives in [`design/`](design/):
 

@@ -21,11 +21,14 @@ use rivercrossing_store::Store;
 use tempfile::TempDir;
 
 use super::{AppPaths, RiverCrossingApp};
+use crate::ui::action::effect::DispatchError;
+use crate::ui::action::enable::{RidePhase, enabled};
 use crate::ui::action::id::{
     MI_BACKUP_NOW, MI_NEW_RIDE, MI_OPEN_LIBRARY, MI_RIDER_EDITOR, MI_SHORTCUTS, MI_START_RIDE,
     MI_TIME_BOARD, MI_UNDO_CROSSING, MI_ZOOM_100, WX_ID_ABOUT,
 };
-use crate::ui::state::LoadedRide;
+use crate::ui::action::spec::ACTIONS;
+use crate::ui::state::{AppState, ExportPresence, LoadedRide};
 use crate::ui::views::menu;
 use crate::ui::worker::StoreWorker;
 
@@ -1412,4 +1415,99 @@ fn test_preview_given_no_export_posts_the_notice() {
         app.borrow().state.notice,
         Some("Export the file first".to_owned())
     );
+}
+
+// ------------------------------------------------------ R-73 route × state
+
+/// Build a fresh state in *phase*, with one plate crossing where the phase allows one.
+fn sweep_state(phase: RidePhase, path: &std::path::Path) -> Result<AppState, String> {
+    let mut state = AppState::blank();
+    state.audit_row_count = 1;
+    state.settings.publish_time_board = true;
+    state.exports = ExportPresence {
+        html: true,
+        poster_html: true,
+        pdf: true,
+        last_html: Some(std::path::PathBuf::from("/tmp/results.html")),
+        last_poster_html: Some(std::path::PathBuf::from("/tmp/poster.html")),
+        last_pdf: Some(std::path::PathBuf::from("/tmp/results.pdf")),
+    };
+    if phase == RidePhase::None {
+        return Ok(state);
+    }
+    let mut store = Store::open(path).map_err(|error| error.to_string())?;
+    let id = store
+        .create_ride(&fixture_config()?, Some(SEED))
+        .map_err(|error| error.to_string())?;
+    store
+        .save_roster(id, &fixture_roster()?)
+        .map_err(|error| error.to_string())?;
+    let mut engine: RideEngine<Roster, SystemClock> =
+        store.load_engine(id).map_err(|error| error.to_string())?;
+    if phase != RidePhase::Draft {
+        engine.start(None).map_err(|error| error.to_string())?;
+        let _ = engine.record_crossing(PLATE, None);
+    }
+    if matches!(
+        phase,
+        RidePhase::RunningStopped | RidePhase::Finished | RidePhase::Reopened
+    ) {
+        engine.stop().map_err(|error| error.to_string())?;
+    }
+    if matches!(phase, RidePhase::Finished | RidePhase::Reopened) {
+        engine.finish(&[]).map_err(|error| error.to_string())?;
+    }
+    if phase == RidePhase::Reopened {
+        engine.reopen().map_err(|error| error.to_string())?;
+    }
+    let mut roster = store.roster_for(id).map_err(|error| error.to_string())?;
+    roster.set_status(engine.state());
+    state.ride = Some(LoadedRide {
+        ride_id: id,
+        config: engine.config().clone(),
+        roster,
+        engine,
+    });
+    Ok(state)
+}
+
+#[test]
+fn test_every_action_is_drivable_or_refused_in_every_ride_state() {
+    // Arrange
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let phases = [
+        RidePhase::None,
+        RidePhase::Draft,
+        RidePhase::Running,
+        RidePhase::RunningStopped,
+        RidePhase::Finished,
+        RidePhase::Reopened,
+    ];
+
+    // Act and assert: one fresh state per action, so no action sees another's side effect.
+    for (index, phase) in phases.into_iter().enumerate() {
+        let path = directory.path().join(format!("sweep-{index}.db"));
+        for row in ACTIONS {
+            let mut state = sweep_state(phase, &path)
+                .unwrap_or_else(|error| panic!("{phase:?} fixture: {error}"));
+            let expected = enabled(row.id, &state.gate());
+            let result = state.act(row.id);
+            if expected {
+                assert!(
+                    result.is_ok(),
+                    "action {} ({}) is enabled in {phase:?} but returned {result:?}",
+                    row.id.as_str(),
+                    row.label
+                );
+            } else {
+                assert_eq!(
+                    result,
+                    Err(DispatchError::Disabled(row.id)),
+                    "action {} ({}) is disabled in {phase:?}",
+                    row.id.as_str(),
+                    row.label
+                );
+            }
+        }
+    }
 }

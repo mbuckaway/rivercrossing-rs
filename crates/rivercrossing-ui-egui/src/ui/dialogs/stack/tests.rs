@@ -517,3 +517,95 @@ fn test_activate_given_no_dialog_errors() {
     // Assert
     assert_eq!(event, Err(DialogError::NotOpen));
 }
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one table over all 29 dialog specs keeps each dialog's four assertions together"
+)]
+fn test_every_dialog_esc_enter_focus_and_opener_follow_its_spec() {
+    use crate::ui::dialogs::spec::DIALOGS;
+
+    for spec in DIALOGS {
+        // The safe button: Enter activates the cancel button on a destructive dialog.
+        let enter_button = if spec.destructive {
+            spec.cancel
+        } else {
+            spec.default
+        };
+        let expected_focus = spec
+            .first_field
+            .map_or(Focus::Button(enter_button), Focus::Field);
+
+        // Esc cancels, reporting the opener.
+        let mut stack = DialogStack::default();
+        stack
+            .open(spec.id, Some("main_frame"))
+            .unwrap_or_else(|error| panic!("{} did not open: {error:?}", spec.id));
+        assert_eq!(
+            stack.top().map(|dialog| dialog.focus.clone()),
+            Some(expected_focus.clone()),
+            "{} opens on {}",
+            spec.id,
+            spec.first_field.unwrap_or("its primary button")
+        );
+        assert!(
+            matches!(
+                spec.cancel,
+                Button::Cancel | Button::Close | Button::Custom("cancel_btn")
+            ),
+            "{}'s Esc button {:?} is not the safe one",
+            spec.id,
+            spec.cancel
+        );
+        let escaped = stack
+            .key(Key::Escape)
+            .unwrap_or_else(|error| panic!("{} Esc failed: {error:?}", spec.id));
+        assert_eq!(
+            escaped,
+            Some(DialogEvent::Cancelled {
+                id: spec.id,
+                opener: Some("main_frame"),
+            }),
+            "{} Esc cancels and returns focus to the opener",
+            spec.id
+        );
+        assert_eq!(stack.top(), None, "{} closed on Esc", spec.id);
+
+        // Enter activates the safe default and reports the opener.
+        let mut stack = DialogStack::default();
+        stack
+            .open(spec.id, Some("main_frame"))
+            .unwrap_or_else(|error| panic!("{} did not open: {error:?}", spec.id));
+        let confirmed = stack
+            .key(Key::Enter)
+            .unwrap_or_else(|error| panic!("{} Enter failed: {error:?}", spec.id));
+        assert_eq!(
+            confirmed,
+            Some(DialogEvent::Confirmed {
+                id: spec.id,
+                button: enter_button,
+                opener: Some("main_frame"),
+            }),
+            "{} Enter activates {:?}",
+            spec.id,
+            enter_button
+        );
+        assert_eq!(stack.top(), None, "{} closed on Enter", spec.id);
+
+        // Closing with no recorded opener reports none, never a stale window.
+        let mut stack = DialogStack::default();
+        stack
+            .open(spec.id, None)
+            .unwrap_or_else(|error| panic!("{} did not open: {error:?}", spec.id));
+        assert_eq!(
+            stack.cancel(),
+            Ok(DialogEvent::Cancelled {
+                id: spec.id,
+                opener: None,
+            }),
+            "{} cancels without an opener",
+            spec.id
+        );
+    }
+}
