@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# Build the unsigned macOS arm64 app bundle and package it as a DMG.
+# Build the unsigned macOS arm64 app bundle and package it as a versioned DMG.
 #
 # Usage: packaging/package-macos.sh
 
@@ -9,13 +9,16 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly ROOT
+VERSION="$(grep -m1 '^version = ' "${ROOT}/Cargo.toml" \
+  | sed 's/^version = "\(.*\)"/\1/')"
+readonly VERSION
 TARGET="aarch64-apple-darwin"
 readonly TARGET
 OUT="${ROOT}/target/package"
 readonly OUT
 APP="${OUT}/RiverCrossing.app"
 readonly APP
-DMG="${OUT}/rivercrossing-macos-arm64.dmg"
+DMG="${OUT}/RiverCrossing-${VERSION}-macos-arm64.dmg"
 readonly DMG
 
 err() {
@@ -23,6 +26,10 @@ err() {
 }
 
 main() {
+  if [[ -z "${VERSION}" ]]; then
+    err "cannot read the version from Cargo.toml"
+    exit 1
+  fi
   if ! cd "${ROOT}"; then
     err "cannot enter ${ROOT}"
     exit 1
@@ -92,7 +99,7 @@ main() {
 
 write_info_plist() {
   local dest="$1"
-  cat > "${dest}" <<'EOF'
+  cat > "${dest}" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -105,9 +112,9 @@ write_info_plist() {
   <key>CFBundleIdentifier</key>
   <string>com.buckaway.rivercrossing</string>
   <key>CFBundleVersion</key>
-  <string>0.1.0</string>
+  <string>${VERSION}</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>${VERSION}</string>
   <key>CFBundleExecutable</key>
   <string>rivercrossing</string>
   <key>CFBundleIconFile</key>

@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# Build the Linux x86_64 binary and package it as .deb and .rpm with nfpm.
+# Build the Linux x86_64 binary and package it as versioned .deb and .rpm files.
 #
 # Usage: packaging/package-linux.sh
 
@@ -9,6 +9,9 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly ROOT
+VERSION="$(grep -m1 '^version = ' "${ROOT}/Cargo.toml" \
+  | sed 's/^version = "\(.*\)"/\1/')"
+readonly VERSION
 OUT="${ROOT}/target/package"
 readonly OUT
 STAGE="${OUT}/stage"
@@ -19,6 +22,10 @@ err() {
 }
 
 main() {
+  if [[ -z "${VERSION}" ]]; then
+    err "cannot read the version from Cargo.toml"
+    exit 1
+  fi
   if ! cd "${ROOT}"; then
     err "cannot enter ${ROOT}"
     exit 1
@@ -73,12 +80,12 @@ main() {
   fi
 
   if ! nfpm pkg --config "${OUT}/nfpm.yaml" --packager deb \
-      --target "${OUT}/rivercrossing_0.1.0_amd64.deb"; then
+      --target "${OUT}/RiverCrossing-${VERSION}-linux-amd64.deb"; then
     err "nfpm deb failed"
     exit 1
   fi
   if ! nfpm pkg --config "${OUT}/nfpm.yaml" --packager rpm \
-      --target "${OUT}/rivercrossing_0.1.0_amd64.rpm"; then
+      --target "${OUT}/RiverCrossing-${VERSION}-linux-amd64.rpm"; then
     err "nfpm rpm failed"
     exit 1
   fi
@@ -106,7 +113,7 @@ write_nfpm() {
 name: rivercrossing
 arch: amd64
 platform: linux
-version: 0.1.0
+version: ${VERSION}
 section: default
 priority: optional
 maintainer: Mark Buckaway

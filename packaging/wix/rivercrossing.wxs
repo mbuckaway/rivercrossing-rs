@@ -3,7 +3,7 @@
   <Package
       Name="RiverCrossing"
       Manufacturer="Mark Buckaway"
-      Version="0.1.0"
+      Version="$(var.AppVersion)"
       UpgradeCode="{7231BFE8-E89F-4C1C-B79C-627C070DEDA9}"
       Scope="perUserOrMachine"
       Language="1033">

@@ -155,6 +155,24 @@ cargo check -p rivercrossing --release --locked   # proves the debug-gated contr
 - **No AI advertising** — never add "Generated with …", AI co-author trailers, or similar text to
   commits, code, comments, PR bodies or documentation.
 
+## Releasing
+
+A version tag is the whole release procedure — the installer workflow does the rest. Mirror the
+Python repo's flow:
+
+1. **Version + changelog on a `release/v<X.Y.Z>` branch.** Bump `[workspace.package] version` in the
+   root `Cargo.toml` and add the matching `## [<X.Y.Z>] - <date>` section to `CHANGELOG.md` (Keep a
+   Changelog). Never bump the version directly on `main`.
+2. **Merge it to `main` through a PR** so the tag sits on gated code.
+3. **Tag and push:** `git tag v<X.Y.Z> && git push origin v<X.Y.Z>`. The exact `v<X.Y.Z>` spelling
+   matters — the release job fails if the tag does not match the `Cargo.toml` version, or if the
+   version has no `CHANGELOG.md` section.
+4. **The tag publishes the GitHub release** (`.github/workflows/installers.yml`): the versioned
+   installers (`RiverCrossing-<X.Y.Z>-macos-arm64.dmg`, `-windows-<arch>.msi`,
+   `-windows-<arch>-portable.zip`, `-linux-amd64.deb`/`.rpm`) plus `SHA256SUMS.txt`, with GitHub's
+   generated notes followed by the version's CHANGELOG section. Nothing publishes if a build job or a
+   guard is red. Dev builds stay unsigned.
+
 ## Internal tools
 
 Prefer the harness's dedicated file/search tools (Read, Edit, Write, Grep, Glob) and available MCP
