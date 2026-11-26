@@ -1,0 +1,42 @@
+# Temporary diagnostic: confirm the lavapipe/egui_kittest snapshot setup on a
+# GitHub-hosted Linux runner. Delete once the gate's `ui` stage is green.
+name: UI probe
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vulkan
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            mesa-vulkan-drivers libvulkan1 vulkan-tools \
+            libegl1 libgl1 libxkbcommon0
+      - name: Inspect Vulkan
+        run: |
+          echo "=== /usr/share/vulkan/icd.d ==="
+          ls -la /usr/share/vulkan/icd.d/ || true
+          echo "=== vulkaninfo --summary ==="
+          vulkaninfo --summary || true
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Run ui snapshots (auto-discovery)
+        env:
+          WGPU_BACKEND: vulkan
+        run: cargo nextest run -P ui -p rivercrossing-ui-egui --locked
+
+      - name: Run ui snapshots (explicit lavapipe ICD)
+        if: failure()
+        env:
+          WGPU_BACKEND: vulkan
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        run: cargo nextest run -P ui -p rivercrossing-ui-egui --locked

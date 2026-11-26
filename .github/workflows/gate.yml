@@ -18,6 +18,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libasound2-dev pkg-config libxkbcommon-dev \
             mesa-vulkan-drivers libvulkan1 libegl1 libgl1 python3
+      - name: Show the Vulkan ICDs (lavapipe debug)
+        run: ls -la /usr/share/vulkan/icd.d/ || true
 
       - name: Install Rust toolchains
         run: |
@@ -33,5 +35,4 @@ jobs:
       - name: Run the gate
         env:
           WGPU_BACKEND: vulkan
-          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
         run: ./scripts/validate-rust.sh
