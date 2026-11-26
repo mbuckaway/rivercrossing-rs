@@ -1,0 +1,14 @@
+# gitleaks — secret scanning for RiverCrossing.
+# Run by scripts/validate-rust.sh (local gate) and .github/workflows/gate.yml.
+title = "RiverCrossing"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Build outputs, vendored tools and package caches are not source"
+paths = [
+  '''(^|/)target/''',
+  '''(^|/)\.tools/''',
+  '''(^|/)node_modules/''',
+]

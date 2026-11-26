@@ -121,11 +121,12 @@ Source files carry a single SPDX line and no other licence header:
   "=0.1.0"`), egui/eframe `0.37.0` at `7e1c30d142bc7879d043e74b5ceb3ecfe7f51329`, winit `0.30.13` at
   `a517b3846ee8457d84ee4975110bfda6797c44dc`, wgpu `30.0`. The egui/winit forks are repeated in this
   workspace's `[patch.crates-io]` because they do not propagate from craft-libs.
-- **Where the build runs.** This repo has no CI workflow: the fleet runners' golden AMI carries no Rust
-  toolchain, and the forge host runner executes as user `git`. Builds and gates run on the forge box
-  (`dev`) and on the Mac over SSH. If this repo is later mirrored to the Forge, the job must target the
-  host runner (`runs-on: [linux, ARM64]`), never a `box`/`fleet` label, and needs a `git`-owned
-  toolchain.
+- **Where the build runs.** GitHub Actions runs the gate (`.github/workflows/gate.yml`, per PR/push)
+  and the installers (`.github/workflows/installers.yml`, on main, tags and manual dispatch). The fleet
+  runners' golden AMI carries no Rust toolchain and the forge host runner executes as user `git`, so the
+  forge box (`dev`) and the Mac remain the manual build and smoke-install hosts. If this repo is later
+  mirrored to the Forge, the job must target the host runner (`runs-on: [linux, ARM64]`), never a
+  `box`/`fleet` label, and needs a `git`-owned toolchain.
 - **`forbid(unsafe_code)`** per domain-crate root; no `unwrap`/`expect`/`panic` in production.
 - **Agent surface (EPIC-14).** The CLI and the MCP server both dispatch the same `Action` registry; the
   MCP server uses the shared **`craft-mcp-server`** crate (craft-libs), and the CLI is a hand-rolled
@@ -139,9 +140,13 @@ cargo build --locked
 cargo nextest run -P unit --locked
 cargo nextest run -P ui --locked                  # Tier A-snapshot goldens (egui_kittest)
 cargo check -p rivercrossing --release --locked   # proves the debug-gated control path is inert
-./scripts/validate-rust.sh     # the per-PR gate (fmt, clippy, release check, doc, nextest list,
-                               # msrv/hack, deny, machete, layers, ui, llvm-cov)
+./scripts/validate-rust.sh     # the per-PR gate (fmt, gitleaks, clippy, release check, doc,
+                               # nextest list, msrv/hack, deny, machete, layers, ui, llvm-cov)
 ```
+
+**No secrets in the repo.** The gate runs `gitleaks` over git history and the working tree
+(`.gitleaks.toml`); every credential lives only in GitHub Actions secrets — never in code, tests or
+docs.
 
 ---
 
@@ -153,6 +158,29 @@ cargo check -p rivercrossing --release --locked   # proves the debug-gated contr
   `feat(hands): <id> green`.
 - **No AI advertising** — never add "Generated with …", AI co-author trailers, or similar text to
   commits, code, comments, PR bodies or documentation.
+
+## Releasing
+
+A version tag is the whole release procedure — the installer workflow does the rest. Mirror the
+Python repo's flow:
+
+1. **Version + changelog on a `release/v<X.Y.Z>` branch.** Bump `[workspace.package] version` in the
+   root `Cargo.toml` and add the matching `## [<X.Y.Z>] - <date>` section to `CHANGELOG.md` (Keep a
+   Changelog). Never bump the version directly on `main`.
+2. **Merge it to `main` through a PR** so the tag sits on gated code.
+3. **Tag and push:** `git tag v<X.Y.Z> && git push origin v<X.Y.Z>`. The exact `v<X.Y.Z>` spelling
+   matters — the release job fails if the tag does not match the `Cargo.toml` version, or if the
+   version has no `CHANGELOG.md` section.
+4. **The tag publishes the GitHub release** (`.github/workflows/installers.yml`): the versioned
+   installers (`RiverCrossing-<X.Y.Z>-macos-arm64.dmg`, `-windows-<arch>.msi`,
+   `-windows-<arch>-portable.zip`, `-linux-amd64.deb`/`.rpm`) plus `SHA256SUMS.txt`, with GitHub's
+   generated notes followed by the version's CHANGELOG section. Nothing publishes if a build job or a
+   guard is red.
+5. **Signing (macOS).** With all six `APPLE_*` repo secrets present
+   (`APPLE_DEVELOPER_ID`, `APPLE_CERTIFICATE_B64`, `APPLE_CERT_PASSWORD`, `APPLE_NOTARY_KEY_ID`,
+   `APPLE_NOTARY_KEY`, `APPLE_NOTARY_ISSUER`), the macOS leg Developer-ID signs and notarizes the DMG;
+   a partial set counts as absent and publishes unsigned. The signing material lives in
+   `~/rivercrossing-signing/` (see its `README.md`). Windows ships unsigned by decision (R-01).
 
 ## Internal tools
 

@@ -300,7 +300,7 @@ Grounded in platform dialog guidelines (Windows ContentDialog, Carbon/Primer acc
 
 ### 14 · CI — building & testing a GUI app
 
-*Rust note (EPIC-10): this section is the Python CI oracle. The Rust gate is §16 and `scripts/validate-rust.sh`; the Rust repo has no CI workflow.*
+*Rust note (EPIC-10): this section is the Python CI oracle. The Rust gate is §16 and `scripts/validate-rust.sh`, run by `.github/workflows/gate.yml`; installers build in `.github/workflows/installers.yml`.*
 
 GitHub Actions, matrix `macos-latest + windows-latest + windows-11-arm` — all runners have a real desktop session, so wx windows open without a virtual display (no Xvfb; that's only needed if a Linux target is ever added). `windows-11-arm` builds the native Windows ARM64 installer (PyInstaller cannot cross-compile), and `macos-latest` is Apple Silicon, so the macOS artifact is arm64-native. GUI suites are kept lean by design: logic lives in the sync core modules (§11), so the bulk of the pyramid runs headless-fast.
 

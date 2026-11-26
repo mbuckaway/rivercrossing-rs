@@ -11,7 +11,7 @@ repository.workspace = true
 doctest = false
 
 [dependencies]
-rivercrossing-cards = { path = "../rivercrossing-cards", version = "=0.1.0" }
+rivercrossing-cards = { path = "../rivercrossing-cards", version = "=2.0.0" }
 thiserror = { workspace = true }
 
 [dev-dependencies]

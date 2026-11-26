@@ -11,8 +11,8 @@ repository.workspace = true
 doctest = false
 
 [dependencies]
-rivercrossing-cards = { path = "../rivercrossing-cards", version = "=0.1.0" }
-rivercrossing-ride = { path = "../rivercrossing-ride", version = "=0.1.0" }
+rivercrossing-cards = { path = "../rivercrossing-cards", version = "=2.0.0" }
+rivercrossing-ride = { path = "../rivercrossing-ride", version = "=2.0.0" }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }

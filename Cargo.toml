@@ -10,7 +10,7 @@ resolver = "3"
 members = ["crates/*", "apps/*", "xtask"]
 
 [workspace.package]
-version = "0.1.0"
+version = "2.0.0"
 edition = "2024"
 rust-version = "1.95"
 license = "GPL-3.0-only"
@@ -96,6 +96,10 @@ debug = false
 [profile.dev]
 opt-level = 1
 debug = "line-tables-only"
+
+# Release installers ship stripped binaries (EPIC-13).
+[profile.release]
+strip = true
 
 # Workspace deps whose crates land in later EPICs (craft-mcp-server: EPIC-13).
 [workspace.metadata.cargo-machete]

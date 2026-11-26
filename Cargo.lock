@@ -5568,7 +5568,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "craft",
  "eframe",
@@ -5578,7 +5578,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing-cards"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "pretty_assertions",
  "rstest",
@@ -5589,7 +5589,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing-csvio"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "csv",
  "pretty_assertions",
@@ -5605,7 +5605,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing-hands"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "pretty_assertions",
  "rivercrossing-cards",
@@ -5616,7 +5616,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing-htmlexport"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "base64 0.23.1",
  "minijinja",
@@ -5633,7 +5633,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing-pdfexport"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "craft-pdf",
  "pretty_assertions",
@@ -5652,7 +5652,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing-ride"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "pretty_assertions",
  "rivercrossing-cards",
@@ -5666,7 +5666,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing-rider-issues"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "pretty_assertions",
  "rivercrossing-roster",
@@ -5675,7 +5675,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing-roster"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "pretty_assertions",
  "rivercrossing-cards",
@@ -5688,7 +5688,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing-standings"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "pretty_assertions",
  "rivercrossing-cards",
@@ -5700,7 +5700,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing-store"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "pretty_assertions",
  "rivercrossing-cards",
@@ -5717,7 +5717,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing-ui-egui"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "craft",
  "eframe",
@@ -5746,7 +5746,7 @@ dependencies = [
 
 [[package]]
 name = "rivercrossing-wordpress"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "base64 0.23.1",
  "pretty_assertions",
@@ -8373,7 +8373,7 @@ checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "serde_json",
  "thiserror 2.0.21",
