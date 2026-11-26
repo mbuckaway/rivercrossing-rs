@@ -12,14 +12,6 @@
 //! one ride has one slug across the exported file name and the published page
 //! URL.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the EPIC-12d views wire this dialog in a later phase; phase 1 unit-tests it"
-    )
-)]
-
 #[cfg(test)]
 mod tests;
 
@@ -174,7 +166,8 @@ pub(crate) fn slugify(name: &str) -> String {
 /// Return the publish kind that `kind` names: a choice value or a label.
 ///
 /// Anything else opens the full page, never the podium.
-fn resolved_kind(kind: &str) -> &'static str {
+#[must_use]
+pub(crate) fn resolved_kind(kind: &str) -> &'static str {
     if let Some((_label, value)) = PUBLISH_KIND_CHOICES
         .iter()
         .find(|(_label, value)| *value == kind)

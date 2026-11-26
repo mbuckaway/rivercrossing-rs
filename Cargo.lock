@@ -978,6 +978,7 @@ dependencies = [
  "craft-imaging",
  "craft-keymap",
  "craft-pages",
+ "craft-platform",
  "craft-print",
  "craft-quit",
  "craft-review",

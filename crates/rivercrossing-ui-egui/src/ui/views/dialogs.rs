@@ -12,12 +12,13 @@ use craft::egui::{self, Context, Key, Modifiers, Response, Stroke, Ui};
 
 use super::text;
 use super::{
-    audit, corrections, csv, issues, library, riders, selftest, settings, setup, system, teams,
+    audit, corrections, csv, issues, library, publish, results, riders, selftest, settings, setup,
+    simulation, system, teams,
 };
 use crate::ui::dialogs::spec::{self, Button, DialogSpec};
 use crate::ui::dialogs::stack::{self, Focus};
 use crate::ui::ids;
-use crate::ui::state::AppState;
+use crate::ui::state::{AppState, NativeTask};
 
 /// What closed the dialog this pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -70,6 +71,11 @@ pub(crate) fn show(ctx: &Context, state: &mut AppState) {
             "crossing_number_dlg" => corrections::crossing_number(ui, state, focused),
             "set_start_dlg" => corrections::set_start(ui, state, focused),
             "crossing_detail_dlg" => corrections::detail(ui, state),
+            "results_dlg" => results::body(ui, state),
+            "publish_wordpress_dlg" => publish::form_body(ui, state, focused),
+            "publish_running_dlg" => publish::running_body(ui, state),
+            "simulation_dlg" => simulation::form_body(ui, state),
+            "sim_running_dlg" => simulation::running_body(ui, state),
             "resume_dlg" => message_body(ui, state.launch_message.as_deref()),
             "exit_running_dlg" => message_body(ui, state.quit_message.as_deref()),
             _ => generic_fields(ui, state, top.id, focused),
@@ -112,6 +118,10 @@ pub(crate) fn show_native(ctx: &Context, state: &mut AppState) {
     let Some(native) = state.pending_native.as_ref() else {
         return;
     };
+    if matches!(native.then, NativeTask::ExportFile { .. }) {
+        // A save picker has no in-app stand-in; an unavailable host posts the notice instead.
+        return;
+    }
     let dialog = native.dialog;
     let then = native.then.clone();
     let title = AppState::native_title(dialog);
@@ -188,6 +198,9 @@ fn apply(state: &mut AppState, spec: &DialogSpec, activation: Option<Activation>
     }
     match (spec.id, activation) {
         (_, Activation::Escape) => {
+            if spec.id == "simulation_dlg" {
+                state.persist_sim_settings();
+            }
             let _ = state.dialogs.key(stack::Key::Escape);
         }
         ("ride_library_dlg", Activation::Button(Button::Custom("duplicate_btn"))) => {
@@ -223,6 +236,20 @@ fn apply(state: &mut AppState, spec: &DialogSpec, activation: Option<Activation>
         }
         ("crossing_detail_dlg", Activation::Button(Button::Custom("delete_btn"))) => {
             let _ = state.raise_delete_crossing();
+        }
+        ("simulation_dlg", Activation::Button(Button::Custom("gen_riders_btn"))) => {
+            if let Err(message) = state.generate_sim_riders() {
+                state.note(message);
+            }
+        }
+        ("simulation_dlg", Activation::Button(Button::Custom("check_btn"))) => {
+            state.check_simulation();
+        }
+        ("publish_running_dlg", Activation::Button(Button::Custom("cancel_btn"))) => {
+            state.request_publish_cancel();
+        }
+        ("sim_running_dlg", Activation::Button(Button::Custom("cancel_btn"))) => {
+            state.request_sim_cancel();
         }
         (_, Activation::Enter) => {
             let _ = state.dialogs.key(stack::Key::Enter);
@@ -264,9 +291,14 @@ fn button_label(state: &AppState, id: &str, button: Button) -> &'static str {
         ("add_team_dlg", Button::Ok) => "Add",
         ("csv_preview_dlg", Button::Ok) => "Import",
         ("ride_library_dlg", Button::Ok) => "Open",
+        ("publish_wordpress_dlg", Button::Ok) => "Publish",
+        ("simulation_dlg", Button::Ok) => "GO",
+        ("simulation_dlg", Button::Custom("gen_riders_btn")) => "Generate Riders",
+        ("simulation_dlg", Button::Custom("check_btn")) => "Check",
+        ("publish_running_dlg" | "sim_running_dlg", Button::Custom("cancel_btn"))
+        | (_, Button::Cancel) => "Cancel",
         ("exit_running_dlg", Button::Ok) => "Quit — keep ride running",
         (_, Button::Ok) => "OK",
-        (_, Button::Cancel) => "Cancel",
         (_, Button::Close) => "Close",
         (_, Button::Delete) => "Delete",
         (_, Button::Custom("continue_btn")) => "Continue",

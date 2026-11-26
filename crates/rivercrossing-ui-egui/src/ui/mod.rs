@@ -10,6 +10,7 @@ pub(crate) mod ids;
 pub(crate) mod logging;
 pub(crate) mod native;
 pub(crate) mod presenters;
+pub(crate) mod publish_job;
 #[cfg_attr(
     test,
     expect(

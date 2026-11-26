@@ -21,7 +21,7 @@
     not(test),
     expect(
         dead_code,
-        reason = "the EPIC-12d views wire this model in a later phase; phase 1 unit-tests it"
+        reason = "the results window and the export composition read every field of this model"
     )
 )]
 

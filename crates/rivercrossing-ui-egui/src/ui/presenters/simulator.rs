@@ -18,14 +18,6 @@
 //! oracle seeds `CPython`'s Mersenne Twister; the port keeps a local 64-bit
 //! generator, so one seed still reproduces a run without a new dependency.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the EPIC-12d views wire this simulator in a later phase; phase 1 unit-tests it"
-    )
-)]
-
 use std::collections::{HashMap, HashSet};
 
 use rivercrossing_ride::{

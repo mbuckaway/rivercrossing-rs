@@ -6,6 +6,7 @@
 use std::time::{Duration, Instant};
 
 use pretty_assertions::assert_eq;
+use rivercrossing_htmlexport::types::{ExportInput, ExportOptions, RideInfo};
 use rivercrossing_ride::{
     EntryMode, Event, EventAction, PlateModel, RideConfig, RideConfigParams, RideEngine,
     RideStatus, SystemClock,
@@ -17,7 +18,8 @@ use rivercrossing_store::{AuditRow, PreviousSession, RideRow, Store, StoreError}
 use serde_json::json;
 use tempfile::TempDir;
 
-use super::{StoreCommand, StoreReply, StoreWorker, apply};
+use super::{StoreCommand, StoreReply, StoreWorker, apply, run_export};
+use crate::ui::state::exports::{ExportJob, ExportKind};
 
 /// The ride name every fixture uses.
 const RIDE_NAME: &str = "GORBA EPIC 2026";
@@ -515,4 +517,148 @@ fn test_worker_recv_returns_the_next_reply() -> Result<(), String> {
     // Assert
     assert_eq!(rows.len(), 0);
     Ok(())
+}
+
+// ------------------------------------------------------------- exports
+
+/// Return a minimal payload for the export-job tests.
+fn export_payload() -> ExportInput {
+    let date = time::Date::from_calendar_date(2026, time::Month::September, 20)
+        .expect("the fixture date is valid");
+    ExportInput {
+        ride: RideInfo {
+            name: RIDE_NAME.to_owned(),
+            event_date: date,
+            venue: "Sea to Sky Gondola".to_owned(),
+            lap_km: 8.0,
+            organizer: "GORBA".to_owned(),
+            scorer: "K. Singh".to_owned(),
+        },
+        placed: Vec::new(),
+        options: ExportOptions::default(),
+        generated: "Generated 2026-09-20".to_owned(),
+        logo_src: None,
+        team_logos: std::collections::BTreeMap::new(),
+        riders: 0,
+        self_test_unverified: false,
+        tie_note: None,
+    }
+}
+
+/// Return one export job writing `name` in *directory*.
+fn export_job(kind: ExportKind, directory: &TempDir, name: &str) -> ExportJob {
+    ExportJob {
+        kind,
+        path: directory.path().join(name),
+        input: Box::new(export_payload()),
+        created_at: time::OffsetDateTime::UNIX_EPOCH,
+    }
+}
+
+#[test]
+fn test_run_export_writes_the_html_page() {
+    // Arrange
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let job = export_job(ExportKind::Html, &directory, "results.html");
+
+    // Act
+    let reply = run_export(&job);
+
+    // Assert
+    assert!(matches!(
+        reply,
+        StoreReply::Exported {
+            kind: ExportKind::Html,
+            path
+        } if path == job.path
+    ));
+    assert!(job.path.exists());
+}
+
+#[test]
+fn test_run_export_writes_the_poster_page() {
+    // Arrange
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let job = export_job(ExportKind::PosterHtml, &directory, "poster.html");
+
+    // Act
+    let reply = run_export(&job);
+
+    // Assert
+    assert!(matches!(
+        reply,
+        StoreReply::Exported {
+            kind: ExportKind::PosterHtml,
+            ..
+        }
+    ));
+    assert!(job.path.exists());
+}
+
+#[test]
+fn test_run_export_writes_the_standings_csv() {
+    // Arrange
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let job = export_job(ExportKind::Csv, &directory, "standings.csv");
+
+    // Act
+    let reply = run_export(&job);
+
+    // Assert
+    assert!(matches!(
+        reply,
+        StoreReply::Exported {
+            kind: ExportKind::Csv,
+            ..
+        }
+    ));
+    assert!(job.path.exists());
+}
+
+#[test]
+fn test_run_export_given_a_directory_at_the_path_reports_the_failure() {
+    // Arrange
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let job = export_job(ExportKind::Html, &directory, "blocked");
+    std::fs::create_dir(&job.path).expect("the blocking directory");
+
+    // Act
+    let reply = run_export(&job);
+
+    // Assert
+    assert!(matches!(
+        reply,
+        StoreReply::ExportFailed {
+            kind: ExportKind::Html,
+            message
+        } if !message.is_empty()
+    ));
+}
+
+#[test]
+fn test_run_export_routes_the_two_pdf_kinds() {
+    // Arrange
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let results = export_job(ExportKind::Pdf, &directory, "results.pdf");
+    let poster = export_job(ExportKind::Poster, &directory, "poster.pdf");
+
+    // Act
+    let first = run_export(&results);
+    let second = run_export(&poster);
+
+    // Assert
+    assert!(matches!(
+        first,
+        StoreReply::Exported {
+            kind: ExportKind::Pdf,
+            ..
+        }
+    ));
+    assert!(matches!(
+        second,
+        StoreReply::Exported {
+            kind: ExportKind::Poster,
+            ..
+        }
+    ));
 }

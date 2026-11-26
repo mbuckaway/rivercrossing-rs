@@ -10,7 +10,7 @@ use super::{Button, DIALOGS, spec};
 use crate::ui::ids;
 
 /// The dialogs the registry declares, in table order.
-const DIALOG_IDS: [&str; 24] = [
+const DIALOG_IDS: [&str; 29] = [
     "ride_setup_dlg",
     "start_blocked_dlg",
     "exit_running_dlg",
@@ -35,6 +35,11 @@ const DIALOG_IDS: [&str; 24] = [
     "selftest_dlg",
     "crossing_detail_dlg",
     "crossing_number_dlg",
+    "results_dlg",
+    "publish_wordpress_dlg",
+    "publish_running_dlg",
+    "simulation_dlg",
+    "sim_running_dlg",
 ];
 
 /// Return true when the window declares the control id.
@@ -58,7 +63,7 @@ fn custom_id(button: Button) -> Option<&'static str> {
 }
 
 #[test]
-fn test_the_table_holds_the_twenty_four_dialogs() {
+fn test_the_table_holds_the_twenty_nine_dialogs() {
     // Act
     let ids: Vec<&'static str> = DIALOGS.iter().map(|dialog| dialog.id).collect();
 
@@ -150,7 +155,12 @@ fn test_every_spec_has_the_same_default_and_cancel_family() {
     // Act
     let bad_cancel: Vec<&'static str> = DIALOGS
         .iter()
-        .filter(|dialog| !matches!(dialog.cancel, Button::Cancel | Button::Close))
+        .filter(|dialog| {
+            !matches!(
+                dialog.cancel,
+                Button::Cancel | Button::Close | Button::Custom("cancel_btn")
+            )
+        })
         .map(|dialog| dialog.id)
         .collect();
     let enter_delete: Vec<&'static str> = DIALOGS
@@ -201,6 +211,11 @@ fn test_every_spec_has_the_same_default_and_cancel_family() {
 #[case("selftest_dlg", "Evaluator Self-Test")]
 #[case("crossing_detail_dlg", "Crossing Detail")]
 #[case("crossing_number_dlg", "Plate")]
+#[case("results_dlg", "Standings")]
+#[case("publish_wordpress_dlg", "Publish to WordPress")]
+#[case("publish_running_dlg", "Publishing to WordPress")]
+#[case("simulation_dlg", "Rider Simulator")]
+#[case("sim_running_dlg", "Simulating…")]
 fn test_every_dialog_has_the_documented_title(#[case] id: &str, #[case] title: &str) {
     // Act
     let found = spec(id).map(|dialog| dialog.title);

@@ -13,12 +13,17 @@ use rivercrossing_roster::types::AuditEvent;
 use rivercrossing_store::session::PreviousSession;
 use rivercrossing_store::{AuditRow, RideRow, Store, StoreError};
 
+use crate::ui::presenters::export_input::{self, PdfOptions};
+use crate::ui::state::exports::{ExportJob, ExportKind};
+
 #[cfg(test)]
 mod tests;
 
 /// One command that the UI asks the store thread to run.
 #[derive(Debug)]
 pub(crate) enum StoreCommand {
+    /// One render-and-write export job.
+    Export(Box<ExportJob>),
     /// Read every ride summary.
     Rides,
     /// Persist a new ride and return its id.
@@ -134,6 +139,20 @@ pub(crate) enum StoreReply {
     SessionClosed,
     /// The backup file's path.
     Backup(PathBuf),
+    /// One export finished.
+    Exported {
+        /// The file that was written.
+        kind: ExportKind,
+        /// Where it was written.
+        path: PathBuf,
+    },
+    /// One export failed.
+    ExportFailed {
+        /// The file that could not be written.
+        kind: ExportKind,
+        /// The exporter's own sentence.
+        message: String,
+    },
 }
 
 /// Apply one command to the store.
@@ -184,6 +203,39 @@ pub(crate) fn apply(store: &mut Store, command: StoreCommand) -> Result<StoreRep
             Ok(StoreReply::SessionClosed)
         }
         StoreCommand::BackupNow => Ok(StoreReply::Backup(store.backup_now()?)),
+        StoreCommand::Export(job) => Ok(run_export(&job)),
+    }
+}
+
+/// Render and write one export job, reporting either the path or the refusal.
+fn run_export(job: &ExportJob) -> StoreReply {
+    let written = match job.kind {
+        ExportKind::Html => export_input::write_html(&job.input, &job.path),
+        ExportKind::Pdf => export_input::write_pdf(&job.input, &pdf_options(job), &job.path),
+        ExportKind::Poster => {
+            export_input::write_poster_pdf(&job.input, &pdf_options(job), &job.path)
+        }
+        ExportKind::PosterHtml => export_input::write_poster_html(&job.input, &job.path),
+        ExportKind::Csv => export_input::export_standings_csv(&job.input, &job.path),
+    };
+    match written {
+        Ok(path) => StoreReply::Exported {
+            kind: job.kind,
+            path,
+        },
+        Err(message) => StoreReply::ExportFailed {
+            kind: job.kind,
+            message,
+        },
+    }
+}
+
+/// Return the PDF layout options for *job*.
+fn pdf_options(job: &ExportJob) -> PdfOptions {
+    PdfOptions {
+        letter: false,
+        created_at: job.created_at,
+        logo_png: None,
     }
 }
 

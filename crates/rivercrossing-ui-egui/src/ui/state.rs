@@ -23,14 +23,16 @@ use crate::ui::action::id::ActionId;
 use crate::ui::action::spec::{CheckKind, CommandId, NativeDialog, Target, spec};
 use crate::ui::dialogs::{self, stack::DialogStack};
 use crate::ui::presenters::{
-    audit, console, corrections, library, quit_resume, rider_issues, riders, selftest,
-    settings_form, setup, teams,
+    audit, console, corrections, library, publish_wordpress, quit_resume, rider_issues, riders,
+    selftest, settings_form, setup, teams,
 };
 use crate::ui::sound::Cue;
 use crate::ui::worker::StoreCommand;
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) mod exports;
 
 /// The refusal when the ride-setup dialog is not the open one.
 const NO_SETUP_DIALOG: &str = "No ride setup dialog is open";
@@ -85,6 +87,18 @@ pub(crate) enum NativeTask {
         /// The team's entry id.
         entry: EntryId,
     },
+    /// Ask the save picker where to write one export.
+    ExportFile {
+        /// The file to write.
+        kind: exports::ExportKind,
+    },
+    /// Open the page that a successful publish reported.
+    OpenPublished {
+        /// The page's public URL.
+        link: String,
+    },
+    /// Publish the kept form again after a failure.
+    RetryPublish,
 }
 
 impl NativeTask {
@@ -97,6 +111,15 @@ impl NativeTask {
             Self::DeleteRider { .. } => "delete_rider",
             Self::RemoveTeam { .. } => "remove_team",
             Self::DeleteCrossing { .. } => "delete_crossing",
+            Self::ExportFile { kind } => match kind {
+                exports::ExportKind::Html => "export_html",
+                exports::ExportKind::Pdf => "export_pdf",
+                exports::ExportKind::Poster => "export_poster",
+                exports::ExportKind::PosterHtml => "export_poster_html",
+                exports::ExportKind::Csv => "export_csv",
+            },
+            Self::OpenPublished { .. } => "open_published",
+            Self::RetryPublish => "retry_publish",
         }
     }
 }
@@ -278,6 +301,12 @@ pub(crate) struct ExportPresence {
     pub(crate) poster_html: bool,
     /// Whether a PDF results file exists.
     pub(crate) pdf: bool,
+    /// The last HTML results page written this session.
+    pub(crate) last_html: Option<PathBuf>,
+    /// The last podium poster page written this session.
+    pub(crate) last_poster_html: Option<PathBuf>,
+    /// The last PDF written this session.
+    pub(crate) last_pdf: Option<PathBuf>,
 }
 
 /// One loaded ride and the model that drives it.
@@ -312,6 +341,30 @@ pub(crate) struct AppState {
     pub(crate) notice: Option<String>,
     /// The exports that exist this session.
     pub(crate) exports: ExportPresence,
+    /// The results window's cached model and export watermark.
+    pub(crate) results: exports::ResultsState,
+    /// The export job that the next logic pass sends to the worker.
+    pub(crate) pending_export: Option<exports::ExportJob>,
+    /// The validated publish form, kept for a Retry.
+    pub(crate) publish_form: Option<publish_wordpress::PublishForm>,
+    /// The publish form's validation messages.
+    pub(crate) publish_errors: Option<Vec<String>>,
+    /// The progress window's status line.
+    pub(crate) publish_status: String,
+    /// The publish that the app must start on its own thread.
+    pub(crate) pending_publish: Option<exports::PublishStart>,
+    /// Set when the operator cancels the running publish.
+    pub(crate) publish_cancel: bool,
+    /// The simulator's infobar message.
+    pub(crate) sim_message: Option<String>,
+    /// The simulation progress window's status line.
+    pub(crate) sim_status: String,
+    /// The simulation's completed fraction, 0.0..=1.0.
+    pub(crate) sim_progress: f32,
+    /// The simulation that the app must start on its own thread.
+    pub(crate) pending_sim: Option<exports::SimStart>,
+    /// Set when the operator cancels the running simulation.
+    pub(crate) sim_cancel: bool,
     /// The number of audit rows that the last `AuditRows` reply held.
     pub(crate) audit_row_count: usize,
     /// The native dialog an action raised, until the app answers it.
@@ -402,6 +455,18 @@ impl AppState {
             dialogs: DialogStack::default(),
             notice: None,
             exports: ExportPresence::default(),
+            results: exports::ResultsState::default(),
+            pending_export: None,
+            publish_form: None,
+            publish_errors: None,
+            publish_status: String::new(),
+            pending_publish: None,
+            publish_cancel: false,
+            sim_message: None,
+            sim_status: String::new(),
+            sim_progress: 0.0,
+            pending_sim: None,
+            sim_cancel: false,
             audit_row_count: 0,
             pending_native: None,
             native_in_app: false,
@@ -569,6 +634,9 @@ impl AppState {
             "void_card_confirm_dlg" => self.open_void_card(),
             "crossing_number_dlg" => self.open_crossing_number(),
             "crossing_detail_dlg" => {}
+            "results_dlg" => self.open_results(),
+            "publish_wordpress_dlg" => self.open_publish(),
+            "simulation_dlg" => self.open_simulation(),
             _ => {
                 let Some(dialog) = dialogs::spec::spec(window) else {
                     return Err(DispatchError::NotImplemented(window));
@@ -847,6 +915,8 @@ impl AppState {
             "crossing_number_dlg" => Some(self.submit_crossing_number()),
             "set_start_dlg" => Some(self.submit_set_start()),
             "ride_library_dlg" => Some(self.open_library_selected()),
+            "publish_wordpress_dlg" => Some(self.submit_publish()),
+            "simulation_dlg" => Some(self.submit_simulation()),
             _ => None,
         }
     }
@@ -1726,6 +1796,11 @@ impl AppState {
             NativeTask::DeleteCrossing { entry, seq } => {
                 let _ = self.delete_crossing(&entry, seq);
             }
+            // The app runs these three itself: a file picker answers with a path, and the publish
+            // outcomes own their own button rules.
+            NativeTask::ExportFile { .. }
+            | NativeTask::OpenPublished { .. }
+            | NativeTask::RetryPublish => {}
         }
     }
 
@@ -1782,6 +1857,9 @@ impl AppState {
                     teams::remove_message,
                 ),
             NativeTask::DeleteCrossing { .. } => "Delete this crossing?".to_owned(),
+            NativeTask::ExportFile { .. } => "Choose where to save the export.".to_owned(),
+            NativeTask::OpenPublished { link } => format!("Published to {link}"),
+            NativeTask::RetryPublish => "The publish failed. Retry?".to_owned(),
         }
     }
 
@@ -1801,6 +1879,9 @@ impl AppState {
             NativeTask::Command(_) => "OK",
             NativeTask::DeleteRider { .. } | NativeTask::DeleteCrossing { .. } => "Delete",
             NativeTask::RemoveTeam { .. } => "Remove",
+            NativeTask::ExportFile { .. } => "Save",
+            NativeTask::OpenPublished { .. } => "Open",
+            NativeTask::RetryPublish => "Retry",
         }
     }
 

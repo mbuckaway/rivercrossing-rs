@@ -701,6 +701,46 @@ fn temp_dir() -> Result<tempfile::TempDir, String> {
 }
 
 #[test]
+fn test_write_poster_html_given_a_tempdir_writes_the_poster_page() -> Result<(), String> {
+    // Arrange
+    let (roster, config, engine) = finished_mixed()?;
+    let input = compose(&engine, &roster, &config)?;
+    let directory = temp_dir()?;
+    let path = directory.path().join("poster.html");
+
+    // Act
+    let written = super::write_poster_html(&input, &path)?;
+
+    // Assert
+    assert_eq!(written, path);
+    let page = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
+    assert!(page.contains("<!DOCTYPE html>"));
+    Ok(())
+}
+
+#[test]
+fn test_write_poster_html_given_a_directory_at_the_path_returns_the_replace_refusal()
+-> Result<(), String> {
+    // Arrange
+    let (roster, config, engine) = finished_mixed()?;
+    let input = compose(&engine, &roster, &config)?;
+    let directory = temp_dir()?;
+    let path = directory.path().join("poster.html");
+    std::fs::create_dir(&path).map_err(|error| error.to_string())?;
+
+    // Act
+    let result = super::write_poster_html(&input, &path);
+
+    // Assert
+    assert!(
+        result
+            .err()
+            .is_some_and(|message| message.starts_with("cannot replace"))
+    );
+    Ok(())
+}
+
+#[test]
 fn test_write_html_given_a_tempdir_writes_the_page() -> Result<(), String> {
     // Arrange
     let (roster, config, engine) = finished_mixed()?;

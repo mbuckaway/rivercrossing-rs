@@ -15,14 +15,6 @@
 //! `_write_export`). Every wrapper returns the written path or the error's own
 //! sentence, so the app can post one status notice.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the EPIC-12d views wire these exports in a later phase; phase 1 unit-tests them"
-    )
-)]
-
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
@@ -255,6 +247,18 @@ pub(crate) fn render_poster(input: &ExportInput) -> Result<String, String> {
 /// the rename fails.
 pub(crate) fn write_html(input: &ExportInput, path: &Path) -> Result<PathBuf, String> {
     let page = render_html(input)?;
+    write_atomic(path, page.as_bytes())?;
+    Ok(path.to_path_buf())
+}
+
+/// Write the podium poster for *input* to *path* and return the path.
+///
+/// # Errors
+///
+/// Return the render refusal, or the write refusal when the temporary file or
+/// the rename fails.
+pub(crate) fn write_poster_html(input: &ExportInput, path: &Path) -> Result<PathBuf, String> {
+    let page = render_poster(input)?;
     write_atomic(path, page.as_bytes())?;
     Ok(path.to_path_buf())
 }
