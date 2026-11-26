@@ -171,7 +171,12 @@ Python repo's flow:
    installers (`RiverCrossing-<X.Y.Z>-macos-arm64.dmg`, `-windows-<arch>.msi`,
    `-windows-<arch>-portable.zip`, `-linux-amd64.deb`/`.rpm`) plus `SHA256SUMS.txt`, with GitHub's
    generated notes followed by the version's CHANGELOG section. Nothing publishes if a build job or a
-   guard is red. Dev builds stay unsigned.
+   guard is red.
+5. **Signing (macOS).** With all six `APPLE_*` repo secrets present
+   (`APPLE_DEVELOPER_ID`, `APPLE_CERTIFICATE_B64`, `APPLE_CERT_PASSWORD`, `APPLE_NOTARY_KEY_ID`,
+   `APPLE_NOTARY_KEY`, `APPLE_NOTARY_ISSUER`), the macOS leg Developer-ID signs and notarizes the DMG;
+   a partial set counts as absent and publishes unsigned. The signing material lives in
+   `~/rivercrossing-signing/` (see its `README.md`). Windows ships unsigned by decision (R-01).
 
 ## Internal tools
 

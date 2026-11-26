@@ -1,7 +1,11 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# Build the unsigned macOS arm64 app bundle and package it as a versioned DMG.
+# Build the macOS arm64 app bundle and package it as a versioned DMG.
+#
+# Developer-ID signs when SIGN_IDENTITY is set, and notarizes + staples when
+# NOTARY_KEY_ID, NOTARY_KEY (the App Store Connect .p8 contents) and
+# NOTARY_ISSUER are all set. With none set it produces the unsigned DMG.
 #
 # Usage: packaging/package-macos.sh
 
@@ -23,6 +27,45 @@ readonly DMG
 
 err() {
   printf 'ERROR: %s\n' "$*" >&2
+}
+
+# Sign the inner binary then the bundle (inside-out), hardened runtime.
+sign_app() {
+  if ! codesign --force --options runtime --timestamp \
+      --sign "${SIGN_IDENTITY}" "${APP}/Contents/MacOS/rivercrossing"; then
+    err "codesign failed for the binary"
+    exit 1
+  fi
+  if ! codesign --force --options runtime --timestamp \
+      --sign "${SIGN_IDENTITY}" "${APP}"; then
+    err "codesign failed for the app bundle"
+    exit 1
+  fi
+  if ! codesign --verify --deep --strict --verbose=2 "${APP}"; then
+    err "codesign verification failed"
+    exit 1
+  fi
+  printf 'Signed %s\n' "${APP}"
+}
+
+# Notarize the DMG with the App Store Connect API key, then staple it.
+notarize_dmg() {
+  local key="${OUT}/notary.p8"
+  printf '%s\n' "${NOTARY_KEY}" > "${key}"
+  chmod 600 "${key}"
+  if ! xcrun notarytool submit "${DMG}" \
+      --key-id "${NOTARY_KEY_ID}" --key "${key}" \
+      --issuer "${NOTARY_ISSUER}" --wait; then
+    rm -f "${key}"
+    err "notarization failed"
+    exit 1
+  fi
+  rm -f "${key}"
+  if ! xcrun stapler staple "${DMG}"; then
+    err "stapling failed"
+    exit 1
+  fi
+  printf 'Notarized and stapled %s\n' "${DMG}"
 }
 
 main() {
@@ -74,6 +117,10 @@ main() {
     exit 1
   fi
 
+  if [[ -n "${SIGN_IDENTITY:-}" ]]; then
+    sign_app
+  fi
+
   STAGE="${OUT}/dmg"
   if ! mkdir -p "${STAGE}"; then
     err "cannot create the DMG staging directory"
@@ -92,6 +139,11 @@ main() {
       -ov -format UDZO "${DMG}"; then
     err "hdiutil failed"
     exit 1
+  fi
+
+  if [[ -n "${NOTARY_KEY_ID:-}" && -n "${NOTARY_KEY:-}" \
+      && -n "${NOTARY_ISSUER:-}" ]]; then
+    notarize_dmg
   fi
 
   printf 'Built %s\n' "${DMG}"

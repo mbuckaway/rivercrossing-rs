@@ -8,12 +8,59 @@ on:
     tags: ["v*"]
 
 jobs:
+  # macOS is Developer-ID signed and notarized when all six APPLE_* secrets are
+  # present; otherwise it publishes the unsigned DMG (advisory gate — a partial
+  # set counts as absent). Windows ships unsigned by decision (R-01).
   macos:
     runs-on: macos-latest
+    env:
+      APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+      APPLE_CERTIFICATE_B64: ${{ secrets.APPLE_CERTIFICATE_B64 }}
+      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+      APPLE_NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Detect signing secrets (advisory gate)
+        id: signing
+        run: |
+          missing=0
+          for s in APPLE_DEVELOPER_ID APPLE_CERTIFICATE_B64 APPLE_CERT_PASSWORD \
+                   APPLE_NOTARY_KEY_ID APPLE_NOTARY_KEY APPLE_NOTARY_ISSUER; do
+            if [[ -z "${!s}" ]]; then missing=1; fi
+          done
+          if (( missing == 0 )); then
+            echo "signed=1" >> "$GITHUB_OUTPUT"
+            echo "Apple signing secrets present — Developer ID + notarization enabled"
+          else
+            echo "signed=0" >> "$GITHUB_OUTPUT"
+            echo "APPLE_* secrets incomplete — publishing the unsigned DMG" >&2
+          fi
+
+      - name: Import the Developer ID certificate
+        if: steps.signing.outputs.signed == '1'
+        run: |
+          keychain="${RUNNER_TEMP}/rc-signing.keychain-db"
+          echo "${APPLE_CERTIFICATE_B64}" | base64 --decode > "${RUNNER_TEMP}/cert.p12"
+          security create-keychain -p "${RUNNER_TEMP}" "${keychain}"
+          security set-keychain-settings -lut 21600 "${keychain}"
+          security unlock-keychain -p "${RUNNER_TEMP}" "${keychain}"
+          security import "${RUNNER_TEMP}/cert.p12" -k "${keychain}" \
+            -P "${APPLE_CERT_PASSWORD}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "${RUNNER_TEMP}" "${keychain}"
+          security default-keychain -s "${keychain}"
+
       - name: Build the macOS DMG
+        env:
+          SIGN_IDENTITY: ${{ steps.signing.outputs.signed == '1' && secrets.APPLE_DEVELOPER_ID || '' }}
+          NOTARY_KEY_ID: ${{ steps.signing.outputs.signed == '1' && secrets.APPLE_NOTARY_KEY_ID || '' }}
+          NOTARY_KEY: ${{ steps.signing.outputs.signed == '1' && secrets.APPLE_NOTARY_KEY || '' }}
+          NOTARY_ISSUER: ${{ steps.signing.outputs.signed == '1' && secrets.APPLE_NOTARY_ISSUER || '' }}
         run: bash packaging/package-macos.sh
+
       - uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
