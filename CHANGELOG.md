@@ -10,7 +10,7 @@ new `## [<version>]` section here.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-11-26
+## [2.0.0] - 2026-11-26
 
 ### Added
 

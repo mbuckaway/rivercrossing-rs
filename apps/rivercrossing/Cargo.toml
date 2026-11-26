@@ -9,7 +9,7 @@ repository.workspace = true
 autotests = false
 
 [dependencies]
-rivercrossing-ui-egui = { path = "../../crates/rivercrossing-ui-egui", version = "=0.1.0" }
+rivercrossing-ui-egui = { path = "../../crates/rivercrossing-ui-egui", version = "=2.0.0" }
 craft = { workspace = true, features = ["automation"] }
 eframe = { workspace = true }
 
