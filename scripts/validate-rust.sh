@@ -18,6 +18,13 @@ mkdir -p "$OUT"
 step "fmt"
 cargo fmt --all -- --check || fail "fmt" "$?"
 
+step "gitleaks (no committed or working-tree secrets)"
+if ! command -v gitleaks >/dev/null 2>&1; then
+  fail "gitleaks not installed (brew install gitleaks)" 1
+fi
+gitleaks git . --no-banner --redact --config .gitleaks.toml || fail "gitleaks git" "$?"
+gitleaks dir . --no-banner --redact --config .gitleaks.toml || fail "gitleaks dir" "$?"
+
 step "clippy"
 # `-D warnings`, not CARGO_BUILD_WARNINGS: that variable only exists on Cargo >= 1.97,
 # so it silently no-ops on the 1.95 MSRV leg below.

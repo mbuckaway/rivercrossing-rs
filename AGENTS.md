@@ -140,9 +140,13 @@ cargo build --locked
 cargo nextest run -P unit --locked
 cargo nextest run -P ui --locked                  # Tier A-snapshot goldens (egui_kittest)
 cargo check -p rivercrossing --release --locked   # proves the debug-gated control path is inert
-./scripts/validate-rust.sh     # the per-PR gate (fmt, clippy, release check, doc, nextest list,
-                               # msrv/hack, deny, machete, layers, ui, llvm-cov)
+./scripts/validate-rust.sh     # the per-PR gate (fmt, gitleaks, clippy, release check, doc,
+                               # nextest list, msrv/hack, deny, machete, layers, ui, llvm-cov)
 ```
+
+**No secrets in the repo.** The gate runs `gitleaks` over git history and the working tree
+(`.gitleaks.toml`); every credential lives only in GitHub Actions secrets — never in code, tests or
+docs.
 
 ---
 
