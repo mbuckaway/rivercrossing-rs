@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use super::{action_target, command, dialog, inspect, set};
 use crate::ui::action::spec::{CommandId, NativeDialog};
-use crate::ui::state::AppState;
+use crate::ui::state::{AppState, NativeTask};
 
 // ------------------------------------------------------------- fixtures
 
@@ -318,14 +318,18 @@ fn test_set_given_a_missing_value_errors() -> Result<(), String> {
 // ------------------------------------------------------------- ui.dialog.*
 
 #[rstest]
-#[case("ui.dialog.confirm", json!({"event": "confirmed", "button": "OK", "opener": null}))]
-#[case("ui.dialog.cancel", json!({"event": "cancelled", "button": "Cancel", "opener": null}))]
+#[case("ui.dialog.confirm", json!({"event": "confirmed", "button": "Close", "opener": null}))]
+#[case("ui.dialog.cancel", json!({"event": "cancelled", "button": "Close", "opener": null}))]
 fn test_dialog_confirm_and_cancel_return_the_event(
     #[case] method: &str,
     #[case] expected: Value,
 ) -> Result<(), String> {
-    // Arrange
-    let mut state = state_with_setup_dialog()?;
+    // Arrange: a plain message dialog, not a form whose OK submits.
+    let mut state = empty_state();
+    state
+        .dialogs
+        .open("about_dlg", None)
+        .map_err(|_| "the about dialog refuses to open".to_owned())?;
 
     // Act
     let reply = dialog(&mut state, method, &json!({}))?;
@@ -442,7 +446,7 @@ fn test_dialog_confirm_queues_a_pending_native_command() -> Result<(), String> {
     state.pending_command = None;
     state.pending_native = Some(crate::ui::state::PendingNative {
         dialog: NativeDialog::Danger,
-        then: CommandId::UndoCrossing,
+        then: NativeTask::Command(CommandId::UndoCrossing),
     });
 
     // Act
@@ -464,7 +468,7 @@ fn test_dialog_cancel_clears_a_pending_native_without_a_command() -> Result<(), 
     let mut state = empty_state();
     state.pending_native = Some(crate::ui::state::PendingNative {
         dialog: NativeDialog::Danger,
-        then: CommandId::UndoCrossing,
+        then: NativeTask::Command(CommandId::UndoCrossing),
     });
 
     // Act
@@ -477,5 +481,71 @@ fn test_dialog_cancel_clears_a_pending_native_without_a_command() -> Result<(), 
     );
     assert_eq!(state.pending_native, None);
     assert_eq!(state.pending_command, None);
+    Ok(())
+}
+
+#[test]
+fn test_dialog_confirm_submits_the_setup_form() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state
+        .dialogs
+        .open("ride_setup_dlg", None)
+        .map_err(|_| "the setup dialog".to_owned())?;
+    for (field, value) in [
+        ("name_input", "GORBA EPIC 2026"),
+        ("date_picker", "2026-11-25"),
+        ("start_time_picker", "08:00"),
+        ("venue_input", "Sea to Sky Gondola"),
+        ("lap_km_spin", "8.0"),
+        ("organizer_input", "GORBA"),
+        ("scorer_input", "K. Singh"),
+        ("duration_input", "6:00"),
+        ("min_lap_input", "20:00"),
+    ] {
+        state
+            .dialogs
+            .set_field(field, value)
+            .map_err(|_| "the setup field".to_owned())?;
+    }
+
+    // Act
+    let reply = dialog(&mut state, "ui.dialog.confirm", &json!({}))?;
+
+    // Assert
+    assert_eq!(
+        reply,
+        json!({"event": "confirmed", "button": "OK", "opener": null})
+    );
+    assert!(state.pending_create.is_some());
+    assert!(state.dialogs.is_empty());
+    Ok(())
+}
+
+#[test]
+fn test_dialog_confirm_given_a_refused_form_reports_the_message() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state
+        .dialogs
+        .open("ride_setup_dlg", None)
+        .map_err(|_| "the setup dialog".to_owned())?;
+
+    // Act
+    let reply = dialog(&mut state, "ui.dialog.confirm", &json!({}));
+
+    // Assert
+    let message = reply
+        .err()
+        .ok_or_else(|| "the blank form is refused".to_owned())?;
+    assert!(
+        message.contains("Date is empty"),
+        "the refusal names the first blank field: {message}"
+    );
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("ride_setup_dlg")
+    );
+    assert!(state.pending_create.is_none());
     Ok(())
 }

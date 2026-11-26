@@ -195,3 +195,47 @@ the scenario JSON is the cross-language contract.
   therefore waits two seconds after the listening line, before its first request, so the first
   (window- and device-building) pass has ended. A fix belongs in craft-libs: the server should
   request a repaint without taking the pass state.
+
+## EPIC-12b Phase 2 — editors, CSV preview and the issues report
+
+- **Six windows render through the dialog host:** `rider_editor_dlg` and `team_editor_dlg` (list +
+  search/filter + read-only record panel + Add/Edit/Delete-Remove), `add_rider_dlg` and
+  `add_team_dlg` (one window in two modes, retitled "Edit Rider"/"Edit Team"; OK says "Save"), the
+  `csv_preview_dlg` (summary, conflicts, both off-by-default options, Import disabled while a
+  conflict remains) and `rider_issues_dlg` (summary, list, the three fixes gated by
+  `presenters::rider_issues::actions`). Every list cell is an egui selectable label; an empty cell
+  renders an em dash so the control keeps a non-empty accessible name.
+- **The record panels mirror into the dialog field map.** The rider/team editor displays the
+  selected record, and each pass writes the frozen `plate_input`/`first_name_input`/… values into
+  the dialog's field map, so `ui.inspect` reads what the panel shows; a `ui.set` write is
+  overwritten on the next pass, which is exactly a read-only display. The Add forms and the CSV
+  options keep their values in the same map, so `ui.set` and the widgets share one source.
+- **Roster persistence.** Each mutation queues the roster's audit rows (`AppendRosterEvent`), the
+  roster snapshot (`SaveRoster`) and then a `LoadRide`, which rebuilds the engine over the saved
+  roster — the UI's roster copy and the engine's `RosterView` cannot drift. The app drains the
+  queue at the start of each logic pass and refreshes the editor models when the ride reply lands.
+- **Live team moves.** An edited rider whose team changes on a RUNNING or REOPENED ride commits
+  through `RideEngine`'s own move (`presenters::riders::commit_live_move`), so the rider's laps and
+  cards follow; a live, unstopped ride refuses with "Stop the ride first". The engine event is
+  queued with the ride events. The presenter's operator confirmation before a live move is deferred
+  to PR C's dialogs; the move is reversible by moving the rider back.
+- **Delete and Remove confirm natively.** The editors raise the PR A inline native modal through a
+  new `NativeTask::{DeleteRider, RemoveTeam}`; only the confirm runs the presenter and queues the
+  save, and Cancel/Esc keeps the record. PR C replaces the inline modal with `craft_dialogs`.
+- **`ui.dialog.confirm` on a form submits it**, sharing `AppState::submit_top_form` with the OK
+  button, so the Tier B smoke can complete the ride setup through the channel.
+- **Deferred to PR D (recorded):** the OS open/save pickers. `mi_import_csv` and `mi_export_csv`
+  post "a file picker is not available in this release" as the notice; the preview and the export
+  run through `RiverCrossingApp::open_csv_preview(path)` / `export_csv(path)`, which are the seam
+  the picker will call. The CSV dialog therefore opens only with a previewed file.
+- **Deferred with a reason:** `card_check_lbl` stays hidden — the Python window hides the advisory
+  when the ride config and the stored average speed are unavailable, and the estimate's composition
+  arrives with the results work. "Pick card" acts on the selected or edited team; staging a card for
+  a not-yet-created team in the Add window is deferred.
+- **Goldens:** `rider_editor.png`, `team_editor.png`, `csv_preview.png` and `rider_issues.png` join
+  `console_empty.png`/`setup_open.png`; regenerate on the golden host with
+  `UPDATE_SNAPSHOTS=force WGPU_BACKEND=vulkan cargo nextest run -P ui -p rivercrossing-ui-egui --locked`.
+- **Tier B smoke:** the control smoke now completes the ride setup through
+  `ui.set` + `ui.dialog.confirm`, waits for the ride in the access tree, then opens the rider editor
+  with `ui.command mi_rider_editor` and closes it with `ui.dialog.cancel`. The editor is ride-gated,
+  so the round trip necessarily follows the setup step rather than preceding it.

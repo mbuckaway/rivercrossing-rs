@@ -276,6 +276,54 @@ fn assert_console_click_and_type(client: &mut ControlClient) -> SmokeResult {
     Ok(())
 }
 
+/// Fill the remaining setup fields, confirm the form and wait for the ride to load.
+fn assert_setup_commits_and_loads(client: &mut ControlClient) -> SmokeResult {
+    for (field, value) in [
+        ("venue_input", "Smoke Venue"),
+        ("organizer_input", "Smoke Club"),
+        ("scorer_input", "Smoke Scorer"),
+    ] {
+        let reply = client.call("ui.set", json!({"field": field, "value": value}))?;
+        assert_eq!(reply, json!({"ok": true}));
+    }
+    let confirmed = client.call("ui.dialog.confirm", json!({}))?;
+    assert_eq!(
+        confirmed.get("event"),
+        Some(&json!("confirmed")),
+        "the setup form commits: {confirmed}"
+    );
+    for _ in 0..100 {
+        let tree = client.call("ui.accessTree", json!({}))?;
+        if tree_mentions(&tree, "smoke ride") {
+            return Ok(());
+        }
+    }
+    Err("the ride did not load within 100 access-tree polls".into())
+}
+
+/// Assert the ride-gated rider editor opens and `ui.dialog.cancel` closes it.
+fn assert_rider_editor_round_trip(client: &mut ControlClient) -> SmokeResult {
+    let opened = client.call("ui.command", json!({"name": "mi_rider_editor"}))?;
+    assert_eq!(opened, json!({"ok": true}));
+    let tree = client.call("ui.accessTree", json!({}))?;
+    assert!(
+        tree_mentions(&tree, "Rider Editor"),
+        "the rider editor is open: {tree}"
+    );
+    let cancelled = client.call("ui.dialog.cancel", json!({}))?;
+    assert_eq!(
+        cancelled.get("event"),
+        Some(&json!("cancelled")),
+        "the editor reports its cancel: {cancelled}"
+    );
+    let after = client.call("ui.accessTree", json!({}))?;
+    assert!(
+        !tree_mentions(&after, "Rider Editor"),
+        "the editor closed: {after}"
+    );
+    Ok(())
+}
+
 /// Assert the Exit row raises the native confirmation, and `ui.dialog.cancel` dismisses it.
 fn assert_native_confirm_cancels(client: &mut ControlClient) -> SmokeResult {
     let opened = client.call("ui.command", json!({"name": "wxID_EXIT"}))?;
@@ -409,6 +457,11 @@ fn control_channel_smoke() -> SmokeResult {
     )?;
     step("new ride command", assert_command_opens_setup(&mut client))?;
     step("setup click and type", assert_click_and_type(&mut client))?;
+    step("setup commits", assert_setup_commits_and_loads(&mut client))?;
+    step(
+        "rider editor round trip",
+        assert_rider_editor_round_trip(&mut client),
+    )?;
     step("screenshot", assert_screenshot(&mut client, &workspace))?;
     step("resize", assert_resize(&mut client))?;
     step("app_quit", assert_quit(&mut client, app))

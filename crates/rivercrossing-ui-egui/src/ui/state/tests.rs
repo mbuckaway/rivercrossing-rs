@@ -3,29 +3,36 @@
 //! Unit tests for the app state: the phase and gate projections, the status
 //! notice, the settings write, the new-ride seed and the action execution.
 
+use std::path::{Path, PathBuf};
+
 use pretty_assertions::assert_eq;
 use rivercrossing_ride::{
-    EntryMode, PlateModel, RideConfig, RideConfigParams, RideEngine, SystemClock,
+    EntryId, EntryMode, PlateModel, RideConfig, RideConfigParams, RideEngine, SystemClock,
 };
-use rivercrossing_roster::roster::Roster;
-use rivercrossing_roster::types::Rider;
+use rivercrossing_roster::enums::EntryType;
+use rivercrossing_roster::roster::{Roster, TeamFields};
+use rivercrossing_roster::types::{Entry, Rider};
 use rivercrossing_store::Store;
 use rstest::rstest;
 
-use super::{AppState, ExportPresence, LoadedRide, PendingNative, new_ride_seed};
+use super::{
+    AppState, ExportPresence, LoadedRide, NativeTask, PendingNative, RiderSelection, new_ride_seed,
+};
 use crate::ui::action::effect::{DispatchError, Effect};
 use crate::ui::action::enable::{GateState, RidePhase};
 use crate::ui::action::id::{
-    ActionId, MI_ALL_CARDS, MI_BACKUP_NOW, MI_FINISH_RIDE, MI_FULL_FIELD, MI_LAPS_BOARD,
-    MI_NEW_RIDE, MI_RIDER_EDITOR, MI_SHORTCUTS, MI_SHOW_DNS_RIDERS, MI_SHOW_LAP_TIME,
-    MI_SHOW_TIMES, MI_SHOW_TOTAL_TIMES, MI_STANDINGS, MI_TIME_BOARD, MI_UNDO_CROSSING, MI_ZOOM_90,
-    MI_ZOOM_100, MI_ZOOM_110, MI_ZOOM_120, MI_ZOOM_130, MI_ZOOM_140, MI_ZOOM_150, WX_ID_ABOUT,
-    WX_ID_EXIT,
+    ActionId, MI_ALL_CARDS, MI_BACKUP_NOW, MI_CHECK_RIDER_ISSUES, MI_FINISH_RIDE, MI_FULL_FIELD,
+    MI_LAPS_BOARD, MI_NEW_RIDE, MI_PUBLISH_WORDPRESS, MI_RIDER_EDITOR, MI_SHORTCUTS,
+    MI_SHOW_DNS_RIDERS, MI_SHOW_LAP_TIME, MI_SHOW_TIMES, MI_SHOW_TOTAL_TIMES, MI_STANDINGS,
+    MI_TEAM_EDITOR, MI_TIME_BOARD, MI_UNDO_CROSSING, MI_ZOOM_90, MI_ZOOM_100, MI_ZOOM_110,
+    MI_ZOOM_120, MI_ZOOM_130, MI_ZOOM_140, MI_ZOOM_150, WX_ID_ABOUT, WX_ID_EXIT,
 };
 use crate::ui::action::spec::{CheckKind, CommandId, NativeDialog};
 use crate::ui::dialogs::stack::Focus;
 use crate::ui::presenters::console::RIDE_STARTED;
+use crate::ui::presenters::rider_issues;
 use crate::ui::sound::Cue;
+use crate::ui::worker::StoreCommand;
 
 /// The ride name every fixture uses.
 const RIDE_NAME: &str = "GORBA EPIC 2026";
@@ -127,6 +134,11 @@ fn advance_to(
 /// The engine comes from a real temporary database, because the ride crate
 /// builds an engine only over its seeded shoe, which the store owns.
 fn loaded_ride(phase: RidePhase) -> Result<Option<LoadedRide>, String> {
+    loaded_ride_with(phase, &fixture_roster()?)
+}
+
+/// Build a loaded ride in *phase* over *roster*.
+fn loaded_ride_with(phase: RidePhase, roster: &Roster) -> Result<Option<LoadedRide>, String> {
     if phase == RidePhase::None {
         return Ok(None);
     }
@@ -138,15 +150,16 @@ fn loaded_ride(phase: RidePhase) -> Result<Option<LoadedRide>, String> {
         .create_ride(&config, Some(SEED))
         .map_err(|error| error.to_string())?;
     store
-        .save_roster(ride_id, &fixture_roster()?)
+        .save_roster(ride_id, roster)
         .map_err(|error| error.to_string())?;
     let mut engine = store
         .load_engine(ride_id)
         .map_err(|error| error.to_string())?;
     advance_to(&mut engine, phase)?;
-    let roster = store
+    let mut roster = store
         .roster_for(ride_id)
         .map_err(|error| error.to_string())?;
+    roster.set_status(engine.state());
     Ok(Some(LoadedRide {
         ride_id,
         config: engine.config().clone(),
@@ -391,7 +404,7 @@ fn test_act_queues_the_undo_native_confirm() -> Result<(), String> {
         state.pending_native,
         Some(PendingNative {
             dialog: NativeDialog::Danger,
-            then: CommandId::UndoCrossing,
+            then: NativeTask::Command(CommandId::UndoCrossing),
         })
     );
     Ok(())
@@ -416,14 +429,11 @@ fn test_act_reports_a_window_not_built_in_this_release() -> Result<(), String> {
     let mut state = empty_state();
     state.ride = loaded_ride(RidePhase::Draft)?;
 
-    // Act
-    let result = state.act(MI_RIDER_EDITOR);
+    // Act: the results dialog is not built in this release.
+    let result = state.act(MI_STANDINGS);
 
     // Assert
-    assert_eq!(
-        result,
-        Err(DispatchError::NotImplemented("rider_editor_dlg"))
-    );
+    assert_eq!(result, Err(DispatchError::NotImplemented("results_dlg")));
     assert!(state.dialogs.is_empty());
     Ok(())
 }
@@ -436,8 +446,11 @@ fn test_act_reports_a_window_not_built_in_this_release() -> Result<(), String> {
 #[case(MI_SHOW_TIMES, true)]
 #[case(MI_ZOOM_100, true)]
 #[case(WX_ID_EXIT, true)]
-#[case(MI_RIDER_EDITOR, false)]
+#[case(MI_RIDER_EDITOR, true)]
+#[case(MI_TEAM_EDITOR, true)]
+#[case(MI_CHECK_RIDER_ISSUES, true)]
 #[case(MI_STANDINGS, false)]
+#[case(MI_PUBLISH_WORDPRESS, false)]
 #[case(ActionId::from_name("not_an_action"), false)]
 fn test_implemented_is_true_for_the_built_targets_and_false_for_the_rest(
     #[case] id: ActionId,
@@ -1056,4 +1069,1242 @@ fn test_confirm_and_cancel_native_without_a_pending_dialog_report_false() {
     assert!(!confirmed);
     assert!(!cancelled);
     assert_eq!(state.pending_command, None);
+}
+
+// ------------------------------------------------------ editor fixtures
+
+/// Return a rider with the given name and own plate.
+fn rider(first: &str, last: &str, plate: Option<&str>) -> Rider {
+    Rider {
+        first_name: first.to_owned(),
+        last_name: last.to_owned(),
+        plate: plate.map(str::to_owned),
+        ..Rider::default()
+    }
+}
+
+/// Return a restored solo entry.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one fixture call spells the entry, its plate and its rider"
+)]
+fn solo_entry(key: &str, plate: &str, first: &str, last: &str) -> Entry {
+    Entry::restored(
+        key,
+        plate,
+        format!("{first} {last}").trim().to_owned(),
+        EntryType::Solo,
+        vec![rider(first, last, Some(plate))],
+    )
+}
+
+/// Return a restored team entry.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one fixture call spells the team, its plate, its name and its members"
+)]
+fn team_entry(key: &str, plate: &str, name: &str, members: Vec<Rider>) -> Entry {
+    Entry::restored(key, plate, name, EntryType::Team, members)
+}
+
+/// Return a roster with a solo pair and two teams.
+fn editor_roster() -> Result<Roster, String> {
+    let mut roster = Roster::new(EntryMode::Mixed, 4, PlateModel::RiderPooled, Some(SEED))
+        .map_err(|error| error.to_string())?;
+    roster.load_entries(vec![
+        solo_entry("k-ada", "101", "Ada", "Lovelace"),
+        solo_entry("k-grace", "102", "Grace", "Hopper"),
+        team_entry(
+            "k-alpha",
+            "A1",
+            "Alpha",
+            vec![
+                rider("Alan", "Turing", Some("201")),
+                rider("Barbara", "Liskov", Some("202")),
+            ],
+        ),
+        team_entry(
+            "k-lone",
+            "L1",
+            "Lone Wolf",
+            vec![rider("Cy", "Three", Some("103"))],
+        ),
+    ]);
+    Ok(roster)
+}
+
+/// Return a roster that starts cleanly: no team-of-one, every rider plated and named.
+fn running_roster() -> Result<Roster, String> {
+    let mut roster = Roster::new(EntryMode::Mixed, 4, PlateModel::RiderPooled, Some(SEED))
+        .map_err(|error| error.to_string())?;
+    roster.load_entries(vec![
+        solo_entry("k-ada", "101", "Ada", "Lovelace"),
+        solo_entry("k-grace", "102", "Grace", "Hopper"),
+        team_entry(
+            "k-alpha",
+            "A1",
+            "Alpha",
+            vec![
+                rider("Alan", "Turing", Some("201")),
+                rider("Barbara", "Liskov", Some("202")),
+            ],
+        ),
+    ]);
+    Ok(roster)
+}
+
+/// Return a roster that carries one of each supported defect.
+fn issues_roster() -> Result<Roster, String> {
+    let mut roster = Roster::new(EntryMode::Mixed, 4, PlateModel::RiderPooled, Some(SEED))
+        .map_err(|error| error.to_string())?;
+    roster
+        .create_team_entry_of_one(TeamFields {
+            display_name: "Lone Wolf",
+            riders: vec![rider("Cy", "Three", Some("101"))],
+            plate: None,
+            logo_card: None,
+        })
+        .map_err(|error| error.to_string())?;
+    roster.load_entries(vec![
+        Entry::restored(
+            "k-missing-name",
+            "7",
+            "",
+            EntryType::Solo,
+            vec![rider("", "", Some("7"))],
+        ),
+        Entry::restored(
+            "k-missing-number",
+            "9",
+            "Grace Hopper",
+            EntryType::Solo,
+            vec![rider("Grace", "Hopper", None)],
+        ),
+        Entry::restored(
+            "k-dup-number-1",
+            "31",
+            "Bo One",
+            EntryType::Solo,
+            vec![rider("Bo", "One", Some("21"))],
+        ),
+        Entry::restored(
+            "k-dup-number-2",
+            "32",
+            "Bo Two",
+            EntryType::Solo,
+            vec![rider("Bo", "Two", Some("21"))],
+        ),
+    ]);
+    Ok(roster)
+}
+
+/// Return an app state whose ride carries *roster*, in *phase*.
+fn state_with_roster(phase: RidePhase, roster: &Roster) -> Result<AppState, String> {
+    let mut state = empty_state();
+    state.ride = loaded_ride_with(phase, roster)?;
+    Ok(state)
+}
+
+/// Select one rider record.
+fn select_rider(state: &mut AppState, entry: &str, rider_index: usize) {
+    state.rider_editor.selected = Some(RiderSelection {
+        entry: EntryId(entry.to_owned()),
+        rider_index,
+    });
+}
+
+/// Return the queued roster-audit actions.
+fn queued_roster_events(state: &AppState) -> Vec<String> {
+    state
+        .pending_store
+        .iter()
+        .filter_map(|command| match command {
+            StoreCommand::AppendRosterEvent { event, .. } => Some(event.action.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Return how many roster saves the state queued.
+fn queued_saves(state: &AppState) -> usize {
+    state
+        .pending_store
+        .iter()
+        .filter(|command| matches!(command, StoreCommand::SaveRoster { .. }))
+        .count()
+}
+
+/// Return how many ride reloads the state queued.
+fn queued_loads(state: &AppState) -> usize {
+    state
+        .pending_store
+        .iter()
+        .filter(|command| matches!(command, StoreCommand::LoadRide { .. }))
+        .count()
+}
+
+/// Write a CSV file with the canonical header and return its path.
+fn write_csv(directory: &tempfile::TempDir, name: &str, rows: &str) -> Result<PathBuf, String> {
+    let path = directory.path().join(name);
+    let body = format!("FIRSTNAME,LASTNAME,TYPE,TEAMNAME,PLATE,NOTES,SEX\n{rows}");
+    std::fs::write(&path, body).map_err(|error| error.to_string())?;
+    Ok(path)
+}
+
+// -------------------------------------------------------- rider editor
+
+#[test]
+fn test_open_rider_editor_lists_every_rider() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+
+    // Act
+    state.open_rider_editor();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("rider_editor_dlg")
+    );
+    assert_eq!(state.rider_editor.rows.len(), 5);
+    assert_eq!(state.rider_editor.rows[0].row.name, "Ada Lovelace");
+    assert_eq!(state.rider_editor.rows[0].row.team, "solo");
+    assert_eq!(state.rider_editor.rows[2].row.team, "Alpha");
+    assert_eq!(state.rider_editor.selected, None);
+    Ok(())
+}
+
+#[test]
+fn test_open_rider_at_selects_the_plate() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+
+    // Act
+    state.open_rider_at("102");
+
+    // Assert
+    assert_eq!(
+        state.rider_editor.selected,
+        Some(RiderSelection {
+            entry: EntryId("k-grace".to_owned()),
+            rider_index: 0,
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_rider_editor_visible_rows_follow_the_search() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_rider_editor();
+
+    // Act
+    state.rider_editor.search = "alpha".to_owned();
+    let visible = state.rider_editor.visible();
+
+    // Assert
+    assert_eq!(visible.len(), 2);
+    assert_eq!(visible, vec![2, 3]);
+    Ok(())
+}
+
+#[test]
+fn test_open_add_rider_prefills_the_next_free_plate() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    let expected = state
+        .ride
+        .as_ref()
+        .map(|ride| ride.roster.next_free_plate())
+        .ok_or_else(|| "the ride is not loaded".to_owned())?;
+
+    // Act
+    state.open_add_rider();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("add_rider_dlg")
+    );
+    assert_eq!(state.dialogs.field("plate_input"), Some(expected.as_str()));
+    assert_eq!(state.rider_editor.editing, None);
+    Ok(())
+}
+
+#[test]
+fn test_submit_add_rider_creates_and_selects_the_record() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_rider_editor();
+    state.open_add_rider();
+    state
+        .dialogs
+        .set_field("first_name_input", "Katherine")
+        .map_err(|_| "the plate field".to_owned())?;
+    state
+        .dialogs
+        .set_field("last_name_input", "Johnson")
+        .map_err(|_| "the name field".to_owned())?;
+
+    // Act
+    let result = state.submit_add_rider();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(state.rider_editor.rows.len(), 6);
+    let selected = state
+        .rider_editor
+        .selected
+        .clone()
+        .ok_or_else(|| "the new record is selected".to_owned())?;
+    let ride = state.ride.as_ref().ok_or_else(|| "the ride".to_owned())?;
+    let entry = ride
+        .roster
+        .entry_by_key(&selected.entry.0)
+        .ok_or_else(|| "the new entry".to_owned())?;
+    assert_eq!(entry.riders[selected.rider_index].first_name, "Katherine");
+    assert_eq!(state.pending_store.len(), 3);
+    assert_eq!(queued_saves(&state), 1);
+    assert_eq!(queued_loads(&state), 1);
+    assert_eq!(state.notice, Some("Rider added".to_owned()));
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("rider_editor_dlg")
+    );
+    Ok(())
+}
+
+#[test]
+fn test_submit_add_rider_given_blank_names_refuses() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_rider_editor();
+    state.open_add_rider();
+
+    // Act
+    let result = state.submit_add_rider();
+
+    // Assert
+    assert_eq!(
+        result,
+        Err("First name and last name are required".to_owned())
+    );
+    assert_eq!(
+        state.rider_editor.errors.as_deref(),
+        Some("First name and last name are required")
+    );
+    assert_eq!(state.rider_editor.rows.len(), 5);
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("add_rider_dlg")
+    );
+    assert!(state.pending_store.is_empty());
+    Ok(())
+}
+
+#[test]
+fn test_open_edit_rider_preloads_the_selected_record() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_rider_editor();
+    select_rider(&mut state, "k-grace", 0);
+
+    // Act
+    state.open_edit_rider();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("add_rider_dlg")
+    );
+    assert_eq!(state.dialogs.field("plate_input"), Some("102"));
+    assert_eq!(state.dialogs.field("first_name_input"), Some("Grace"));
+    assert_eq!(state.dialogs.field("last_name_input"), Some("Hopper"));
+    assert_eq!(state.dialogs.field("team_choice"), Some("solo"));
+    assert_eq!(
+        state.rider_editor.editing,
+        Some(RiderSelection {
+            entry: EntryId("k-grace".to_owned()),
+            rider_index: 0,
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn test_submit_edit_rider_updates_the_roster() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_rider_editor();
+    select_rider(&mut state, "k-grace", 0);
+    state.open_edit_rider();
+    state
+        .dialogs
+        .set_field("first_name_input", "Augusta")
+        .map_err(|_| "the name field".to_owned())?;
+
+    // Act
+    let result = state.submit_edit_rider();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    let ride = state.ride.as_ref().ok_or_else(|| "the ride".to_owned())?;
+    let entry = ride
+        .roster
+        .entry_by_key("k-grace")
+        .ok_or_else(|| "the entry".to_owned())?;
+    assert_eq!(entry.riders[0].first_name, "Augusta");
+    assert_eq!(state.notice, Some("Rider updated".to_owned()));
+    assert_eq!(state.rider_editor.editing, None);
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("rider_editor_dlg")
+    );
+    Ok(())
+}
+
+#[test]
+fn test_submit_edit_rider_given_a_running_ride_team_change_refuses_the_live_move()
+-> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Running, &running_roster()?)?;
+    state.open_rider_editor();
+    select_rider(&mut state, "k-ada", 0);
+    state.open_edit_rider();
+    state
+        .dialogs
+        .set_field("team_choice", "Alpha")
+        .map_err(|_| "the team field".to_owned())?;
+
+    // Act
+    let result = state.submit_edit_rider();
+
+    // Assert
+    assert_eq!(result, Err("Stop the ride first".to_owned()));
+    assert_eq!(
+        state.rider_editor.errors.as_deref(),
+        Some("Stop the ride first")
+    );
+    let ride = state.ride.as_ref().ok_or_else(|| "the ride".to_owned())?;
+    assert!(
+        ride.roster.entry_by_key("k-ada").is_some(),
+        "the rider stays on the solo entry"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_submit_edit_rider_given_no_selection_refuses() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_rider_editor();
+    state.open_add_rider();
+
+    // Act
+    let result = state.submit_edit_rider();
+
+    // Assert
+    assert_eq!(result, Err("Select a rider first".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn test_delete_selected_rider_removes_the_record() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_rider_editor();
+    select_rider(&mut state, "k-grace", 0);
+
+    // Act
+    let result = state.delete_selected_rider();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(state.rider_editor.rows.len(), 4);
+    assert_eq!(state.rider_editor.selected, None);
+    let ride = state.ride.as_ref().ok_or_else(|| "the ride".to_owned())?;
+    assert!(ride.roster.entry_by_key("k-grace").is_none());
+    assert_eq!(state.notice, Some("Rider deleted".to_owned()));
+    assert_eq!(queued_saves(&state), 1);
+    Ok(())
+}
+
+#[test]
+fn test_delete_selected_rider_given_no_selection_refuses() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_rider_editor();
+
+    // Act
+    let result = state.delete_selected_rider();
+
+    // Assert
+    assert_eq!(result, Err("Select a rider first".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn test_delete_selected_rider_on_a_running_ride_surfaces_the_lock() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Running, &running_roster()?)?;
+    state.open_rider_editor();
+    select_rider(&mut state, "k-ada", 0);
+
+    // Assert the fixture: the UI roster mirrors the running engine.
+    let status = state
+        .ride
+        .as_ref()
+        .map(|ride| ride.roster.status())
+        .ok_or_else(|| "the ride".to_owned())?;
+    assert_eq!(status, rivercrossing_roster::enums::RideStatus::Running);
+
+    // Act
+    let result = state.delete_selected_rider();
+
+    // Assert
+    assert!(result.is_err(), "the running ride locks the delete");
+    assert_eq!(state.rider_editor.rows.len(), 4);
+    assert!(state.rider_editor.errors.is_some());
+    Ok(())
+}
+
+#[test]
+fn test_raise_delete_rider_queues_the_confirmation() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_rider_editor();
+    select_rider(&mut state, "k-grace", 0);
+
+    // Act
+    let raised = state.raise_delete_rider();
+
+    // Assert
+    assert!(raised);
+    assert_eq!(
+        state.pending_native,
+        Some(PendingNative {
+            dialog: NativeDialog::Danger,
+            then: NativeTask::DeleteRider {
+                entry: EntryId("k-grace".to_owned()),
+                rider_index: 0,
+            },
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn test_confirm_native_deletes_the_rider() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_rider_editor();
+    select_rider(&mut state, "k-grace", 0);
+    state.raise_delete_rider();
+
+    // Act
+    let confirmed = state.confirm_native();
+
+    // Assert
+    assert!(confirmed);
+    assert_eq!(state.pending_native, None);
+    assert_eq!(state.rider_editor.rows.len(), 4);
+    assert_eq!(state.notice, Some("Rider deleted".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn test_cancel_native_keeps_the_rider() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_rider_editor();
+    select_rider(&mut state, "k-grace", 0);
+    state.raise_delete_rider();
+
+    // Act
+    let cancelled = state.cancel_native();
+
+    // Assert
+    assert!(cancelled);
+    assert_eq!(state.pending_native, None);
+    assert_eq!(state.rider_editor.rows.len(), 5);
+    assert_eq!(state.pending_store.len(), 0);
+    Ok(())
+}
+
+// ----------------------------------------------------------------- csv
+
+#[test]
+fn test_preview_csv_opens_the_dialog_and_enables_import() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let path = write_csv(
+        &directory,
+        "entries.csv",
+        "Katherine,Johnson,solo,,111,,\nDorothy,Vaughan,solo,,112,,\n",
+    )?;
+
+    // Act
+    let result = state.preview_csv(&path);
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("csv_preview_dlg")
+    );
+    let model = state
+        .csv_preview
+        .model
+        .as_ref()
+        .ok_or_else(|| "the preview model".to_owned())?;
+    assert!(model.can_import);
+    assert_eq!(model.conflicts, Vec::<String>::new());
+    assert_eq!(state.csv_preview.path.as_deref(), Some(path.as_path()));
+    Ok(())
+}
+
+#[test]
+fn test_preview_csv_given_a_conflict_disables_import() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let path = write_csv(
+        &directory,
+        "entries.csv",
+        "Katherine,Johnson,solo,,111,,\nDorothy,Vaughan,solo,,111,,\n",
+    )?;
+
+    // Act
+    let result = state.preview_csv(&path);
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    let model = state
+        .csv_preview
+        .model
+        .as_ref()
+        .ok_or_else(|| "the preview model".to_owned())?;
+    assert!(!model.can_import);
+    assert_eq!(model.conflicts, vec!["duplicate plate 111".to_owned()]);
+    Ok(())
+}
+
+#[test]
+fn test_preview_csv_given_a_missing_file_refuses() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    let path = PathBuf::from("/no/such/entries.csv");
+
+    // Act
+    let result = state.preview_csv(&path);
+
+    // Assert
+    assert!(result.is_err());
+    assert!(state.csv_preview.errors.is_some());
+    assert_eq!(state.dialogs.top(), None);
+    Ok(())
+}
+
+#[test]
+fn test_submit_csv_import_commits_the_preview() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let path = write_csv(
+        &directory,
+        "entries.csv",
+        "Katherine,Johnson,solo,,111,,\nDorothy,Vaughan,solo,,112,,\n",
+    )?;
+    state.preview_csv(&path)?;
+
+    // Act
+    let result = state.submit_csv_import();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    let ride = state.ride.as_ref().ok_or_else(|| "the ride".to_owned())?;
+    assert_eq!(ride.roster.entries().len(), 6);
+    assert_eq!(state.notice, Some("Imported 2 entries".to_owned()));
+    assert_eq!(state.dialogs.top(), None);
+    assert_eq!(state.csv_preview.preview, None);
+    assert_eq!(queued_saves(&state), 1);
+    assert_eq!(queued_loads(&state), 1);
+    Ok(())
+}
+
+#[test]
+fn test_submit_csv_import_given_no_preview_refuses() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+
+    // Act
+    let result = state.submit_csv_import();
+
+    // Assert
+    assert_eq!(result, Err("No CSV file is previewed".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn test_set_csv_option_writes_the_field_and_repreviews() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let path = write_csv(&directory, "entries.csv", "Ada,Lovelace,solo,,111,,\n")?;
+    state.preview_csv(&path)?;
+
+    // Act
+    state.set_csv_option("map_unknown_sex_chk", true);
+
+    // Assert
+    assert_eq!(state.dialogs.field("map_unknown_sex_chk"), Some("true"));
+    assert!(state.csv_preview.model.is_some());
+    Ok(())
+}
+
+#[test]
+fn test_export_csv_writes_the_roster() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let path = directory.path().join("roster.csv");
+
+    // Act
+    let result = state.export_csv(&path);
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    let body = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
+    assert!(
+        body.starts_with("FIRSTNAME,LASTNAME,TYPE"),
+        "the export holds the canonical header: {body:?}"
+    );
+    assert!(
+        state
+            .notice
+            .is_some_and(|notice| notice.starts_with("Exported "))
+    );
+    Ok(())
+}
+
+#[test]
+fn test_export_csv_given_no_ride_refuses() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    let result = state.export_csv(Path::new("/tmp/roster.csv"));
+
+    // Assert
+    assert_eq!(result, Err("Open a ride first".to_owned()));
+}
+
+// --------------------------------------------------------------- teams
+
+/// Select the team named *name*.
+fn select_team(state: &mut AppState, name: &str) {
+    state.team_editor.selected = state
+        .team_editor
+        .rows
+        .iter()
+        .find(|row| row.row.name == name)
+        .map(|row| row.entry.clone());
+}
+
+#[test]
+fn test_open_team_editor_lists_the_teams() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+
+    // Act
+    state.open_team_editor();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("team_editor_dlg")
+    );
+    let names: Vec<&str> = state
+        .team_editor
+        .rows
+        .iter()
+        .map(|row| row.row.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["Alpha", "Lone Wolf"]);
+    assert_eq!(state.team_editor.selected, None);
+    Ok(())
+}
+
+#[test]
+fn test_set_team_single_member_only_filters_the_rows() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_team_editor();
+
+    // Act
+    state.set_team_single_member_only(true);
+
+    // Assert
+    assert_eq!(state.team_editor.rows.len(), 1);
+    assert_eq!(state.team_editor.rows[0].row.name, "Lone Wolf");
+    assert_eq!(state.dialogs.field("single_member_only_chk"), Some("true"));
+    Ok(())
+}
+
+#[test]
+fn test_submit_add_team_creates_and_selects_the_team() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_team_editor();
+    state.open_add_team();
+    state
+        .dialogs
+        .set_field("name_input", "Beta")
+        .map_err(|_| "the name field".to_owned())?;
+
+    // Act
+    let result = state.submit_add_team();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(state.team_editor.rows.len(), 3);
+    assert!(state.team_editor.selected.is_some());
+    assert_eq!(state.notice, Some("Team added".to_owned()));
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("team_editor_dlg")
+    );
+    assert_eq!(queued_saves(&state), 1);
+    Ok(())
+}
+
+#[test]
+fn test_submit_add_team_given_a_blank_name_refuses() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_team_editor();
+    state.open_add_team();
+
+    // Act
+    let result = state.submit_add_team();
+
+    // Assert
+    assert_eq!(result, Err("enter a team name".to_owned()));
+    assert_eq!(
+        state.team_editor.errors.as_deref(),
+        Some("enter a team name")
+    );
+    assert_eq!(state.team_editor.rows.len(), 2);
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("add_team_dlg")
+    );
+    Ok(())
+}
+
+#[test]
+fn test_open_edit_team_preloads_the_selected_team() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_team_editor();
+    select_team(&mut state, "Alpha");
+
+    // Act
+    state.open_edit_team();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("add_team_dlg")
+    );
+    assert_eq!(state.dialogs.field("name_input"), Some("Alpha"));
+    assert_eq!(state.dialogs.field("relay_plate_input"), Some("A1"));
+    assert_eq!(state.team_editor.editing.is_some(), true);
+    Ok(())
+}
+
+#[test]
+fn test_submit_edit_team_renames_the_team() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_team_editor();
+    select_team(&mut state, "Alpha");
+    state.open_edit_team();
+    state
+        .dialogs
+        .set_field("name_input", "Alpha Prime")
+        .map_err(|_| "the name field".to_owned())?;
+
+    // Act
+    let result = state.submit_edit_team();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(state.notice, Some("Team updated".to_owned()));
+    let ride = state.ride.as_ref().ok_or_else(|| "the ride".to_owned())?;
+    let names: Vec<&str> = ride
+        .roster
+        .entries()
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert!(
+        names.contains(&"Alpha Prime"),
+        "the team was renamed: {names:?}"
+    );
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("team_editor_dlg")
+    );
+    Ok(())
+}
+
+#[test]
+fn test_pick_team_card_draws_a_logo() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_team_editor();
+    select_team(&mut state, "Alpha");
+
+    // Act
+    let result = state.pick_team_card();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    let ride = state.ride.as_ref().ok_or_else(|| "the ride".to_owned())?;
+    let entry = ride
+        .roster
+        .entry_by_key("k-alpha")
+        .ok_or_else(|| "the team".to_owned())?;
+    assert!(entry.logo_card.is_some(), "the team picked a card");
+    assert!(
+        state
+            .notice
+            .is_some_and(|notice| notice.starts_with("Logo card "))
+    );
+    Ok(())
+}
+
+#[test]
+fn test_pick_team_card_given_no_selection_refuses() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_team_editor();
+
+    // Act
+    let result = state.pick_team_card();
+
+    // Assert
+    assert_eq!(result, Err("Select a team first".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn test_remove_selected_team_removes_it() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_team_editor();
+    select_team(&mut state, "Alpha");
+
+    // Act
+    let result = state.remove_selected_team();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(state.team_editor.rows.len(), 1);
+    assert_eq!(state.team_editor.selected, None);
+    assert_eq!(state.notice, Some("Team removed".to_owned()));
+    assert_eq!(queued_saves(&state), 1);
+    Ok(())
+}
+
+#[test]
+fn test_remove_selected_team_on_a_running_ride_surfaces_the_lock() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Running, &running_roster()?)?;
+    state.open_team_editor();
+    select_team(&mut state, "Alpha");
+
+    // Act
+    let result = state.remove_selected_team();
+
+    // Assert
+    assert!(result.is_err(), "the running ride locks the removal");
+    assert_eq!(state.team_editor.rows.len(), 1);
+    assert!(state.team_editor.errors.is_some());
+    Ok(())
+}
+
+#[test]
+fn test_raise_and_confirm_remove_team_removes_after_the_confirmation() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_team_editor();
+    select_team(&mut state, "Alpha");
+
+    // Act
+    let raised = state.raise_remove_team();
+    let cancelled = state.cancel_native();
+    let raised_again = state.raise_remove_team();
+    let confirmed = state.confirm_native();
+
+    // Assert
+    assert!(raised);
+    assert!(cancelled);
+    assert!(raised_again);
+    assert!(confirmed);
+    assert_eq!(state.pending_native, None);
+    assert_eq!(state.team_editor.rows.len(), 1);
+    assert_eq!(state.notice, Some("Team removed".to_owned()));
+    Ok(())
+}
+
+// -------------------------------------------------------------- issues
+
+/// Return the first cached issue index of *kind*.
+fn issue_index(state: &AppState, kind: rider_issues::IssueKind) -> Option<usize> {
+    state
+        .rider_issues
+        .rows
+        .iter()
+        .position(|row| row.kind == kind)
+}
+
+/// Return the last cached issue index of *kind*.
+fn last_issue_index(state: &AppState, kind: rider_issues::IssueKind) -> Option<usize> {
+    state
+        .rider_issues
+        .rows
+        .iter()
+        .rposition(|row| row.kind == kind)
+}
+
+#[test]
+fn test_open_rider_issues_lists_the_supported_defects() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &issues_roster()?)?;
+
+    // Act
+    state.open_rider_issues();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("rider_issues_dlg")
+    );
+    let count = |kind| {
+        state
+            .rider_issues
+            .rows
+            .iter()
+            .filter(|row| row.kind == kind)
+            .count()
+    };
+    assert_eq!(count(rider_issues::IssueKind::TeamOfOne), 1);
+    assert_eq!(count(rider_issues::IssueKind::MissingName), 1);
+    assert_eq!(count(rider_issues::IssueKind::MissingNumber), 1);
+    assert_eq!(count(rider_issues::IssueKind::DuplicateNumber), 1);
+    assert_eq!(state.rider_issues.selected, None);
+    Ok(())
+}
+
+#[test]
+fn test_convert_issue_to_solo_converts_the_team_of_one() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &issues_roster()?)?;
+    state.open_rider_issues();
+    state.rider_issues.selected = issue_index(&state, rider_issues::IssueKind::TeamOfOne);
+
+    // Act
+    let result = state.convert_issue_to_solo();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    let ride = state.ride.as_ref().ok_or_else(|| "the ride".to_owned())?;
+    let teams = ride
+        .roster
+        .entries()
+        .iter()
+        .filter(|entry| entry.kind == EntryType::Team)
+        .count();
+    assert_eq!(teams, 0, "the team-of-one dissolved into a solo entry");
+    assert_eq!(
+        state.notice,
+        Some("Converted the team-of-one to solo".to_owned())
+    );
+    assert_eq!(
+        state
+            .rider_issues
+            .rows
+            .iter()
+            .filter(|row| row.kind == rider_issues::IssueKind::TeamOfOne)
+            .count(),
+        0
+    );
+    Ok(())
+}
+
+#[test]
+fn test_convert_issue_to_solo_given_no_selection_refuses() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &issues_roster()?)?;
+    state.open_rider_issues();
+
+    // Act
+    let result = state.convert_issue_to_solo();
+
+    // Assert
+    assert_eq!(result, Err("Select an issue first".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn test_assign_issue_plate_gives_the_next_free_plate() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &issues_roster()?)?;
+    state.open_rider_issues();
+    state.rider_issues.selected = issue_index(&state, rider_issues::IssueKind::MissingNumber);
+    let expected = state
+        .ride
+        .as_ref()
+        .map(|ride| ride.roster.next_free_plate())
+        .ok_or_else(|| "the ride".to_owned())?;
+
+    // Act
+    let result = state.assign_issue_plate();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    let ride = state.ride.as_ref().ok_or_else(|| "the ride".to_owned())?;
+    let entry = ride
+        .roster
+        .entry_by_key("k-missing-number")
+        .ok_or_else(|| "the entry".to_owned())?;
+    assert_eq!(entry.riders[0].plate.as_deref(), Some(expected.as_str()));
+    assert_eq!(state.notice, Some(format!("Assigned plate {expected}")));
+    Ok(())
+}
+
+#[test]
+fn test_renumber_issue_resolves_the_duplicate() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &issues_roster()?)?;
+    state.open_rider_issues();
+    state.rider_issues.selected =
+        last_issue_index(&state, rider_issues::IssueKind::DuplicateNumber);
+
+    // Act
+    let result = state.renumber_issue();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(
+        state
+            .rider_issues
+            .rows
+            .iter()
+            .filter(|row| row.kind == rider_issues::IssueKind::DuplicateNumber)
+            .count(),
+        0
+    );
+    assert!(
+        state
+            .notice
+            .is_some_and(|notice| notice.starts_with("Renumbered to "))
+    );
+    Ok(())
+}
+
+#[test]
+fn test_open_issue_editor_opens_the_rider_editor_at_the_plate() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &issues_roster()?)?;
+    state.open_rider_issues();
+    state.rider_issues.selected = issue_index(&state, rider_issues::IssueKind::MissingName);
+
+    // Act
+    state.open_issue_editor();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("rider_editor_dlg")
+    );
+    assert_eq!(
+        state
+            .rider_editor
+            .selected
+            .as_ref()
+            .map(|selection| selection.entry.0.clone()),
+        Some("k-missing-name".to_owned())
+    );
+    Ok(())
+}
+
+#[test]
+fn test_open_issue_editor_for_a_team_of_one_opens_the_teams_editor() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &issues_roster()?)?;
+    state.open_rider_issues();
+    state.rider_issues.selected = issue_index(&state, rider_issues::IssueKind::TeamOfOne);
+
+    // Act
+    state.open_issue_editor();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("team_editor_dlg")
+    );
+    assert_eq!(
+        state
+            .team_editor
+            .selected
+            .as_ref()
+            .and_then(|entry| state
+                .team_editor
+                .rows
+                .iter()
+                .find(|row| row.entry == *entry))
+            .map(|row| row.row.name.clone()),
+        Some("Lone Wolf".to_owned())
+    );
+    Ok(())
+}
+
+// ------------------------------------------------------------ audit drain
+
+#[test]
+fn test_a_roster_mutation_drains_its_audit_rows_and_saves() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    state.open_rider_editor();
+    state.open_add_rider();
+    state
+        .dialogs
+        .set_field("first_name_input", "Katherine")
+        .map_err(|_| "the name field".to_owned())?;
+    state
+        .dialogs
+        .set_field("last_name_input", "Johnson")
+        .map_err(|_| "the name field".to_owned())?;
+
+    // Act
+    state.submit_add_rider()?;
+
+    // Assert
+    let ride = state.ride.as_ref().ok_or_else(|| "the ride".to_owned())?;
+    assert!(
+        ride.roster.audit_log().is_empty(),
+        "the mutation's audit rows left the roster"
+    );
+    assert!(
+        !queued_roster_events(&state).is_empty(),
+        "the audit rows are queued for the store"
+    );
+    assert_eq!(queued_saves(&state), 1);
+    assert_eq!(queued_loads(&state), 1);
+    Ok(())
 }

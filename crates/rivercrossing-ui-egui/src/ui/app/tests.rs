@@ -14,8 +14,9 @@ use craft::ui::testing::access::{AccessTree, violations};
 use rivercrossing_ride::{
     EntryMode, PlateModel, RideConfig, RideConfigParams, RideEngine, SystemClock,
 };
+use rivercrossing_roster::enums::EntryType;
 use rivercrossing_roster::roster::Roster;
-use rivercrossing_roster::types::Rider;
+use rivercrossing_roster::types::{Entry, Rider};
 use rivercrossing_store::Store;
 use tempfile::TempDir;
 
@@ -824,5 +825,253 @@ fn test_the_stop_button_confirms_through_the_modal() -> Result<(), Box<dyn std::
         guard.state.notice.as_deref(),
         Some("Ride stopped — continue to resume")
     );
+    Ok(())
+}
+
+// ---------------------------------------------------------------- editors
+
+/// Return a restored solo entry on *plate*.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one fixture call spells the entry, its plate and its rider"
+)]
+fn editor_solo(key: &str, plate: &str, first: &str, last: &str) -> Entry {
+    Entry::restored(
+        key,
+        plate,
+        format!("{first} {last}"),
+        EntryType::Solo,
+        vec![Rider {
+            first_name: first.to_owned(),
+            last_name: last.to_owned(),
+            plate: Some(plate.to_owned()),
+            ..Rider::default()
+        }],
+    )
+}
+
+/// Build a DRAFT ride over a roster with a solo pair and a team, from a fresh store in *directory*.
+fn loaded_draft_editors(directory: &TempDir) -> Result<LoadedRide, String> {
+    let mut store =
+        Store::open(directory.path().join("editors.db")).map_err(|error| error.to_string())?;
+    let config = fixture_config()?;
+    let ride_id = store
+        .create_ride(&config, Some(SEED))
+        .map_err(|error| error.to_string())?;
+    let mut roster = Roster::new(EntryMode::Mixed, 4, PlateModel::RiderPooled, Some(SEED))
+        .map_err(|error| error.to_string())?;
+    roster.load_entries(vec![
+        editor_solo("k-ada", "101", "Ada", "Lovelace"),
+        editor_solo("k-grace", "102", "Grace", "Hopper"),
+        Entry::restored(
+            "k-alpha",
+            "A1",
+            "Alpha",
+            EntryType::Team,
+            vec![
+                Rider {
+                    first_name: "Alan".to_owned(),
+                    last_name: "Turing".to_owned(),
+                    plate: Some("201".to_owned()),
+                    ..Rider::default()
+                },
+                Rider {
+                    first_name: "Barbara".to_owned(),
+                    last_name: "Liskov".to_owned(),
+                    plate: Some("202".to_owned()),
+                    ..Rider::default()
+                },
+            ],
+        ),
+    ]);
+    store
+        .save_roster(ride_id, &roster)
+        .map_err(|error| error.to_string())?;
+    let engine = store
+        .load_engine(ride_id)
+        .map_err(|error| error.to_string())?;
+    let mut roster = store
+        .roster_for(ride_id)
+        .map_err(|error| error.to_string())?;
+    roster.set_status(engine.state());
+    Ok(LoadedRide {
+        ride_id,
+        config: engine.config().clone(),
+        roster,
+        engine,
+    })
+}
+
+/// Build a headless app whose draft ride carries the editor roster.
+fn app_with_editors(
+    directory: &TempDir,
+) -> Result<Rc<RefCell<RiverCrossingApp>>, Box<dyn std::error::Error>> {
+    let ride = loaded_draft_editors(directory).map_err(std::io::Error::other)?;
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    Ok(app)
+}
+
+#[test]
+fn test_the_rider_editor_opens_from_the_menu() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let app = app_with_editors(&directory)?;
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    let opened = app.borrow_mut().command("mi_rider_editor")?;
+    fixture.idle(2);
+
+    // Assert
+    assert_eq!(opened, serde_json::json!({"ok": true}));
+    assert!(tree_mentions(fixture.tree(), "Rider Editor"));
+    assert!(tree_mentions(fixture.tree(), "Ada Lovelace"));
+    assert!(fixture.by_label("Add rider…").is_some());
+    assert_eq!(
+        violations(fixture.ctx(), fixture.tree()),
+        Vec::<String>::new()
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_rider_editor_add_flow_records_a_rider() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let app = app_with_editors(&directory)?;
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("mi_rider_editor")?;
+    fixture.idle(2);
+    let add = fixture.by_label("Add rider…").expect("the add button");
+
+    // Act
+    fixture.click(&add);
+    fixture.idle(2);
+    {
+        let mut app = app.borrow_mut();
+        app.set_dialog_field("first_name_input", "Katherine")?;
+        app.set_dialog_field("last_name_input", "Johnson")?;
+    }
+    fixture.idle(1);
+    let save = fixture.by_label("Save").expect("the Save button");
+    fixture.click(&save);
+    fixture.idle(2);
+
+    // Assert
+    let app_guard = app.borrow();
+    assert_eq!(app_guard.state.rider_editor.rows.len(), 5);
+    assert_eq!(app_guard.state.notice.as_deref(), Some("Rider added"));
+    assert!(tree_mentions(fixture.tree(), "Katherine Johnson"));
+    assert_eq!(
+        violations(fixture.ctx(), fixture.tree()),
+        Vec::<String>::new()
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_teams_editor_and_the_issues_report_open_from_the_menu()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let app = app_with_editors(&directory)?;
+    let mut fixture = app_fixture(&app);
+
+    // Act: the teams editor.
+    app.borrow_mut().command("mi_team_editor")?;
+    fixture.idle(2);
+    let teams_open = tree_mentions(fixture.tree(), "Teams Editor");
+    let team_row = tree_mentions(fixture.tree(), "Alpha");
+    {
+        let mut app = app.borrow_mut();
+        app.command("mi_team_editor")?;
+    }
+    fixture.idle(1);
+
+    // Act: cancel the editor and open the issues report.
+    let close = fixture.by_label("Close").expect("the close button");
+    fixture.click(&close);
+    fixture.idle(1);
+    app.borrow_mut().command("mi_check_rider_issues")?;
+    fixture.idle(2);
+
+    // Assert
+    assert!(teams_open);
+    assert!(team_row);
+    assert!(tree_mentions(fixture.tree(), "Rider Issues"));
+    assert_eq!(
+        violations(fixture.ctx(), fixture.tree()),
+        Vec::<String>::new()
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_csv_preview_opens_from_the_picker_seam() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let app = app_with_editors(&directory)?;
+    let path = directory.path().join("entries.csv");
+    std::fs::write(
+        &path,
+        "FIRSTNAME,LASTNAME,TYPE,TEAMNAME,PLATE,NOTES,SEX\nKatherine,Johnson,solo,,111,,\n",
+    )?;
+
+    // Act
+    app.borrow_mut().open_csv_preview(&path)?;
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+
+    // Assert
+    assert!(tree_mentions(fixture.tree(), "Import Riders"));
+    assert!(tree_mentions(fixture.tree(), "1 riders"));
+    let import = fixture.by_label("Import").expect("the Import button");
+    assert!(!fixture.tree().is_disabled_key(import.node));
+    assert_eq!(
+        violations(fixture.ctx(), fixture.tree()),
+        Vec::<String>::new()
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_console_rider_row_opens_the_editor_at_the_plate()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let app = app_with_editors(&directory)?;
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+    let row = fixture.by_label("Ada Lovelace").expect("the rider row");
+
+    // Act
+    fixture.click(&row);
+    fixture.idle(2);
+
+    // Assert
+    let app_guard = app.borrow();
+    assert_eq!(
+        app_guard.state.dialogs.top().map(|dialog| dialog.id),
+        Some("rider_editor_dlg")
+    );
+    assert_eq!(
+        app_guard
+            .state
+            .rider_editor
+            .selected
+            .as_ref()
+            .map(|selection| selection.entry.0.clone()),
+        Some("k-ada".to_owned())
+    );
+    let inspected = crate::ui::automation::actions::inspect(
+        &app_guard.state,
+        &serde_json::json!({"field": "plate_input"}),
+    );
+    assert_eq!(inspected, Ok(serde_json::json!({"value": "101"})));
     Ok(())
 }

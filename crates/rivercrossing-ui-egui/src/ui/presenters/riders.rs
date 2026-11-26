@@ -246,18 +246,33 @@ pub(crate) fn rows(roster: &Roster) -> Vec<RiderRow> {
         .collect()
 }
 
+/// Return whether one row holds *search* in any of its three cells.
+///
+/// The match is a case-insensitive substring; a blank search matches every row.
+#[must_use]
+pub(crate) fn row_matches(row: &RiderRow, search: &str) -> bool {
+    matches_needle(row, &search.trim().to_lowercase())
+}
+
 /// Narrow *rows* to the rows whose Plate, Name or Team cell holds *search*.
 ///
 /// The match is a case-insensitive substring over the three cells; a blank
 /// search keeps every row. The survivors keep the given order.
 #[must_use]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the editor filters through row_matches to keep its row indices; the batch filter stays the presenter's tested API"
+    )
+)]
 pub(crate) fn filter_rows(rows: &[RiderRow], search: &str) -> Vec<RiderRow> {
     let needle = search.trim().to_lowercase();
     if needle.is_empty() {
         return rows.to_vec();
     }
     rows.iter()
-        .filter(|row| row_matches(row, &needle))
+        .filter(|row| matches_needle(row, &needle))
         .cloned()
         .collect()
 }
@@ -573,7 +588,7 @@ fn team_cell(entry: &Entry) -> String {
 }
 
 /// Return whether one row holds *needle* in any of its three cells.
-fn row_matches(row: &RiderRow, needle: &str) -> bool {
+fn matches_needle(row: &RiderRow, needle: &str) -> bool {
     row.plate.to_lowercase().contains(needle)
         || row.name.to_lowercase().contains(needle)
         || row.team.to_lowercase().contains(needle)

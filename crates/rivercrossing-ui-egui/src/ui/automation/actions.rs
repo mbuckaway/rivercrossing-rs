@@ -129,6 +129,15 @@ fn confirm(state: &mut AppState) -> Result<Value, String> {
             Err(NO_DIALOG.to_owned())
         };
     }
+    if let Some(outcome) = state.submit_top_form() {
+        // The form's OK commits; a refusal keeps it open and returns the message.
+        outcome?;
+        return Ok(json!({
+            "event": "confirmed",
+            "button": "OK",
+            "opener": null,
+        }));
+    }
     match state.dialogs.confirm() {
         Ok(DialogEvent::Confirmed { button, opener, .. }) => Ok(json!({
             "event": "confirmed",

@@ -72,6 +72,13 @@ pub(crate) enum IssueKind {
 impl IssueKind {
     /// Return the oracle's spelling of this kind.
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the kind spellings are pinned by the presenter tests; the view renders the detail text"
+        )
+    )]
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::TeamOfOne => "team-of-one",

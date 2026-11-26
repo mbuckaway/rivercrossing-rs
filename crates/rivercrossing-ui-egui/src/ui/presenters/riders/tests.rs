@@ -22,7 +22,7 @@ use rstest::rstest;
 use super::{
     CsvPreviewModel, RiderFormValues, RiderRow, TeamChoice, add_rider, commit_live_move,
     csv_export, csv_import, csv_preview, delete_message, delete_rider, edit_rider, filter_rows,
-    is_live_move, rows,
+    is_live_move, row_matches, rows,
 };
 
 /// The seat seed every fixture ride stores.
@@ -1347,4 +1347,24 @@ fn test_csv_export_given_an_unwritable_path_surfaces_the_refusal() -> Result<(),
     // Assert
     assert!(result.is_err_and(|message| message.starts_with("io: ")));
     Ok(())
+}
+
+#[test]
+fn test_row_matches_is_case_insensitive_and_a_blank_search_matches() {
+    // Arrange
+    let row = RiderRow {
+        plate: "101".to_owned(),
+        name: "Ada Lovelace".to_owned(),
+        team: "solo".to_owned(),
+    };
+
+    // Act
+    let blank = row_matches(&row, "");
+    let upper = row_matches(&row, "ADA");
+    let other = row_matches(&row, "zzz");
+
+    // Assert
+    assert!(blank);
+    assert!(upper);
+    assert!(!other);
 }
