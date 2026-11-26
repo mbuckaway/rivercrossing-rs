@@ -7,14 +7,6 @@
 //! and `ui/views/dialogs.py`: the four canvas columns, the byte-exact
 //! type-to-confirm delete, and the duplicate prompt that names the ride.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the EPIC-12c views wire these decisions in a later phase; phase 1 unit-tests them"
-    )
-)]
-
 use rivercrossing_store::RideRow;
 
 #[cfg(test)]

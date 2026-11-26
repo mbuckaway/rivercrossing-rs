@@ -8,6 +8,7 @@ pub mod automation;
 pub(crate) mod dialogs;
 pub(crate) mod ids;
 pub(crate) mod logging;
+pub(crate) mod native;
 pub(crate) mod presenters;
 #[cfg_attr(
     test,

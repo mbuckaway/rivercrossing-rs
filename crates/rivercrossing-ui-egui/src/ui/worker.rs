@@ -64,6 +64,18 @@ pub(crate) enum StoreCommand {
         /// The ride whose audit trail to read.
         id: i64,
     },
+    /// Delete one ride, given its typed name confirmation.
+    DeleteRide {
+        /// The ride to delete.
+        id: i64,
+        /// The typed confirmation line.
+        typed_name: String,
+    },
+    /// Duplicate one ride as a new draft.
+    DuplicateRide {
+        /// The ride to duplicate.
+        id: i64,
+    },
     /// Read the previous session's resume record.
     PreviousSession,
     /// Record the running ride on the open session.
@@ -107,6 +119,13 @@ pub(crate) enum StoreReply {
     RosterEventAppended,
     /// One ride's audit trail, newest first.
     AuditRows(Vec<AuditRow>),
+    /// The ride was deleted.
+    RideDeleted {
+        /// The deleted ride's id.
+        id: i64,
+    },
+    /// The duplicate ride's id.
+    RideDuplicated(i64),
     /// The previous session's resume record.
     PreviousSession(PreviousSession),
     /// The open session's running ride, or `None` when it has none.
@@ -129,17 +148,7 @@ pub(crate) fn apply(store: &mut Store, command: StoreCommand) -> Result<StoreRep
         StoreCommand::CreateRide { config, seed } => {
             Ok(StoreReply::RideCreated(store.create_ride(&config, seed)?))
         }
-        StoreCommand::LoadRide { id } => {
-            let engine = store.load_engine(id)?;
-            let roster = store.roster_for(id)?;
-            let config = engine.config().clone();
-            Ok(StoreReply::Ride {
-                id,
-                config,
-                roster: Box::new(roster),
-                engine: Box::new(engine),
-            })
-        }
+        StoreCommand::LoadRide { id } => load_reply(store, id),
         StoreCommand::RosterFor { id } => Ok(StoreReply::Roster(Box::new(store.roster_for(id)?))),
         StoreCommand::SaveRoster { id, roster } => {
             store.save_roster(id, &roster)?;
@@ -154,6 +163,13 @@ pub(crate) fn apply(store: &mut Store, command: StoreCommand) -> Result<StoreRep
             Ok(StoreReply::RosterEventAppended)
         }
         StoreCommand::AuditRows { id } => Ok(StoreReply::AuditRows(store.audit_rows(id)?)),
+        StoreCommand::DeleteRide { id, typed_name } => {
+            store.delete_ride(id, &typed_name)?;
+            Ok(StoreReply::RideDeleted { id })
+        }
+        StoreCommand::DuplicateRide { id } => {
+            Ok(StoreReply::RideDuplicated(store.duplicate_ride(id, None)?))
+        }
         StoreCommand::PreviousSession => Ok(StoreReply::PreviousSession(store.previous_session()?)),
         StoreCommand::SetActiveRide { id } => {
             store.set_active_ride(id)?;
@@ -169,6 +185,19 @@ pub(crate) fn apply(store: &mut Store, command: StoreCommand) -> Result<StoreRep
         }
         StoreCommand::BackupNow => Ok(StoreReply::Backup(store.backup_now()?)),
     }
+}
+
+/// Rebuild *id*'s engine and roster for the load reply.
+fn load_reply(store: &Store, id: i64) -> Result<StoreReply, StoreError> {
+    let engine = store.load_engine(id)?;
+    let roster = store.roster_for(id)?;
+    let config = engine.config().clone();
+    Ok(StoreReply::Ride {
+        id,
+        config,
+        roster: Box::new(roster),
+        engine: Box::new(engine),
+    })
 }
 
 /// One reply from the store thread: the reply, or the failure's display text.

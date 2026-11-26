@@ -27,6 +27,9 @@ const APPEARANCES: [&str; 3] = ["system", "light", "dark"];
 /// The floor for the stored average rider speed, in km/h.
 const MIN_AVG_SPEED_KMH: f64 = 1.0;
 
+/// The floor the settings dialog's spin starts at.
+pub(crate) const MIN_AVG_SPEED: f64 = MIN_AVG_SPEED_KMH;
+
 /// The refusal for an appearance outside the three spellings.
 const APPEARANCE_UNKNOWN: &str = "Appearance must be system, light or dark";
 

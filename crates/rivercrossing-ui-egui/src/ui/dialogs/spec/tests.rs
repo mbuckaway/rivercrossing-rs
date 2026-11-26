@@ -10,7 +10,7 @@ use super::{Button, DIALOGS, spec};
 use crate::ui::ids;
 
 /// The dialogs the registry declares, in table order.
-const DIALOG_IDS: [&str; 14] = [
+const DIALOG_IDS: [&str; 24] = [
     "ride_setup_dlg",
     "start_blocked_dlg",
     "exit_running_dlg",
@@ -25,6 +25,16 @@ const DIALOG_IDS: [&str; 14] = [
     "team_editor_dlg",
     "add_team_dlg",
     "rider_issues_dlg",
+    "edit_crossing_dlg",
+    "manual_deal_dlg",
+    "dnf_confirm_dlg",
+    "void_card_confirm_dlg",
+    "ride_library_dlg",
+    "audit_dlg",
+    "settings_dlg",
+    "selftest_dlg",
+    "crossing_detail_dlg",
+    "crossing_number_dlg",
 ];
 
 /// Return true when the window declares the control id.
@@ -48,7 +58,7 @@ fn custom_id(button: Button) -> Option<&'static str> {
 }
 
 #[test]
-fn test_the_table_holds_the_fourteen_dialogs() {
+fn test_the_table_holds_the_twenty_four_dialogs() {
     // Act
     let ids: Vec<&'static str> = DIALOGS.iter().map(|dialog| dialog.id).collect();
 
@@ -181,6 +191,16 @@ fn test_every_spec_has_the_same_default_and_cancel_family() {
 #[case("team_editor_dlg", "Teams Editor")]
 #[case("add_team_dlg", "Add Team")]
 #[case("rider_issues_dlg", "Rider Issues")]
+#[case("edit_crossing_dlg", "Edit Crossing")]
+#[case("manual_deal_dlg", "Deal Bonus Card")]
+#[case("dnf_confirm_dlg", "Mark DNF")]
+#[case("void_card_confirm_dlg", "Void Card")]
+#[case("ride_library_dlg", "Ride Library")]
+#[case("audit_dlg", "Audit Trail")]
+#[case("settings_dlg", "Settings")]
+#[case("selftest_dlg", "Evaluator Self-Test")]
+#[case("crossing_detail_dlg", "Crossing Detail")]
+#[case("crossing_number_dlg", "Plate")]
 fn test_every_dialog_has_the_documented_title(#[case] id: &str, #[case] title: &str) {
     // Act
     let found = spec(id).map(|dialog| dialog.title);
@@ -202,7 +222,15 @@ fn test_spec_returns_the_dialog_row() {
     });
 
     // Assert
-    assert_eq!(found, Some((Button::Cancel, Button::Cancel, true, None)));
+    assert_eq!(
+        found,
+        Some((
+            Button::Cancel,
+            Button::Cancel,
+            true,
+            Some("confirm_name_input")
+        ))
+    );
 }
 
 #[test]

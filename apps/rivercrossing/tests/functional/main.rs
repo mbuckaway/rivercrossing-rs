@@ -324,6 +324,33 @@ fn assert_rider_editor_round_trip(client: &mut ControlClient) -> SmokeResult {
     Ok(())
 }
 
+/// Assert the Preferences row opens the Settings dialog and `ui.dialog.cancel` closes it.
+fn assert_settings_round_trip(client: &mut ControlClient) -> SmokeResult {
+    let opened = client.call("ui.command", json!({"name": "wxID_PREFERENCES"}))?;
+    assert_eq!(opened, json!({"ok": true}));
+    let tree = client.call("ui.accessTree", json!({}))?;
+    assert!(
+        tree_mentions(&tree, "Settings"),
+        "the settings dialog is open: {tree}"
+    );
+    assert!(
+        tree_mentions(&tree, "Appearance"),
+        "the settings form shows its appearance section: {tree}"
+    );
+    let cancelled = client.call("ui.dialog.cancel", json!({}))?;
+    assert_eq!(
+        cancelled.get("event"),
+        Some(&json!("cancelled")),
+        "the settings dialog reports its cancel: {cancelled}"
+    );
+    let after = client.call("ui.accessTree", json!({}))?;
+    assert!(
+        !tree_mentions(&after, "Appearance"),
+        "the settings dialog closed: {after}"
+    );
+    Ok(())
+}
+
 /// Assert the Exit row raises the native confirmation, and `ui.dialog.cancel` dismisses it.
 fn assert_native_confirm_cancels(client: &mut ControlClient) -> SmokeResult {
     let opened = client.call("ui.command", json!({"name": "wxID_EXIT"}))?;
@@ -461,6 +488,10 @@ fn control_channel_smoke() -> SmokeResult {
     step(
         "rider editor round trip",
         assert_rider_editor_round_trip(&mut client),
+    )?;
+    step(
+        "settings round trip",
+        assert_settings_round_trip(&mut client),
     )?;
     step("screenshot", assert_screenshot(&mut client, &workspace))?;
     step("resize", assert_resize(&mut client))?;

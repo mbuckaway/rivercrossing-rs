@@ -167,15 +167,16 @@ fn app_ui_renders_one_frame_without_panicking() {
 }
 
 #[test]
-fn app_close_request_is_close() {
+fn app_close_request_holds_and_asks_first() {
     // Arrange
     let (app, _directory) = headless_app(None);
 
     // Act
     let decision = app.borrow_mut().close_requested();
 
-    // Assert
-    assert_eq!(decision, CloseDecision::Close);
+    // Assert: the window holds while the plain quit confirm is raised.
+    assert_eq!(decision, CloseDecision::Hold);
+    assert!(app.borrow().state.pending_native.is_some());
 }
 
 #[test]
@@ -266,15 +267,15 @@ fn app_tick_requests_a_frame_at_the_deadline() {
 }
 
 #[test]
-fn app_tick_given_no_deadline_requests_nothing() {
+fn app_tick_requests_the_next_backup_hour() {
     // Arrange
     let (app, _directory) = headless_app(None);
 
     // Act
     let due = app.borrow_mut().tick(std::time::Instant::now());
 
-    // Assert
-    assert_eq!(due, None);
+    // Assert: the app asks for a frame at the next whole hour for its backup.
+    assert!(due.is_some_and(|deadline| deadline > std::time::Instant::now()));
 }
 
 #[test]
@@ -330,8 +331,8 @@ fn test_the_menu_registry_has_53_rows() {
     assert_eq!(rows.len(), 53);
     assert_eq!(
         rows.iter().filter(|row| row.enabled).count(),
-        20,
-        "the empty console enables twenty rows"
+        23,
+        "the empty console enables twenty-three rows"
     );
 }
 
@@ -356,10 +357,10 @@ fn test_the_menu_disables_the_rows_the_gate_or_the_release_refuses() {
     assert!(enabled(MI_SHORTCUTS), "the shortcuts dialog is built");
     assert!(enabled(MI_ZOOM_100), "the zoom rows are always enabled");
     assert!(enabled(WX_ID_ABOUT), "the about dialog is built");
-    assert!(!enabled(MI_OPEN_LIBRARY), "the ride library is not built");
+    assert!(enabled(MI_OPEN_LIBRARY), "the ride library is built");
     assert!(!enabled(MI_START_RIDE), "Start Ride needs a ride");
     assert!(!enabled(MI_UNDO_CROSSING), "Undo needs a crossing");
-    assert!(!enabled(MI_RIDER_EDITOR), "the rider editor is not built");
+    assert!(!enabled(MI_RIDER_EDITOR), "the rider editor needs a ride");
     assert!(
         !enabled(MI_TIME_BOARD),
         "the time board needs show-times on"
@@ -1073,5 +1074,268 @@ fn test_the_console_rider_row_opens_the_editor_at_the_plate()
         &serde_json::json!({"field": "plate_input"}),
     );
     assert_eq!(inspected, Ok(serde_json::json!({"value": "101"})));
+    Ok(())
+}
+
+// ------------------------------------------------- lifecycle & system
+
+use rivercrossing_store::RideRow;
+use time::Month;
+
+/// Return a stored ride row.
+fn app_ride_row(id: i64, name: &str, status: rivercrossing_ride::RideStatus) -> RideRow {
+    RideRow {
+        id,
+        name: name.to_owned(),
+        event_date: time::Date::from_calendar_date(2026, Month::September, 20)
+            .expect("the fixture date"),
+        status,
+        entries: 1,
+    }
+}
+
+/// Run the app's logic pass over *fixture*'s context.
+fn run_logic(app: &Rc<RefCell<RiverCrossingApp>>, fixture: &Fixture) {
+    let ctx = fixture.ctx().clone();
+    app.borrow_mut().logic(&ctx);
+}
+
+#[test]
+fn test_a_native_dialog_falls_back_to_the_in_app_modal() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let mut ride = loaded_running_ride(&directory)?;
+    let _ = ride.engine.record_crossing(PLATE, None);
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    let opened = app.borrow_mut().command("mi_undo_crossing")?;
+    assert_eq!(opened, serde_json::json!({"ok": true}));
+    assert!(
+        app.borrow().state.pending_native.is_some(),
+        "the action queued the confirm"
+    );
+    let mut fixture = app_fixture(&app);
+
+    // Act: raise the native box, let the headless host answer unavailable, then render.
+    run_logic(&app, &fixture);
+    assert!(
+        app.borrow().state.pending_native.is_none(),
+        "the first pass raised the native box"
+    );
+    fixture.idle(1);
+    run_logic(&app, &fixture);
+    assert!(
+        app.borrow().state.pending_native.is_some(),
+        "the unavailable host restored the in-app modal"
+    );
+    fixture.idle(2);
+
+    // Assert: the in-app modal is showing and cancelling keeps the crossing.
+    assert!(tree_mentions(fixture.tree(), "Undo the last crossing?"));
+    let cancel = fixture.by_label("Cancel").expect("the cancel button");
+    fixture.click(&cancel);
+    fixture.idle(1);
+    let app_guard = app.borrow();
+    assert_eq!(app_guard.state.pending_native, None);
+    assert_eq!(
+        app_guard
+            .state
+            .ride
+            .as_ref()
+            .map(|ride| ride.engine.crossings().len()),
+        Some(1)
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_quit_confirm_closes_the_app() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    let held = app.borrow_mut().close_requested();
+    assert_eq!(held, CloseDecision::Hold);
+
+    // Act: the headless fallback modal shows the plain confirm, and Quit closes.
+    run_logic(&app, &fixture);
+    fixture.idle(1);
+    run_logic(&app, &fixture);
+    fixture.idle(2);
+    assert!(tree_mentions(fixture.tree(), "Quit RiverCrossing?"));
+    let quit = fixture.by_label("Confirm Quit").expect("the quit button");
+    fixture.click(&quit);
+    fixture.idle(1);
+    run_logic(&app, &fixture);
+
+    // Assert
+    assert!(app.borrow().quit_confirmed);
+}
+
+#[test]
+fn test_the_settings_dialog_applies_through_the_view() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("wxID_PREFERENCES")?;
+    fixture.idle(2);
+
+    // Act
+    let dark = fixture.by_label("Dark").expect("the dark radio");
+    fixture.click(&dark);
+    fixture.idle(1);
+    let sound = fixture
+        .by_label("Sound on crossing")
+        .expect("the sound checkbox");
+    fixture.click(&sound);
+    fixture.idle(1);
+    let save = fixture.by_label("Save").expect("the save button");
+    fixture.click(&save);
+    fixture.idle(2);
+
+    // Assert
+    let app_guard = app.borrow();
+    assert_eq!(app_guard.state.settings.appearance, "dark");
+    assert!(!app_guard.state.settings.sound_on);
+    assert_eq!(app_guard.state.dialogs.top(), None);
+    assert_eq!(
+        violations(fixture.ctx(), fixture.tree()),
+        Vec::<String>::new()
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_library_dialog_renders_its_rows() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    app.borrow_mut().show_library(vec![
+        app_ride_row(
+            1,
+            "GORBA EPIC 2026",
+            rivercrossing_ride::RideStatus::Running,
+        ),
+        app_ride_row(
+            2,
+            "Club poker night",
+            rivercrossing_ride::RideStatus::Finished,
+        ),
+    ]);
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    fixture.idle(2);
+
+    // Assert
+    assert_eq!(
+        app.borrow().state.dialogs.top().map(|dialog| dialog.id),
+        Some("ride_library_dlg")
+    );
+    assert!(tree_mentions(fixture.tree(), "GORBA EPIC 2026"));
+    assert!(tree_mentions(fixture.tree(), "FINISHED"));
+    assert_eq!(
+        violations(fixture.ctx(), fixture.tree()),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn test_the_delete_ride_dialog_requires_the_typed_name() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    app.borrow_mut().show_delete_ride(app_ride_row(
+        2,
+        "Club poker night",
+        rivercrossing_ride::RideStatus::Finished,
+    ));
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+    let delete = fixture.by_label("Delete").expect("the delete button");
+    let disabled_before = fixture.tree().is_disabled_key(delete.node);
+
+    // Act
+    app.borrow_mut()
+        .set_dialog_field("confirm_name_input", "Club poker night")?;
+    fixture.idle(2);
+    let delete = fixture.by_label("Delete").expect("the delete button");
+
+    // Assert
+    assert!(
+        disabled_before,
+        "the delete is armed only by the typed name"
+    );
+    assert!(!fixture.tree().is_disabled_key(delete.node));
+    Ok(())
+}
+
+#[test]
+fn test_the_audit_and_selftest_dialogs_render() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_editors(&directory)?;
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    let at = time::OffsetDateTime::from_unix_timestamp(1_700_000_000)?;
+    app.borrow_mut()
+        .show_audit(vec![rivercrossing_store::AuditRow {
+            at,
+            action: "record_crossing".to_owned(),
+            entry: "101".to_owned(),
+            reason: "Ada Lovelace".to_owned(),
+        }]);
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    fixture.idle(2);
+    let audit_open = tree_mentions(fixture.tree(), "Audit Trail");
+    let close = fixture.by_label("Close").expect("the close button");
+    fixture.click(&close);
+    fixture.idle(1);
+    app.borrow_mut().command("mi_selftest")?;
+    fixture.idle(2);
+
+    // Assert
+    assert!(audit_open);
+    assert!(tree_mentions(fixture.tree(), "Evaluator Self-Test"));
+    assert_eq!(
+        violations(fixture.ctx(), fixture.tree()),
+        Vec::<String>::new()
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_crossing_detail_renders_from_the_feed() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let mut ride = loaded_running_ride(&directory)?;
+    let _ = ride.engine.record_crossing(PLATE, None);
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+
+    // Act
+    let opened = app.borrow_mut().open_first_crossing_detail();
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+
+    // Assert
+    assert!(opened);
+    assert!(tree_mentions(fixture.tree(), "Crossing Detail"));
+    assert!(fixture.by_label("Edit Plate").is_some());
+    assert_eq!(
+        violations(fixture.ctx(), fixture.tree()),
+        Vec::<String>::new()
+    );
     Ok(())
 }

@@ -8,14 +8,6 @@
 //! [`rivercrossing_hands::self_test`] hook, so the dialog shows the real
 //! evaluator result rather than display data.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the EPIC-12c views wire these decisions in a later phase; phase 1 unit-tests them"
-    )
-)]
-
 use rivercrossing_hands::self_test::{SelfTestCheck, SelfTestReport};
 
 #[cfg(test)]

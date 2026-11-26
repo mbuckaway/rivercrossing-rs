@@ -142,6 +142,7 @@ fn crossing(seq: u32) -> Result<Crossing, String> {
 /// Return a feed row for the filter tests.
 fn row(plate: &str, name: &str, card: Option<&str>) -> FeedRow {
     FeedRow {
+        entry: EntryId("entry".to_owned()),
         plate: plate.to_owned(),
         name: name.to_owned(),
         lap: 1,

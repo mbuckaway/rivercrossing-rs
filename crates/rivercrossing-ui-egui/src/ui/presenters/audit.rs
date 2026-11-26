@@ -7,14 +7,6 @@
 //! name that cell resolves to, and the action choice keeps exactly its own
 //! rows. Both filters narrow the same query.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the EPIC-12c views wire these decisions in a later phase; phase 1 unit-tests them"
-    )
-)]
-
 use std::cmp::Reverse;
 
 use rivercrossing_ride::Timestamp;

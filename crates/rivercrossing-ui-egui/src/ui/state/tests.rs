@@ -2308,3 +2308,929 @@ fn test_a_roster_mutation_drains_its_audit_rows_and_saves() -> Result<(), String
     assert_eq!(queued_loads(&state), 1);
     Ok(())
 }
+
+// ------------------------------------------------- lifecycle & system
+
+use rivercrossing_ride::RideStatus;
+use rivercrossing_store::session::SessionState;
+use rivercrossing_store::{AuditRow, PreviousSession, RideRow};
+
+/// Return a stored ride row.
+fn ride_row(id: i64, name: &str, status: RideStatus) -> RideRow {
+    RideRow {
+        id,
+        name: name.to_owned(),
+        event_date: time::Date::from_calendar_date(2026, time::Month::September, 20)
+            .expect("the fixture date"),
+        status,
+        entries: 1,
+    }
+}
+
+/// Return a running state whose ride holds one crossing on k-ada.
+fn running_with_crossing() -> Result<AppState, String> {
+    let mut state = state_with_roster(RidePhase::Draft, &running_roster()?)?;
+    let start = epoch_start();
+    if let Some(ride) = state.ride.as_mut() {
+        ride.engine
+            .start(Some(start))
+            .map_err(|error| error.to_string())?;
+        ride.roster.set_status(ride.engine.state());
+        let _ = ride
+            .engine
+            .record_crossing("101", Some(start + time::Duration::hours(1)));
+    }
+    Ok(state)
+}
+
+/// Return the epoch instant that the correction fixtures pin, so none reads the wall clock.
+fn epoch_start() -> rivercrossing_ride::Timestamp {
+    let date = time::Date::from_calendar_date(1970, time::Month::January, 1)
+        .expect("the epoch date is valid");
+    time::OffsetDateTime::new_utc(date, time::Time::MIDNIGHT)
+}
+
+// ------------------------------------------------------------ native
+
+#[test]
+fn test_run_native_task_queues_a_duplicate() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.run_native_task(NativeTask::DuplicateRide { id: 4 });
+
+    // Assert
+    assert!(matches!(
+        state.pending_store.first(),
+        Some(StoreCommand::DuplicateRide { id: 4 })
+    ));
+}
+
+#[test]
+fn test_run_native_task_deletes_a_crossing() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+
+    // Act
+    state.run_native_task(NativeTask::DeleteCrossing {
+        entry: EntryId("k-ada".to_owned()),
+        seq: 1,
+    });
+
+    // Assert
+    let crossings = state
+        .ride
+        .as_ref()
+        .map(|ride| ride.engine.crossings().len());
+    assert_eq!(crossings, Some(0));
+    assert!(
+        state
+            .pending_store
+            .iter()
+            .any(|command| matches!(command, StoreCommand::Append { .. }))
+    );
+    Ok(())
+}
+
+#[test]
+fn test_native_copy_names_each_task() {
+    // Arrange
+    let mut state = empty_state();
+    state.set_library_rows(vec![ride_row(4, "Club poker night", RideStatus::Finished)]);
+
+    // Act
+    let duplicate = state.native_message(&PendingNative {
+        dialog: NativeDialog::Prompt,
+        then: NativeTask::DuplicateRide { id: 4 },
+    });
+    let quit = state.native_message(&PendingNative {
+        dialog: NativeDialog::Confirm,
+        then: NativeTask::Command(CommandId::AppQuit),
+    });
+
+    // Assert
+    assert!(duplicate.contains("Club poker night"), "{duplicate}");
+    assert_eq!(quit, "Quit RiverCrossing?");
+    assert_eq!(
+        AppState::native_confirm_label(&PendingNative {
+            dialog: NativeDialog::Prompt,
+            then: NativeTask::DuplicateRide { id: 4 },
+        }),
+        "Duplicate"
+    );
+    assert_eq!(AppState::native_title(NativeDialog::Danger), "Warning");
+}
+
+// ------------------------------------------------------------ library
+
+#[test]
+fn test_open_library_opens_and_asks_for_the_rows() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.open_library();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("ride_library_dlg")
+    );
+    assert!(matches!(
+        state.pending_store.first(),
+        Some(StoreCommand::Rides)
+    ));
+}
+
+#[test]
+fn test_set_library_rows_renders_and_clamps_the_selection() {
+    // Arrange
+    let mut state = empty_state();
+    state.library.selected = Some(5);
+
+    // Act
+    state.set_library_rows(vec![
+        ride_row(1, "GORBA EPIC 2026", RideStatus::Running),
+        ride_row(2, "Club poker night", RideStatus::Finished),
+    ]);
+
+    // Assert
+    assert_eq!(state.library.rows.len(), 2);
+    assert_eq!(state.library.rows[0].name, "GORBA EPIC 2026");
+    assert_eq!(state.library.rows[0].status, "RUNNING");
+    assert_eq!(state.library.rows[0].date, "2026-09-20");
+    assert_eq!(state.library.selected, None);
+}
+
+#[test]
+fn test_open_library_selected_loads_and_closes() {
+    // Arrange
+    let mut state = empty_state();
+    state.set_library_rows(vec![ride_row(7, "GORBA EPIC 2026", RideStatus::Draft)]);
+    state.open_library();
+    state.library.selected = Some(0);
+
+    // Act
+    let result = state.open_library_selected();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert!(matches!(
+        state.pending_store.last(),
+        Some(StoreCommand::LoadRide { id: 7 })
+    ));
+    assert_eq!(state.dialogs.top(), None);
+}
+
+#[test]
+fn test_open_library_selected_given_no_selection_refuses() {
+    // Arrange
+    let mut state = empty_state();
+    state.open_library();
+
+    // Act
+    let result = state.open_library_selected();
+
+    // Assert
+    assert_eq!(result, Err("Select a ride first".to_owned()));
+}
+
+#[test]
+fn test_duplicate_library_selected_asks_first() {
+    // Arrange
+    let mut state = empty_state();
+    state.set_library_rows(vec![ride_row(7, "GORBA EPIC 2026", RideStatus::Draft)]);
+    state.library.selected = Some(0);
+
+    // Act
+    let asked = state.duplicate_library_selected();
+
+    // Assert
+    assert!(asked);
+    assert_eq!(
+        state.pending_native,
+        Some(PendingNative {
+            dialog: NativeDialog::Prompt,
+            then: NativeTask::DuplicateRide { id: 7 },
+        })
+    );
+}
+
+#[test]
+fn test_delete_library_selected_opens_the_typed_confirm() {
+    // Arrange
+    let mut state = empty_state();
+    state.set_library_rows(vec![ride_row(7, "Club poker night", RideStatus::Finished)]);
+    state.library.selected = Some(0);
+
+    // Act
+    let opened = state.delete_library_selected();
+
+    // Assert
+    assert!(opened);
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("delete_ride_dlg")
+    );
+    assert_eq!(state.library.delete_id, Some(7));
+    assert!(state.library.delete_message.is_some());
+    assert!(!state.delete_ride_armed());
+}
+
+#[test]
+fn test_submit_delete_ride_requires_the_typed_name() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.set_library_rows(vec![ride_row(7, "Club poker night", RideStatus::Finished)]);
+    state.library.selected = Some(0);
+    state.delete_library_selected();
+    state
+        .dialogs
+        .set_field("confirm_name_input", "club poker night")
+        .map_err(|_| "the field".to_owned())?;
+
+    // Act: the case differs, so the gate refuses.
+    let refused = state.submit_delete_ride();
+    state
+        .dialogs
+        .set_field("confirm_name_input", "Club poker night")
+        .map_err(|_| "the field".to_owned())?;
+    let armed = state.delete_ride_armed();
+    let accepted = state.submit_delete_ride();
+
+    // Assert
+    assert!(refused.is_err());
+    assert!(armed);
+    assert_eq!(accepted, Ok(()));
+    assert!(matches!(
+        state.pending_store.last(),
+        Some(StoreCommand::DeleteRide { id: 7, .. })
+    ));
+    Ok(())
+}
+
+#[test]
+fn test_library_ready_and_delete_ready_follow_the_selection() {
+    // Arrange
+    let mut state = empty_state();
+    state.set_library_rows(vec![ride_row(7, "Live", RideStatus::Running)]);
+
+    // Act and assert
+    assert!(!state.library_ready());
+    state.library.selected = Some(0);
+    assert!(state.library_ready());
+    assert!(
+        !state.library_delete_ready(),
+        "a running ride is never deleted"
+    );
+}
+
+// -------------------------------------------------------------- audit
+
+#[test]
+fn test_open_audit_asks_for_the_rows() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+
+    // Act
+    state.open_audit();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("audit_dlg")
+    );
+    assert!(matches!(
+        state.pending_store.first(),
+        Some(StoreCommand::AuditRows { .. })
+    ));
+    assert_eq!(state.audit.action, "All actions");
+    Ok(())
+}
+
+#[test]
+fn test_open_audit_given_no_ride_posts_the_notice() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.open_audit();
+
+    // Assert
+    assert_eq!(state.dialogs.top(), None);
+    assert_eq!(state.notice, Some("Open a ride first".to_owned()));
+}
+
+#[test]
+fn test_set_audit_rows_renders_and_filters() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+    let at = time::OffsetDateTime::from_unix_timestamp(1_700_000_000)
+        .map_err(|error| error.to_string())?;
+    let rows = vec![
+        AuditRow {
+            at,
+            action: "record_crossing".to_owned(),
+            entry: "101".to_owned(),
+            reason: "Ada Lovelace".to_owned(),
+        },
+        AuditRow {
+            at,
+            action: "start".to_owned(),
+            entry: "201".to_owned(),
+            reason: "0:00:00".to_owned(),
+        },
+    ];
+
+    // Act
+    state.set_audit_rows(rows);
+    let all = state.filtered_audit();
+    state.audit.search = "ada".to_owned();
+    let searched = state.filtered_audit();
+    state.audit.search.clear();
+    state.audit.action = "start".to_owned();
+    let action = state.filtered_audit();
+
+    // Assert
+    assert_eq!(all.len(), 2);
+    assert_eq!(
+        searched.len(),
+        1,
+        "the search reads the entry and the display name"
+    );
+    assert_eq!(action.len(), 1);
+    assert_eq!(action[0].action, "start");
+    Ok(())
+}
+
+// ----------------------------------------------------------- settings
+
+#[test]
+fn test_open_settings_seeds_the_form() -> Result<(), String> {
+    // Arrange
+    let (_directory, mut state) = state_with_temp_settings()?;
+
+    // Act
+    state.open_settings();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("settings_dlg")
+    );
+    let form = state
+        .settings_form
+        .as_ref()
+        .ok_or_else(|| "the form".to_owned())?;
+    assert_eq!(form.appearance, state.settings.appearance);
+    Ok(())
+}
+
+#[test]
+fn test_submit_settings_applies_saves_and_closes() -> Result<(), String> {
+    // Arrange
+    let (_directory, mut state) = state_with_temp_settings()?;
+    state.open_settings();
+    if let Some(form) = state.settings_form.as_mut() {
+        form.appearance = "dark".to_owned();
+        form.sound_on = false;
+        form.avg_speed_kmh = 14.5;
+    }
+
+    // Act
+    let result = state.submit_settings();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(state.settings.appearance, "dark");
+    assert!(!state.settings.sound_on);
+    assert!((state.settings.avg_speed_kmh - 14.5).abs() < f64::EPSILON);
+    let (stored, warnings) = rivercrossing_store::load_settings(&state.settings_path);
+    assert_eq!(stored.appearance, "dark");
+    assert_eq!(warnings.len(), 0);
+    assert_eq!(state.dialogs.top(), None);
+    Ok(())
+}
+
+#[test]
+fn test_submit_settings_given_a_bad_appearance_keeps_the_dialog() -> Result<(), String> {
+    // Arrange
+    let (_directory, mut state) = state_with_temp_settings()?;
+    state.open_settings();
+    if let Some(form) = state.settings_form.as_mut() {
+        form.appearance = "sepia".to_owned();
+    }
+
+    // Act
+    let result = state.submit_settings();
+
+    // Assert
+    assert_eq!(
+        result,
+        Err(vec!["Appearance must be system, light or dark".to_owned()])
+    );
+    assert_eq!(state.settings.appearance, "system");
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("settings_dlg")
+    );
+    assert!(state.settings_errors.is_some());
+    Ok(())
+}
+
+// ---------------------------------------------------------- self-test
+
+#[test]
+fn test_open_selftest_runs_the_suite() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.open_selftest();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("selftest_dlg")
+    );
+    assert!(
+        !state.selftest_lines.is_empty(),
+        "the self-test writes report lines: {:?}",
+        state.selftest_lines
+    );
+    assert!(
+        state
+            .selftest_lines
+            .iter()
+            .any(|line| line.contains("PASS")),
+        "the report holds a PASS line: {:?}",
+        state.selftest_lines
+    );
+}
+
+#[test]
+fn test_rerun_selftest_keeps_a_fresh_report() {
+    // Arrange
+    let mut state = empty_state();
+    state.open_selftest();
+
+    // Act
+    state.rerun_selftest();
+
+    // Assert
+    assert!(
+        !state.selftest_lines.is_empty(),
+        "the rerun writes report lines: {:?}",
+        state.selftest_lines
+    );
+}
+
+// --------------------------------------------------------- corrections
+
+#[test]
+fn test_submit_edit_crossing_in_add_mode_records_the_crossing() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+    state.open_add_crossing();
+    for (field, value) in [
+        ("plate_input", "101"),
+        ("time_picker", "10:30:00"),
+        ("reason_input", "missed at the line"),
+    ] {
+        state
+            .dialogs
+            .set_field(field, value)
+            .map_err(|_| "the field".to_owned())?;
+    }
+
+    // Act
+    let result = state.submit_edit_crossing();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    let crossings = state
+        .ride
+        .as_ref()
+        .map(|ride| ride.engine.crossings().len());
+    assert_eq!(crossings, Some(2));
+    assert_eq!(state.notice, Some("Crossing added".to_owned()));
+    assert!(
+        state
+            .dialogs
+            .top()
+            .is_none_or(|dialog| dialog.id != "edit_crossing_dlg")
+    );
+    assert!(
+        state
+            .pending_store
+            .iter()
+            .any(|command| matches!(command, StoreCommand::Append { .. }))
+    );
+    Ok(())
+}
+
+#[test]
+fn test_submit_edit_crossing_given_a_blank_reason_refuses() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+    state.open_add_crossing();
+    state
+        .dialogs
+        .set_field("plate_input", "101")
+        .map_err(|_| "the field".to_owned())?;
+    state
+        .dialogs
+        .set_field("time_picker", "10:30:00")
+        .map_err(|_| "the field".to_owned())?;
+
+    // Act
+    let result = state.submit_edit_crossing();
+
+    // Assert
+    assert_eq!(result, Err("Enter a reason.".to_owned()));
+    assert_eq!(state.notice, Some("Enter a reason.".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn test_open_crossing_detail_renders_and_gates() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+
+    // Act
+    state.open_crossing_detail(&EntryId("k-ada".to_owned()), 1);
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("crossing_detail_dlg")
+    );
+    let detail = state
+        .crossing_detail
+        .as_ref()
+        .ok_or_else(|| "the detail".to_owned())?;
+    assert_eq!(detail.model.plate, "101");
+    assert_eq!(detail.model.lap, "1");
+    assert!(detail.actions.edit);
+    assert!(detail.actions.delete);
+    Ok(())
+}
+
+#[test]
+fn test_submit_crossing_number_reassigns_the_plate() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+    state.open_crossing_detail(&EntryId("k-ada".to_owned()), 1);
+    state.open_crossing_number();
+    state
+        .dialogs
+        .set_field("number_input", "101")
+        .map_err(|_| "the field".to_owned())?;
+
+    // Act
+    let result = state.submit_crossing_number();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(state.notice, Some("Plate changed".to_owned()));
+    assert!(
+        state
+            .pending_store
+            .iter()
+            .any(|command| matches!(command, StoreCommand::Append { .. }))
+    );
+    Ok(())
+}
+
+#[test]
+fn test_submit_manual_deal_deals_a_card() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+    state.open_manual_deal();
+    for (field, value) in [("plate_input", "101"), ("reason_input", "bonus")] {
+        state
+            .dialogs
+            .set_field(field, value)
+            .map_err(|_| "the field".to_owned())?;
+    }
+
+    // Act
+    let result = state.submit_manual_deal();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(state.notice, Some("Card dealt".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn test_submit_dnf_marks_the_rider() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+    state.open_dnf();
+    for (field, value) in [("plate_input", "101"), ("reason_input", "injury")] {
+        state
+            .dialogs
+            .set_field(field, value)
+            .map_err(|_| "the field".to_owned())?;
+    }
+
+    // Act
+    let result = state.submit_dnf();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert!(state.notice.is_some_and(|notice| notice.ends_with("— DNF")));
+    Ok(())
+}
+
+#[test]
+fn test_submit_void_card_voids_the_credited_card() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+    state.open_crossing_detail(&EntryId("k-ada".to_owned()), 1);
+    state.open_void_card();
+    state
+        .dialogs
+        .set_field("reason_input", "misdeal")
+        .map_err(|_| "the field".to_owned())?;
+
+    // Act
+    let result = state.submit_void_card();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(state.notice, Some("Card voided".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn test_submit_set_start_back_dates_the_gun() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+    state.open_set_start();
+    state
+        .dialogs
+        .set_field("start_date_picker", "2026-11-25")
+        .map_err(|_| "the date".to_owned())?;
+    state
+        .dialogs
+        .set_field("start_time_picker", "08:00:00")
+        .map_err(|_| "the time".to_owned())?;
+
+    // Act
+    let result = state.submit_set_start();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(state.notice, Some("Start time set".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn test_delete_crossing_undoes_the_newest() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+
+    // Act
+    let result = state.delete_crossing(&EntryId("k-ada".to_owned()), 1);
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(
+        state
+            .ride
+            .as_ref()
+            .map(|ride| ride.engine.crossings().len()),
+        Some(0)
+    );
+    assert_eq!(state.notice, Some("Crossing deleted".to_owned()));
+    Ok(())
+}
+
+// --------------------------------------------------------- quit/launch
+
+#[test]
+fn test_request_quit_with_a_running_ride_opens_the_running_dialog() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+
+    // Act
+    state.request_quit();
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("exit_running_dlg")
+    );
+    assert!(state.quit_message.is_some());
+    assert!(state.pending_native.is_none());
+    Ok(())
+}
+
+#[test]
+fn test_request_quit_without_a_running_ride_raises_the_confirm() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.request_quit();
+
+    // Assert
+    assert_eq!(
+        state.pending_native,
+        Some(PendingNative {
+            dialog: NativeDialog::Confirm,
+            then: NativeTask::Command(CommandId::AppQuit),
+        })
+    );
+    assert_eq!(state.dialogs.top(), None);
+}
+
+#[test]
+fn test_confirm_quit_and_finish_and_quit_close_the_app() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+
+    // Act
+    state.confirm_quit();
+
+    // Assert
+    assert!(state.close_requested);
+
+    // Arrange
+    let mut state = running_with_crossing()?;
+    state.quit_message = Some("message".to_owned());
+
+    // Act
+    state.finish_and_quit();
+
+    // Assert
+    assert!(state.close_requested);
+    assert_eq!(state.phase(), RidePhase::Finished);
+    Ok(())
+}
+
+#[test]
+fn test_apply_previous_session_opens_the_resume_dialog() {
+    // Arrange
+    let mut state = empty_state();
+    state.set_library_rows(vec![ride_row(9, "GORBA EPIC 2026", RideStatus::Running)]);
+    let session = PreviousSession {
+        state: SessionState::RunningAtExit,
+        ride_id: Some(9),
+        ended_at: time::OffsetDateTime::from_unix_timestamp(1_700_000_000).ok(),
+    };
+
+    // Act
+    state.apply_previous_session(session);
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("resume_dlg")
+    );
+    let message = state.launch_message.as_deref().unwrap_or_default();
+    assert!(message.contains("GORBA EPIC 2026"), "{message}");
+}
+
+#[test]
+fn test_resume_continue_loads_the_running_ride() {
+    // Arrange
+    let mut state = empty_state();
+    state.previous_session = Some(PreviousSession {
+        state: SessionState::RunningAtExit,
+        ride_id: Some(9),
+        ended_at: None,
+    });
+    state.reconcile_launch();
+    let _ = state.dialogs.cancel();
+
+    // Act
+    state.resume_continue();
+
+    // Assert
+    assert!(matches!(
+        state.pending_store.last(),
+        Some(StoreCommand::LoadRide { id: 9 })
+    ));
+    assert_eq!(state.launch_message, None);
+}
+
+#[test]
+fn test_launch_choice_opens_the_library_when_no_ride_was_running() {
+    // Arrange
+    let mut state = empty_state();
+    state.set_library_rows(vec![ride_row(3, "Club poker night", RideStatus::Finished)]);
+
+    // Act
+    state.apply_previous_session(PreviousSession {
+        state: SessionState::CleanQuit,
+        ride_id: None,
+        ended_at: None,
+    });
+
+    // Assert
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("ride_library_dlg")
+    );
+    assert!(state.launch_resolved);
+}
+
+#[test]
+fn test_launch_choice_shows_nothing_on_a_first_launch() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.apply_previous_session(PreviousSession::fresh());
+
+    // Assert
+    assert_eq!(state.dialogs.top(), None);
+    assert!(state.launch_resolved);
+}
+
+// ------------------------------------------------------------ backups
+
+#[test]
+fn test_startup_backup_queues_once_and_marks_the_hour() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.startup_backup();
+
+    // Assert
+    assert!(matches!(
+        state.pending_store.first(),
+        Some(StoreCommand::BackupNow)
+    ));
+    let hour = state.last_backup_hour;
+    assert!(hour.is_some());
+    let no_second = state.due_hourly_backup(time::OffsetDateTime::now_utc());
+    assert!(!no_second);
+}
+
+#[test]
+fn test_due_hourly_backup_fires_in_a_new_hour() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    let first = time::OffsetDateTime::from_unix_timestamp(1_700_000_000)
+        .map_err(|error| error.to_string())?;
+    let next = first + time::Duration::hours(1);
+
+    // Act
+    let started = state.due_hourly_backup(first);
+    let again = state.due_hourly_backup(first);
+    let moved_on = state.due_hourly_backup(next);
+
+    // Assert
+    assert!(started);
+    assert!(!again);
+    assert!(moved_on);
+    assert_eq!(
+        state
+            .pending_store
+            .iter()
+            .filter(|command| matches!(command, StoreCommand::BackupNow))
+            .count(),
+        2
+    );
+    Ok(())
+}
+
+#[test]
+fn test_queue_backup_queues_the_command() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.queue_backup();
+
+    // Assert
+    assert!(matches!(
+        state.pending_store.first(),
+        Some(StoreCommand::BackupNow)
+    ));
+}
+
+#[test]
+fn test_clear_ride_clears_the_active_ride() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+
+    // Act
+    state.clear_ride();
+
+    // Assert
+    assert!(
+        state
+            .pending_store
+            .iter()
+            .any(|command| matches!(command, StoreCommand::ClearActiveRide))
+    );
+    assert_eq!(state.crossing_detail, None);
+    Ok(())
+}
