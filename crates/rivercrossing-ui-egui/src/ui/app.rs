@@ -347,6 +347,88 @@ impl RiverCrossingApp {
         self.state.open_publish();
     }
 
+    /// Open the resume prompt on a pinned previous session (a headless host and the snapshot tests).
+    pub fn show_resume(&mut self) {
+        let Some(ride) = self.state.ride.as_ref() else {
+            return;
+        };
+        let row = rivercrossing_store::RideRow {
+            id: ride.ride_id,
+            name: ride.config.name.clone(),
+            event_date: ride.config.event_date,
+            status: ride.engine.state(),
+            entries: u32::try_from(ride.roster.entries().len()).unwrap_or(0),
+        };
+        let session = rivercrossing_store::PreviousSession {
+            state: rivercrossing_store::session::SessionState::RunningAtExit,
+            ride_id: Some(ride.ride_id),
+            ended_at: Some(time::OffsetDateTime::UNIX_EPOCH),
+        };
+        self.state.set_library_rows(vec![row]);
+        self.state.previous_session = Some(session);
+        self.state.reconcile_launch();
+    }
+
+    /// Open the blocked-start dialog through the console's own start gate.
+    pub fn show_start_blocked(&mut self) {
+        self.state.start_ride();
+    }
+
+    /// Open the rider editor's Add form.
+    pub fn show_add_rider(&mut self) {
+        self.state.open_rider_editor();
+        self.state.open_add_rider();
+    }
+
+    /// Open the team editor's Add form.
+    pub fn show_add_team(&mut self) {
+        self.state.open_team_editor();
+        self.state.open_add_team();
+    }
+
+    /// Open the set-start dialog on the open ride.
+    pub fn show_set_start(&mut self) {
+        self.state.open_set_start();
+    }
+
+    /// Open the add-crossing form.
+    pub fn show_edit_crossing(&mut self) {
+        self.state.open_add_crossing();
+    }
+
+    /// Open the manual-deal form.
+    pub fn show_manual_deal(&mut self) {
+        self.state.open_manual_deal();
+    }
+
+    /// Open the DNF form.
+    pub fn show_dnf(&mut self) {
+        self.state.open_dnf();
+    }
+
+    /// Open the void-card form on the open crossing.
+    pub fn show_void_card(&mut self) {
+        self.state.open_void_card();
+    }
+
+    /// Open the plate prompt on the open crossing.
+    pub fn show_crossing_number(&mut self) {
+        self.state.open_crossing_number();
+    }
+
+    /// Open the publish progress window in its running state.
+    pub fn show_publish_running(&mut self) {
+        "Publishing…".clone_into(&mut self.state.publish_status);
+        let _ = self.state.dialogs.open("publish_running_dlg", None);
+    }
+
+    /// Open the simulation progress window in its running state.
+    pub fn show_sim_running(&mut self) {
+        "Simulating…".clone_into(&mut self.state.sim_status);
+        self.state.sim_progress = 0.25;
+        let _ = self.state.dialogs.open("sim_running_dlg", None);
+    }
+
     /// Open the first crossing's detail (a headless host and the snapshot tests).
     pub fn open_first_crossing_detail(&mut self) -> bool {
         let Some((entry, seq)) = self.state.ride.as_ref().and_then(|ride| {
@@ -630,6 +712,8 @@ impl RiverCrossingApp {
                     self.raise_export_picker(kind);
                 }
             }
+            // The roster CSV's own save picker is deferred; the export names the missing piece.
+            CommandId::ExportRosterCsv => self.state.note(FILE_PICKER_UNAVAILABLE),
             CommandId::PreviewHtml => self.preview(ExportKind::Html),
             CommandId::PreviewPosterHtml => self.preview(ExportKind::PosterHtml),
             CommandId::PreviewPdf => self.preview(ExportKind::Pdf),

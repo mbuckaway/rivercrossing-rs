@@ -175,13 +175,21 @@ are held in memory only — persistence is EPIC-12, at parity (plaintext setting
 
 ### rivercrossing-ui-egui
 The egui front end: panels/dialogs for the Python window inventory, the `Action`/command registry
-(§15 menu map + §15b frozen ids), and the presenters' decision logic. Sound via **rodio**. The UI
-automation seam lives here too (EPIC-10): `src/ui/automation/` — `channel.rs` (the
-`Control`/`ControlConfig` per-pass glue, `server::listen`, `Captures`), `selector.rs` (the pure
-AccessKit selector resolver), `path.rs` (the canonicalised `<cwd>/target/control` writer),
-`command.rs` (the `probe_echo`/`probe_quit` dispatcher) and `scenario.rs` (the public v1
-`Scenario`/`Step`/`Selector`/`Observation`/`WireTree`/`Node` model); the `tests/ui/` target and
-`kittest.toml` host the `egui_kittest` shell golden under `cargo nextest -P ui` — no separate crate.
+(§15 menu map + §15b frozen ids), and the presenters' decision logic. Sound via **rodio**. Module
+map: `action/` (the 53-row registry, the §15 enable matrix, dispatch and the ids-drift tests),
+`dialogs/` (`spec.rs`, the frozen 29-dialog contracts; `stack.rs`, the pure open/Esc/Enter/focus
+stack), `presenters/` (every decision a screen surfaces, unit-tested without egui), `state.rs` plus
+`state/exports.rs` (the app state and the results/export/publish/simulation decisions and jobs),
+`worker.rs` (the one store thread; exports ride it), `views/` (the menu, the console, the dialog host
+and one module per window family), `sound.rs`, `logging.rs` (the NDJSON launch log), `native.rs`
+(the `craft_dialogs` queue and answer rules), `publish_job.rs` (the off-thread WordPress publish and
+its `PageWriter` seam) and `automation/` (the UI automation seam lives here too (EPIC-10):
+`channel.rs`, the `Control`/`ControlConfig` per-pass glue, `server::listen`, `Captures`;
+`selector.rs`, the pure AccessKit selector resolver; `path.rs`, the canonicalised
+`<cwd>/target/control` writer; `command.rs`, the `probe_echo`/`probe_quit` dispatcher; and
+`scenario.rs`, the public v1 `Scenario`/`Step`/`Selector`/`Observation`/`WireTree`/`Node` model).
+The `tests/ui/` target and `kittest.toml` host the 30 `egui_kittest` goldens under
+`cargo nextest -P ui` — no separate crate.
 `craft`'s `automation` feature is a production dependency; `ui-testing` and `egui_kittest` are
 dev-only. The channel glue is excluded from coverage (Tier B only); the pure modules are unit-tested.
 The cross-language schema is `tools/parity/schema.json`.

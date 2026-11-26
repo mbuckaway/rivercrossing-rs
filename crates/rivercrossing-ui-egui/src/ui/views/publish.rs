@@ -80,7 +80,7 @@ fn choice(
 pub(crate) fn running_body(ui: &mut Ui, state: &AppState) {
     ui.push_id("publish_status_lbl", |ui| text(ui, &state.publish_status));
     ui.push_id("progress_gauge", |ui| {
-        ui.add(egui::ProgressBar::new(0.5).animate(true))
+        ui.add(egui::ProgressBar::new(0.5))
             .accessible_name("Publishing progress");
     });
 }

@@ -604,3 +604,276 @@ fn test_ui_simulation_matches_the_golden() -> Result<(), Box<dyn Error>> {
     harness.snapshot("simulation");
     Ok(())
 }
+
+/// Create a fixture ride over *roster* with no entries, and return its database and id.
+fn empty_roster_fixture_ride(
+    directory: &TempDir,
+) -> Result<(std::path::PathBuf, i64), Box<dyn Error>> {
+    let path = directory.path().join("empty.db");
+    let mut store = Store::open(&path)?;
+    let id = store.create_ride(&fixture_config()?, Some(7))?;
+    let roster = Roster::new(EntryMode::Mixed, 4, PlateModel::RiderPooled, Some(7))?;
+    store.save_roster(id, &roster)?;
+    Ok((path, id))
+}
+
+#[test]
+fn test_ui_start_blocked_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let (db, id) = empty_roster_fixture_ride(&fixture.directory)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.show_start_blocked();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("start_blocked");
+    Ok(())
+}
+
+#[test]
+fn test_ui_resume_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.show_resume();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("resume");
+    Ok(())
+}
+
+#[test]
+fn test_ui_exit_running_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.command("wxID_EXIT")?;
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("exit_running");
+    Ok(())
+}
+
+#[test]
+fn test_ui_set_start_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.show_set_start();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("set_start");
+    Ok(())
+}
+
+#[test]
+fn test_ui_add_rider_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.show_add_rider();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("add_rider");
+    Ok(())
+}
+
+#[test]
+fn test_ui_add_team_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.show_add_team();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("add_team");
+    Ok(())
+}
+
+#[test]
+fn test_ui_edit_crossing_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.show_edit_crossing();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("edit_crossing");
+    Ok(())
+}
+
+#[test]
+fn test_ui_manual_deal_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.show_manual_deal();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("manual_deal");
+    Ok(())
+}
+
+#[test]
+fn test_ui_dnf_confirm_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.show_dnf();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("dnf_confirm");
+    Ok(())
+}
+
+#[test]
+fn test_ui_void_card_confirm_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        assert!(app.open_first_crossing_detail());
+        app.show_void_card();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("void_card_confirm");
+    Ok(())
+}
+
+#[test]
+fn test_ui_crossing_number_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        assert!(app.open_first_crossing_detail());
+        app.show_crossing_number();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("crossing_number");
+    Ok(())
+}
+
+#[test]
+fn test_ui_publish_running_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = stopped_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.show_publish_running();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("publish_running");
+    Ok(())
+}
+
+#[test]
+fn test_ui_sim_running_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.show_sim_running();
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("sim_running");
+    Ok(())
+}

@@ -318,3 +318,53 @@ the scenario JSON is the cross-language contract.
   clock reads zero.
 - **Tier B smoke:** the control smoke now opens `mi_standings`, asserts the Standings board's
   columns in the access tree, and closes it with `ui.dialog.cancel`.
+## EPIC-12 close-out — the test matrix, the goldens and what is left to the operator
+
+- **Test matrix (what the gate actually runs).** Tier A semantic: 1297 unit tests in
+  `src/**/tests.rs` via `cargo nextest run -p rivercrossing-ui-egui -P unit --locked`; the pure gate
+  matrix, the R-73 route×state sweep and the R-76 per-dialog assertions live there. Tier A-snapshot:
+  30 `egui_kittest` goldens in `tests/ui/main.rs` via `-P ui`, one per window (the console's
+  `console_empty` and the setup's `setup_open` stand for `main_frame` and `ride_setup_dlg`). Tier B:
+  exactly two real-window smokes under `xvfb-run` (`open_and_quit_smoke`,
+  `control_channel_smoke`), outside the gate, run by hand each PR. Tier C: see below.
+- **R-73 route×state.** `test_every_action_is_drivable_or_refused_in_every_ride_state` builds a fresh
+  app state for each of the six rows (no ride, Draft, Running, stopped-Running, Finished, Reopened)
+  and dispatches all 53 actions: an enabled action must return `Ok` (every target is implemented),
+  a disabled one must return `Err(Disabled(id))`. The failure message names the action and the
+  state. The sweep caught one latent drift: `mi_export_csv` (the riders CSV) shared
+  `CommandId::ExportCsv` with `mi_export_results_csv`, so the riders row opened the standings save
+  picker; it now has its own `ExportRosterCsv` command, the reviewed machine block in
+  `gui-windows.md` was corrected to match, and the riders export posts the deferred-picker notice.
+- **R-76 per dialog.** `test_every_dialog_esc_enter_focus_and_opener_follow_its_spec` loops over all
+  29 `DialogSpec`s: the opening focus is the first field or the primary button, Esc reports the spec's
+  safe cancel (`Cancel`/`Close`/`cancel_btn`) and the opener, Enter activates the default (the cancel
+  button on the one destructive dialog), and a dialog opened with no opener reports none. The
+  window→spec drift test asserts every one of the 30 windows except `main_frame` has a `DialogSpec`.
+- **Goldens.** All 30 windows have one golden. The close-out added `start_blocked`, `resume`,
+  `exit_running`, `set_start`, `add_rider`, `add_team`, `edit_crossing`, `manual_deal`, `dnf_confirm`,
+  `void_card_confirm`, `crossing_number`, `publish_running` and `sim_running`; the existing 17 are
+  unchanged. The fixtures use a stopped ride wherever a dialog would otherwise sit over a live clock,
+  so the frame is identical on every run. Regenerate only on this host with
+  `UPDATE_SNAPSHOTS=force WGPU_BACKEND=vulkan cargo nextest run -P ui -p rivercrossing-ui-egui --locked`.
+- **Native-dialog policy (R-85).** Every confirmation, warning, prompt and error goes through
+  `craft_dialogs`; a host that cannot show a box answers `Answer::Unavailable` and the app raises the
+  same question as its in-app modal (`views::dialogs::show_native`). Save pickers use the same queue
+  (`ask_file`); a host without them posts the file-picker notice. The control channel forces the
+  unavailable host so the Tier B smoke is deterministic.
+- **How the synthetic golden screens are opened.** The snapshot harness cannot click a menu, so
+  `RiverCrossingApp` exposes the same headless seams it already had for the library, audit and
+  crossing detail (`show_library`, `show_audit`, `open_first_crossing_detail`) plus
+  `show_publish`, `show_resume`, `show_start_blocked`, `show_add_rider`, `show_add_team`,
+  `show_set_start`, `show_edit_crossing`, `show_manual_deal`, `show_dnf`, `show_void_card`,
+  `show_crossing_number`, `show_publish_running` and `show_sim_running`. They call the same state
+  methods the buttons call; none is a test-only branch in production behaviour.
+- **Tier C parity — status, honestly recorded.** The harness exists: `tools/parity/` holds the v1
+  schema, the scenario set and the stdlib-only Python driver stub; `docs/parity/SKIP.md` records the
+  EPIC-10 deferral. **No full Tier C run has been performed**: it needs the Mac operator, the Python
+  3.14 / wxPython 4.3.1 oracle checkout and a desktop session, and it is not part of the gate. The
+  SKIP file stays until that run is green; nothing here claims parity was measured.
+- **What remains for the operator (not the Linux gate):** the Mac visual pass over the 30 goldens
+  against `design/screenshots/`, the real save/open pickers and native boxes on macOS, the Tier C
+  run, audio on a machine with an output device, and the Windows cross-check with `ring` in the
+  graph at release. The Windows *target* check is runnable from this box; a real Windows run is
+  EPIC-13.

@@ -278,3 +278,20 @@ fn test_button_as_str_returns_the_frozen_custom_id() {
     // Assert
     assert_eq!(rendered, "finish_first_btn");
 }
+
+#[test]
+fn test_every_window_besides_main_frame_has_a_dialog_spec() {
+    // Act
+    let missing: Vec<&'static str> = ids::WINDOWS
+        .iter()
+        .map(|window| window.window)
+        .filter(|window| *window != "main_frame")
+        .filter(|window| spec(window).is_none())
+        .collect();
+
+    // Assert
+    assert!(
+        missing.is_empty(),
+        "windows without a DialogSpec: {missing:?}"
+    );
+}

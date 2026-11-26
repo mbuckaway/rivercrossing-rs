@@ -143,6 +143,17 @@ harness it lands.
   dialogs, rider issues, CSV; **12c** ride library, launch/resume/exit/quit, set start, corrections,
   audit, self-test, settings/about/shortcuts, native-dialog mapping, session/backups; **12d**
   results/standings, exports + previews, WordPress publish (R-86), simulator; **12e** close-out.
+- **Delivered:** PRs #20 (12a), #21 (12b), #22 (12c), #23 (12d) and the close-out branch (12e). All
+  30 windows render with one golden each, the 53-action registry drives menus and buttons, and the
+  gate holds at Tier A unit + Tier A-snapshot + the two Tier B smokes. 12e adds the R-73 route×state
+  sweep (53 actions × six ride states), the R-76 per-dialog Esc/Enter/focus/opener assertions, the
+  window→`DialogSpec` drift check and 13 more goldens. The sweep exposed a command-id collision: the
+  riders CSV row shared the standings export command; it now has `ExportRosterCsv`, and the reviewed
+  machine block in `gui-windows.md` was corrected.
+- **Tier C parity is not yet run:** `tools/parity/` holds the schema, scenarios and the Python
+  driver stub, but the run needs the Mac operator and the Python 3.14 / wxPython 4.3.1 oracle
+  checkout, so `docs/parity/SKIP.md` stays until it is green. The Mac visual pass, the real native
+  pickers/boxes and audio remain operator steps.
 - **Acceptance per PR:** unit + snapshot goldens + `xtask layers` + coverage green; **Tier B smokes
   under Xvfb on the Linux host**; operator visual pass on the Mac; at 12e the R-73 route×state
   matrix, the per-dialog R-76 assertions, the Tier C parity report and every screen golden.
