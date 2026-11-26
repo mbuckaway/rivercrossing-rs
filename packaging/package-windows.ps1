@@ -55,9 +55,9 @@ Copy-Item "packaging\branding\rivercrossing.ico" $Stage
 Copy-Item "LICENSE" $Stage
 Copy-Item "NOTICE" $Stage
 
-# WiX v5 is the pinned toolchain (architecture.md §10). The unversioned `wix`
-# tool now resolves to v7, which demands the Open Source Maintenance Fee EULA.
-dotnet tool install --global wix --version 5.*
+# WiX v5 is the pinned toolchain (architecture.md §10); 5.0.2 is the latest v5.
+# The unversioned `wix` tool now resolves to v7, which demands the OSMF EULA.
+dotnet tool install --global wix --version 5.0.2
 if ($LASTEXITCODE -ne 0) { Fail "wix tool install failed" }
 
 $Wxs = Join-Path $Root "packaging\wix\rivercrossing.wxs"
