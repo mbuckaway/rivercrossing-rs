@@ -313,6 +313,7 @@ fn feed_panel(ui: &mut Ui, state: &mut AppState) {
     let visible = data_source::filter_rows(&rows, &state.search);
     let show_lap_time = state.settings.show_lap_time;
     let show_total = state.settings.show_total_times;
+    let mut open_crossing = None;
     ui.push_id("crossings_list", |ui| {
         egui::ScrollArea::vertical()
             .id_salt("crossings_list_scroll")
@@ -343,12 +344,18 @@ fn feed_panel(ui: &mut Ui, state: &mut AppState) {
                             if show_total {
                                 text(ui, &format_duration(row.total_time));
                             }
-                            text(ui, &row.name);
+                            let clicked = super::cell(ui, false, &row.name);
+                            if clicked && !row.entry.0.is_empty() {
+                                open_crossing = Some((row.entry.clone(), row.lap));
+                            }
                             ui.end_row();
                         }
                     });
             });
     });
+    if let Some((entry, seq)) = open_crossing {
+        state.open_crossing_detail(&entry, seq);
+    }
 }
 
 /// Show the console's counter chips.

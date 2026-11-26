@@ -45,6 +45,8 @@ const SECONDS_PER_MINUTE: u64 = 60;
     reason = "each flag is an independent feed channel that the view renders separately"
 )]
 pub(crate) struct FeedRow {
+    /// The entry that owns the crossing; empty for a miss.
+    pub(crate) entry: rivercrossing_ride::EntryId,
     /// The rider's typed plate, the entry's plate, or [`MISS_PLATE`].
     pub(crate) plate: String,
     /// The rider's name, the entry's display name, or [`MISS_NAME`].
@@ -325,6 +327,7 @@ fn insert_newest_first(rows: &mut Vec<(Timestamp, FeedRow)>, candidate: (Timesta
 /// Return the miss row: a blank plate, no lap, no card and no flags.
 fn miss_row() -> FeedRow {
     FeedRow {
+        entry: rivercrossing_ride::EntryId(String::new()),
         plate: MISS_PLATE.to_owned(),
         name: MISS_NAME.to_owned(),
         lap: 0,
@@ -430,6 +433,7 @@ fn crossing_row(context: &FeedContext<'_>, crossing: &Crossing) -> FeedRow {
     let entry = context.entry(&crossing.entry_id);
     let lap_time = context.lap_time(crossing);
     FeedRow {
+        entry: crossing.entry_id.clone(),
         plate: plate_text(entry.as_ref(), crossing),
         name: name_text(entry.as_ref(), crossing),
         lap: crossing.seq,

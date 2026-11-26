@@ -239,3 +239,40 @@ the scenario JSON is the cross-language contract.
   `ui.set` + `ui.dialog.confirm`, waits for the ride in the access tree, then opens the rider editor
   with `ui.command mi_rider_editor` and closes it with `ui.dialog.cancel`. The editor is ride-gated,
   so the round trip necessarily follows the setup step rather than preceding it.
+
+## EPIC-12c Phase 2 — lifecycle, corrections and system dialogs
+
+- **Native dialogs go through `craft_dialogs`.** `ui/native.rs` wraps
+  `craft::dialogs::Dialogs<PendingNative>`: every confirm, danger, prompt and error report queues
+  the box with its `PendingNative` payload, and `show_pending` asks the box parentless because the
+  UI pass has no raw window handle. The app raises the box at the end of a logic pass and reads the
+  answers at the start of the next one, so the event loop never blocks. A host that cannot show a
+  box answers `Answer::Unavailable`; the app then restores the pending task as the in-app modal
+  (`views::dialogs::show_native`) and marks it with `AppState::native_in_app`, so the next logic
+  pass does not ask the host again. Cancel and Esc run nothing, and the in-app Cancel button holds
+  the focus, so Enter is the safe answer. The control channel forces the unavailable host with
+  `set_native_unavailable`, which keeps the Tier B smoke deterministic under Xvfb.
+- **Lifecycle.** Launch sends `PreviousSession` and `Rides`; the resume prompt opens only when a
+  previous session exists, and `quit_resume::launch_choice` decides. Quit runs the running-ride
+  dialog first when a ride is live, the plain native confirm otherwise; `app_quit` closes without a
+  box. The hourly backup checks the wall-clock hour bucket (`hour_bucket`/`due_hourly_backup`) on
+  each pass and the tick asks for the next hour boundary.
+- **Corrections.** Add/Edit Crossing, Manual Deal, DNF, Void Card, Crossing Number and Set Start
+  all route through `presenters::corrections`. A crossing's detail opens from the console feed and
+  offers Edit, Edit Time, Void Card and Delete; Delete runs through the native danger. Void Card
+  resolves the plate from the detail model, because the engine's `void_card` takes a plate, not an
+  entry key.
+- **Deferred, recorded:** `mi_import_csv` / `mi_export_csv` still post the file-picker notice;
+  `card_check_lbl` stays hidden pending the results work; staging a card for a not-yet-created team
+  in the Add window is deferred; the correction dialogs have no goldens because a stable fixture
+  would need a started ride with a per-dialog form state, and the Crossing Detail golden covers the
+  engine-backed card and time cells instead.
+- **Goldens (eight new, fourteen total):** `ride_library`, `delete_ride`, `settings`, `audit`,
+  `selftest`, `about`, `shortcuts` and `crossing_detail`. The crossing-detail fixture starts at the
+  epoch, records one crossing, then stops the ride so the stopped clock reads zero — otherwise the
+  live elapsed clock makes the frame differ on every run. The harness also appends egui's Noto Emoji
+  face at `FontPriority::Lowest`, because the card suit glyphs (♠♥♦♣) are in no app face; the check
+  panics on a missing glyph rather than drawing tofu.
+- **Tier B smoke:** the control smoke opens Settings with `ui.command wxID_PREFERENCES`, asserts
+  the title and the Appearance section in the access tree, and closes it with `ui.dialog.cancel`.
+

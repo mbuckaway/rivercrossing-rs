@@ -11,14 +11,13 @@
 use craft::egui::{self, Context, Key, Modifiers, Response, Stroke, Ui};
 
 use super::text;
-use super::{csv, issues, riders, setup, teams};
-use crate::ui::action::spec::NativeDialog;
+use super::{
+    audit, corrections, csv, issues, library, riders, selftest, settings, setup, system, teams,
+};
 use crate::ui::dialogs::spec::{self, Button, DialogSpec};
 use crate::ui::dialogs::stack::{self, Focus};
 use crate::ui::ids;
-use crate::ui::presenters::riders::delete_message;
-use crate::ui::presenters::teams::remove_message;
-use crate::ui::state::{AppState, NativeTask};
+use crate::ui::state::AppState;
 
 /// What closed the dialog this pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,6 +56,22 @@ pub(crate) fn show(ctx: &Context, state: &mut AppState) {
             "add_team_dlg" => teams::form_body(ui, state, focused),
             "csv_preview_dlg" => csv::body(ui, state),
             "rider_issues_dlg" => issues::body(ui, state),
+            "ride_library_dlg" => library::body(ui, state),
+            "delete_ride_dlg" => library::delete_body(ui, state, focused),
+            "audit_dlg" => audit::body(ui, state),
+            "settings_dlg" => settings::body(ui, state),
+            "selftest_dlg" => selftest::body(ui, state),
+            "about_dlg" => system::about(ui, state),
+            "shortcuts_dlg" => system::shortcuts(ui, state),
+            "edit_crossing_dlg" => corrections::edit_crossing(ui, state, focused),
+            "manual_deal_dlg" => corrections::manual_deal(ui, state, focused),
+            "dnf_confirm_dlg" => corrections::dnf(ui, state, focused),
+            "void_card_confirm_dlg" => corrections::void_card(ui, state, focused),
+            "crossing_number_dlg" => corrections::crossing_number(ui, state, focused),
+            "set_start_dlg" => corrections::set_start(ui, state, focused),
+            "crossing_detail_dlg" => corrections::detail(ui, state),
+            "resume_dlg" => message_body(ui, state.launch_message.as_deref()),
+            "exit_running_dlg" => message_body(ui, state.quit_message.as_deref()),
             _ => generic_fields(ui, state, top.id, focused),
         }
         ui.separator();
@@ -99,9 +114,9 @@ pub(crate) fn show_native(ctx: &Context, state: &mut AppState) {
     };
     let dialog = native.dialog;
     let then = native.then.clone();
-    let title = native_title(dialog);
-    let message = native_message(state, &then);
-    let confirm = native_confirm_label(&then);
+    let title = AppState::native_title(dialog);
+    let message = state.native_message(native);
+    let confirm = AppState::native_confirm_label(native);
     let mut choice: Option<bool> = None;
     let ctx = ctx.clone();
     let focus_key = egui::Id::unique(("native-confirm-focus", then.as_str()));
@@ -149,62 +164,6 @@ pub(crate) fn show_native(ctx: &Context, state: &mut AppState) {
     }
 }
 
-/// Return the native confirmation's title for the dialog kind.
-fn native_title(dialog: NativeDialog) -> &'static str {
-    match dialog {
-        NativeDialog::Confirm => "Confirm",
-        NativeDialog::Danger => "Warning",
-        NativeDialog::Prompt => "Input required",
-        NativeDialog::Error => "Error",
-    }
-}
-
-/// Return the confirmation's message, naming the action or record it guards.
-fn native_message(state: &AppState, task: &NativeTask) -> String {
-    use crate::ui::action::spec::CommandId;
-    match task {
-        NativeTask::Command(CommandId::UndoCrossing) => "Undo the last crossing?".to_owned(),
-        NativeTask::Command(CommandId::StopRide) => "Stop the ride?".to_owned(),
-        NativeTask::Command(CommandId::FinishRide) => "Finish the ride?".to_owned(),
-        NativeTask::Command(CommandId::ClearRide) => {
-            "Clear the ride from the console? The database is untouched.".to_owned()
-        }
-        NativeTask::Command(CommandId::ReopenRide) => {
-            "Reopen the finished ride for corrections?".to_owned()
-        }
-        NativeTask::Command(CommandId::DuplicateRide) => "Duplicate the open ride?".to_owned(),
-        NativeTask::Command(CommandId::AppQuit) => "Quit RiverCrossing?".to_owned(),
-        NativeTask::Command(other) => format!("Run {}?", other.as_str()),
-        NativeTask::DeleteRider { entry, .. } => state
-            .ride
-            .as_ref()
-            .and_then(|ride| ride.roster.entry_by_key(&entry.0))
-            .map_or_else(|| "Delete the selected rider?".to_owned(), delete_message),
-        NativeTask::RemoveTeam { entry } => state
-            .ride
-            .as_ref()
-            .and_then(|ride| ride.roster.entry_by_key(&entry.0))
-            .map_or_else(|| "Remove the selected team?".to_owned(), remove_message),
-    }
-}
-
-/// Return the confirm button's visible label.
-fn native_confirm_label(task: &NativeTask) -> &'static str {
-    use crate::ui::action::spec::CommandId;
-    match task {
-        NativeTask::Command(CommandId::UndoCrossing) => "Undo",
-        NativeTask::Command(CommandId::StopRide) => "Stop",
-        NativeTask::Command(CommandId::FinishRide) => "Finish",
-        NativeTask::Command(CommandId::ClearRide) => "Clear",
-        NativeTask::Command(CommandId::ReopenRide) => "Reopen",
-        NativeTask::Command(CommandId::DuplicateRide) => "Duplicate",
-        NativeTask::Command(CommandId::AppQuit) => "Quit",
-        NativeTask::Command(_) => "OK",
-        NativeTask::DeleteRider { .. } => "Delete",
-        NativeTask::RemoveTeam { .. } => "Remove",
-    }
-}
-
 /// Route the activation to the dialog stack.
 fn apply(state: &mut AppState, spec: &DialogSpec, activation: Option<Activation>) {
     let Some(activation) = activation else {
@@ -214,22 +173,64 @@ fn apply(state: &mut AppState, spec: &DialogSpec, activation: Option<Activation>
         activation,
         Activation::Button(Button::Ok) | Activation::Enter
     );
-    if submitting && let Some(outcome) = state.submit_top_form() {
-        // A refused form keeps the dialog open and shows its messages in the infobar.
-        let _ = outcome;
-        return;
+    if submitting {
+        if let Some(outcome) = state.submit_top_form() {
+            // A refused form keeps the dialog open and shows its messages in the infobar.
+            let _ = outcome;
+            return;
+        }
+        if spec.id == "exit_running_dlg" {
+            // OK is "Quit — keep ride running": the ride keeps timing on the wall clock.
+            state.confirm_quit();
+            let _ = state.dialogs.key(stack::Key::Escape);
+            return;
+        }
     }
-    match activation {
-        Activation::Escape => {
+    match (spec.id, activation) {
+        (_, Activation::Escape) => {
             let _ = state.dialogs.key(stack::Key::Escape);
         }
-        Activation::Enter => {
+        ("ride_library_dlg", Activation::Button(Button::Custom("duplicate_btn"))) => {
+            let _ = state.duplicate_library_selected();
+        }
+        ("ride_library_dlg", Activation::Button(Button::Delete)) => {
+            let _ = state.delete_library_selected();
+        }
+        ("delete_ride_dlg", Activation::Button(Button::Delete)) => {
+            let _ = state.submit_delete_ride();
+        }
+        ("exit_running_dlg", Activation::Button(Button::Custom("finish_first_btn"))) => {
+            state.finish_and_quit();
+            let _ = state.dialogs.key(stack::Key::Escape);
+        }
+        ("resume_dlg", Activation::Button(Button::Custom("continue_btn"))) => {
+            state.resume_continue();
+        }
+        ("resume_dlg", Activation::Button(Button::Custom("library_btn"))) => {
+            state.resume_library();
+        }
+        ("selftest_dlg", Activation::Button(Button::Custom("rerun_btn"))) => {
+            state.rerun_selftest();
+        }
+        ("crossing_detail_dlg", Activation::Button(Button::Custom("edit_btn"))) => {
+            state.open_crossing_number();
+        }
+        ("crossing_detail_dlg", Activation::Button(Button::Custom("edit_time_btn"))) => {
+            state.open_edit_crossing();
+        }
+        ("crossing_detail_dlg", Activation::Button(Button::Custom("void_card_btn"))) => {
+            state.open_void_card();
+        }
+        ("crossing_detail_dlg", Activation::Button(Button::Custom("delete_btn"))) => {
+            let _ = state.raise_delete_crossing();
+        }
+        (_, Activation::Enter) => {
             let _ = state.dialogs.key(stack::Key::Enter);
         }
-        Activation::Button(button) if button == spec.cancel || is_close(button) => {
+        (_, Activation::Button(button)) if button == spec.cancel || is_close(button) => {
             let _ = state.dialogs.key(stack::Key::Escape);
         }
-        Activation::Button(button) => {
+        (_, Activation::Button(button)) => {
             let _ = state.dialogs.activate(button);
         }
     }
@@ -240,11 +241,17 @@ fn is_close(button: Button) -> bool {
     button == Button::Close
 }
 
+/// Show a dialog's message line.
+fn message_body(ui: &mut Ui, message: Option<&str>) {
+    ui.push_id("message_lbl", |ui| text(ui, message.unwrap_or("")));
+}
+
 /// Return the dialog's displayed title; the Add windows retitle in edit mode.
 fn dialog_title(state: &AppState, spec: &DialogSpec) -> &'static str {
     match spec.id {
         "add_rider_dlg" if state.rider_editor.editing.is_some() => "Edit Rider",
         "add_team_dlg" if state.team_editor.editing.is_some() => "Edit Team",
+        "edit_crossing_dlg" if state.correction.add => "Add Crossing at Time",
         _ => spec.title,
     }
 }
@@ -252,29 +259,51 @@ fn dialog_title(state: &AppState, spec: &DialogSpec) -> &'static str {
 /// Return the human label of a dialog button.
 fn button_label(state: &AppState, id: &str, button: Button) -> &'static str {
     match (id, button) {
-        ("add_rider_dlg", Button::Ok) => "Save",
+        ("add_rider_dlg" | "settings_dlg", Button::Ok) => "Save",
         ("add_team_dlg", Button::Ok) if state.team_editor.editing.is_some() => "Save",
         ("add_team_dlg", Button::Ok) => "Add",
         ("csv_preview_dlg", Button::Ok) => "Import",
+        ("ride_library_dlg", Button::Ok) => "Open",
+        ("exit_running_dlg", Button::Ok) => "Quit — keep ride running",
         (_, Button::Ok) => "OK",
         (_, Button::Cancel) => "Cancel",
         (_, Button::Close) => "Close",
         (_, Button::Delete) => "Delete",
         (_, Button::Custom("continue_btn")) => "Continue",
-        (_, Button::Custom("library_btn")) => "Ride Library",
+        (_, Button::Custom("library_btn")) => "Open Library",
         (_, Button::Custom("finish_first_btn")) => "Finish first",
+        (_, Button::Custom("rerun_btn")) => "Run again",
+        ("crossing_detail_dlg", Button::Custom("edit_btn")) => "Edit Plate",
+        ("crossing_detail_dlg", Button::Custom("edit_time_btn")) => "Edit Time…",
+        ("crossing_detail_dlg", Button::Custom("void_card_btn")) => "Void Card…",
         (_, Button::Custom(id)) => id,
     }
 }
 
 /// Return whether the dialog button accepts a click.
 fn button_enabled(state: &AppState, id: &str, button: Button) -> bool {
+    let actions = state.crossing_detail.as_ref().map(|detail| detail.actions);
     match (id, button) {
         ("csv_preview_dlg", Button::Ok) => state
             .csv_preview
             .model
             .as_ref()
             .is_some_and(|model| model.can_import),
+        ("delete_ride_dlg", Button::Delete) => state.delete_ride_armed(),
+        ("ride_library_dlg", Button::Ok | Button::Custom("duplicate_btn")) => state.library_ready(),
+        ("ride_library_dlg", Button::Delete) => state.library_delete_ready(),
+        ("crossing_detail_dlg", Button::Custom("edit_btn")) => {
+            actions.is_some_and(|actions| actions.edit)
+        }
+        ("crossing_detail_dlg", Button::Custom("edit_time_btn")) => {
+            actions.is_some_and(|actions| actions.edit_time)
+        }
+        ("crossing_detail_dlg", Button::Custom("void_card_btn")) => {
+            actions.is_some_and(|actions| actions.void_card)
+        }
+        ("crossing_detail_dlg", Button::Custom("delete_btn")) => {
+            actions.is_some_and(|actions| actions.delete)
+        }
         _ => true,
     }
 }

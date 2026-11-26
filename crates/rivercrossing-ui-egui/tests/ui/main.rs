@@ -12,7 +12,7 @@ use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use craft::egui::vec2;
+use craft::egui::{FontFamily, FontInsert, FontPriority, InsertFontFamily, vec2};
 use craft::host::target::ShellInfo;
 use craft::ui::InstallSpec;
 use craft::ui::fonts::{I18nScripts, UiFonts};
@@ -22,11 +22,13 @@ use craft::ui::testing::windows::NoWindows;
 use egui_kittest::Harness;
 use tempfile::TempDir;
 
-use rivercrossing_ride::{EntryMode, PlateModel, RideConfig, RideConfigParams};
+use rivercrossing_ride::{
+    EntryMode, PlateModel, RideConfig, RideConfigParams, RideEngine, RideStatus, SystemClock,
+};
 use rivercrossing_roster::enums::EntryType;
 use rivercrossing_roster::roster::{Roster, TeamFields};
 use rivercrossing_roster::types::{Entry, Rider};
-use rivercrossing_store::Store;
+use rivercrossing_store::{AuditRow, RideRow, Store};
 use rivercrossing_ui_egui::ui::app::{AppPaths, RiverCrossingApp};
 
 /// The headless app and the temporary directory its files live in.
@@ -69,6 +71,16 @@ fn build_harness(app: &Rc<RefCell<RiverCrossingApp>>) -> Result<Harness<'static>
             let spec = InstallSpec::new(ShellInfo::default(), Arc::new(NoWindows));
             if let Err(error) = embed::install(ctx, spec, &fonts) {
                 *install_error.borrow_mut() = Some(error.to_string());
+            }
+            if let Some(emoji) = craft::ui::fonts::noto_emoji() {
+                // The suit glyphs on a crossing's card, as a last-resort fallback.
+                let families = [FontFamily::Proportional, FontFamily::Monospace]
+                    .map(|family| InsertFontFamily {
+                        family,
+                        priority: FontPriority::Lowest,
+                    })
+                    .to_vec();
+                ctx.add_font(FontInsert::new("NotoEmoji-Regular", emoji, families));
             }
         })
         .build_ui(move |ui| {
@@ -298,5 +310,212 @@ fn test_ui_rider_issues_matches_the_golden() -> Result<(), Box<dyn Error>> {
 
     // Assert
     harness.snapshot("rider_issues");
+    Ok(())
+}
+
+/// Create a fixture ride over *roster*, start it at the epoch, record one crossing and stop it.
+///
+/// Every instant is pinned, and the stopped clock reads zero, so the frame renders the same on
+/// every run.
+fn started_fixture_ride(
+    directory: &TempDir,
+    roster: &Roster,
+) -> Result<(std::path::PathBuf, i64), Box<dyn Error>> {
+    let path = directory.path().join("started.db");
+    let mut store = Store::open(&path)?;
+    let id = store.create_ride(&fixture_config()?, Some(7))?;
+    store.save_roster(id, roster)?;
+    let mut engine: RideEngine<Roster, SystemClock> = store.load_engine(id)?;
+    let date = time::Date::from_calendar_date(1970, time::Month::January, 1)?;
+    let start = time::OffsetDateTime::new_utc(date, time::Time::MIDNIGHT);
+    engine.start(Some(start))?;
+    let _ = engine.record_crossing("101", Some(start + time::Duration::hours(1)));
+    engine.stop()?;
+    for event in engine.events() {
+        store.append(id, event)?;
+    }
+    Ok((path, id))
+}
+
+/// One ride-library row to show in a golden.
+struct RowSpec {
+    /// The stored ride id.
+    id: i64,
+    /// The ride's name.
+    name: &'static str,
+    /// The lifecycle status.
+    status: RideStatus,
+    /// The live entry count.
+    entries: u32,
+}
+
+/// Return the ride-library row that *spec* names.
+fn ride_row(spec: &RowSpec) -> Result<RideRow, Box<dyn Error>> {
+    Ok(RideRow {
+        id: spec.id,
+        name: spec.name.to_owned(),
+        event_date: time::Date::from_calendar_date(2026, time::Month::September, 20)?,
+        status: spec.status,
+        entries: spec.entries,
+    })
+}
+
+#[test]
+fn test_ui_ride_library_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let rows = vec![
+        ride_row(&RowSpec {
+            id: 1,
+            name: "GORBA EPIC 2026",
+            status: RideStatus::Finished,
+            entries: 3,
+        })?,
+        ride_row(&RowSpec {
+            id: 2,
+            name: "Club poker night",
+            status: RideStatus::Draft,
+            entries: 0,
+        })?,
+    ];
+
+    // Act
+    fixture.app.borrow_mut().show_library(rows);
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("ride_library");
+    Ok(())
+}
+
+#[test]
+fn test_ui_delete_ride_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let row = ride_row(&RowSpec {
+        id: 1,
+        name: "GORBA EPIC 2026",
+        status: RideStatus::Finished,
+        entries: 3,
+    })?;
+
+    // Act
+    fixture.app.borrow_mut().show_delete_ride(row);
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("delete_ride");
+    Ok(())
+}
+
+#[test]
+fn test_ui_settings_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+
+    // Act
+    fixture.app.borrow_mut().command("wxID_PREFERENCES")?;
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("settings");
+    Ok(())
+}
+
+#[test]
+fn test_ui_audit_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = fixture_ride(&fixture.directory, &roster)?;
+    let date = time::Date::from_calendar_date(2026, time::Month::September, 20)?;
+    let at = time::OffsetDateTime::new_utc(date, time::Time::from_hms(14, 5, 9)?);
+    let rows = vec![
+        AuditRow {
+            at,
+            action: "crossing".to_owned(),
+            entry: "101".to_owned(),
+            reason: String::new(),
+        },
+        AuditRow {
+            at: at - time::Duration::minutes(4),
+            action: "void_card".to_owned(),
+            entry: "Alpha".to_owned(),
+            reason: "misdeal".to_owned(),
+        },
+    ];
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        app.show_audit(rows);
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("audit");
+    Ok(())
+}
+
+#[test]
+fn test_ui_selftest_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+
+    // Act
+    fixture.app.borrow_mut().command("mi_selftest")?;
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("selftest");
+    Ok(())
+}
+
+#[test]
+fn test_ui_about_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+
+    // Act
+    fixture.app.borrow_mut().command("wxID_ABOUT")?;
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("about");
+    Ok(())
+}
+
+#[test]
+fn test_ui_shortcuts_match_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+
+    // Act
+    fixture.app.borrow_mut().command("mi_shortcuts")?;
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("shortcuts");
+    Ok(())
+}
+
+#[test]
+fn test_ui_crossing_detail_matches_the_golden() -> Result<(), Box<dyn Error>> {
+    // Arrange
+    let fixture = golden_app()?;
+    let roster = editor_roster()?;
+    let (db, id) = started_fixture_ride(&fixture.directory, &roster)?;
+
+    // Act
+    {
+        let mut app = fixture.app.borrow_mut();
+        app.load_ride_from(&db, id)?;
+        assert!(app.open_first_crossing_detail());
+    }
+    let mut harness = build_harness(&fixture.app)?;
+
+    // Assert
+    harness.snapshot("crossing_detail");
     Ok(())
 }

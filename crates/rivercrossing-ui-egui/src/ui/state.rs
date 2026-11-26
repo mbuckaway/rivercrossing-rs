@@ -4,16 +4,17 @@
 
 use std::path::{Path, PathBuf};
 
+use rivercrossing_cards::Card;
 use rivercrossing_csvio::ImportPreview;
 use rivercrossing_ride::{EntryId, EntryMode, RideConfig, RideEngine, RideStatus, SystemClock};
 use rivercrossing_roster::enums::EntryType;
 use rivercrossing_roster::roster::Roster;
 use rivercrossing_roster::types::Rider;
-use rivercrossing_store::StoreError;
 use rivercrossing_store::settings::AppSettings;
+use rivercrossing_store::{AuditRow, PreviousSession, RideRow, StoreError};
 use uuid::Uuid;
 
-use time::Date;
+use time::{Date, OffsetDateTime};
 
 use crate::ui::action::dispatch::dispatch;
 use crate::ui::action::effect::{DispatchError, Effect};
@@ -21,7 +22,10 @@ use crate::ui::action::enable::{GateState, RidePhase};
 use crate::ui::action::id::ActionId;
 use crate::ui::action::spec::{CheckKind, CommandId, NativeDialog, Target, spec};
 use crate::ui::dialogs::{self, stack::DialogStack};
-use crate::ui::presenters::{console, rider_issues, riders, setup, teams};
+use crate::ui::presenters::{
+    audit, console, corrections, library, quit_resume, rider_issues, riders, selftest,
+    settings_form, setup, teams,
+};
 use crate::ui::sound::Cue;
 use crate::ui::worker::StoreCommand;
 
@@ -57,6 +61,18 @@ pub(crate) const FILE_PICKER_UNAVAILABLE: &str = "a file picker is not available
 pub(crate) enum NativeTask {
     /// Run the queued command.
     Command(CommandId),
+    /// Duplicate the ride that *id* names.
+    DuplicateRide {
+        /// The stored ride id.
+        id: i64,
+    },
+    /// Delete the crossing at *entry* and lap *seq*.
+    DeleteCrossing {
+        /// The entry that owns the crossing.
+        entry: EntryId,
+        /// The per-entry lap number.
+        seq: u32,
+    },
     /// Delete the rider at `rider_index` on `entry`.
     DeleteRider {
         /// The entry that owns the rider.
@@ -77,8 +93,10 @@ impl NativeTask {
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Command(command) => command.as_str(),
+            Self::DuplicateRide { .. } => "duplicate_ride",
             Self::DeleteRider { .. } => "delete_rider",
             Self::RemoveTeam { .. } => "remove_team",
+            Self::DeleteCrossing { .. } => "delete_crossing",
         }
     }
 }
@@ -186,6 +204,71 @@ pub(crate) struct RiderIssuesModel {
     pub(crate) errors: Option<String>,
 }
 
+/// The ride library's cached rows and selection.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct LibraryModel {
+    /// The rendered rows, oldest first as the store returns them.
+    pub(crate) rows: Vec<library::RideRowModel>,
+    /// The stored rows the rendered rows came from.
+    pub(crate) store_rows: Vec<RideRow>,
+    /// The selected row.
+    pub(crate) selected: Option<usize>,
+    /// The delete confirmation's instruction line.
+    pub(crate) delete_message: Option<String>,
+    /// The ride the delete dialog is about.
+    pub(crate) delete_id: Option<i64>,
+}
+
+/// The audit viewer's cached rows and filters.
+#[derive(Clone, Debug)]
+pub(crate) struct AuditModel {
+    /// The stored rows the viewer renders.
+    pub(crate) store_rows: Vec<AuditRow>,
+    /// The rendered rows, newest first.
+    pub(crate) rows: Vec<audit::AuditRowModel>,
+    /// The search text.
+    pub(crate) search: String,
+    /// The selected action filter.
+    pub(crate) action: String,
+}
+
+impl Default for AuditModel {
+    fn default() -> Self {
+        Self {
+            store_rows: Vec::new(),
+            rows: Vec::new(),
+            search: String::new(),
+            action: audit::ALL_ACTIONS.to_owned(),
+        }
+    }
+}
+
+/// The correction dialog's target and mode.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct CorrectionTarget {
+    /// The crossing being corrected, when editing one.
+    pub(crate) entry: Option<EntryId>,
+    /// The per-entry lap number, when editing one.
+    pub(crate) seq: Option<u32>,
+    /// Whether the edit-crossing dialog adds a crossing instead of changing one.
+    pub(crate) add: bool,
+}
+
+/// The Crossing Detail dialog's open state.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct CrossingDetailState {
+    /// The crossing's entry.
+    pub(crate) entry: EntryId,
+    /// The per-entry lap number.
+    pub(crate) seq: u32,
+    /// The rendered cells.
+    pub(crate) model: corrections::CrossingDetailModel,
+    /// The four button gates.
+    pub(crate) actions: corrections::CorrectionActions,
+    /// The crossing's credited card, when it holds one.
+    pub(crate) card: Option<Card>,
+}
+
 /// The exports that exist for the open ride this session.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct ExportPresence {
@@ -212,6 +295,10 @@ pub(crate) struct LoadedRide {
 
 /// The whole application state that the views render and the actions mutate.
 #[derive(Debug)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each flag is an independent UI toggle or lifecycle latch with its own reader"
+)]
 pub(crate) struct AppState {
     /// The persisted settings.
     pub(crate) settings: AppSettings,
@@ -229,6 +316,8 @@ pub(crate) struct AppState {
     pub(crate) audit_row_count: usize,
     /// The native dialog an action raised, until the app answers it.
     pub(crate) pending_native: Option<PendingNative>,
+    /// Whether the host cannot show a native dialog, so the app shows the pending one in-app.
+    pub(crate) native_in_app: bool,
     /// The command an action queued, until the app runs it.
     pub(crate) pending_command: Option<CommandId>,
     /// The plate-entry field's text.
@@ -257,6 +346,32 @@ pub(crate) struct AppState {
     pub(crate) rider_issues: RiderIssuesModel,
     /// The store commands that the next logic pass sends to the worker.
     pub(crate) pending_store: Vec<StoreCommand>,
+    /// The ride library's cached model.
+    pub(crate) library: LibraryModel,
+    /// The audit viewer's cached model.
+    pub(crate) audit: AuditModel,
+    /// The settings dialog's form values, while it is open.
+    pub(crate) settings_form: Option<settings_form::FormValues>,
+    /// The settings dialog's refusals.
+    pub(crate) settings_errors: Option<Vec<String>>,
+    /// The self-test dialog's canvas lines.
+    pub(crate) selftest_lines: Vec<String>,
+    /// The correction dialog's target and mode.
+    pub(crate) correction: CorrectionTarget,
+    /// The Crossing Detail dialog's open state.
+    pub(crate) crossing_detail: Option<CrossingDetailState>,
+    /// The previous session's resume record.
+    pub(crate) previous_session: Option<PreviousSession>,
+    /// Whether the launch prompt has been decided.
+    pub(crate) launch_resolved: bool,
+    /// The resume dialog's message, while it is open.
+    pub(crate) launch_message: Option<String>,
+    /// The quit dialog's message, while it is open.
+    pub(crate) quit_message: Option<String>,
+    /// The last hour bucket that a backup ran in.
+    pub(crate) last_backup_hour: Option<i64>,
+    /// Whether the app may close (the operator confirmed).
+    pub(crate) close_requested: bool,
 }
 
 /// The review notebook's two tabs.
@@ -289,6 +404,7 @@ impl AppState {
             exports: ExportPresence::default(),
             audit_row_count: 0,
             pending_native: None,
+            native_in_app: false,
             pending_command: None,
             plate: String::new(),
             search: String::new(),
@@ -303,6 +419,19 @@ impl AppState {
             csv_preview: CsvPreviewState::default(),
             rider_issues: RiderIssuesModel::default(),
             pending_store: Vec::new(),
+            library: LibraryModel::default(),
+            audit: AuditModel::default(),
+            settings_form: None,
+            settings_errors: None,
+            selftest_lines: Vec::new(),
+            correction: CorrectionTarget::default(),
+            crossing_detail: None,
+            previous_session: None,
+            launch_resolved: false,
+            launch_message: None,
+            quit_message: None,
+            last_backup_hour: None,
+            close_requested: false,
         }
     }
 
@@ -408,10 +537,12 @@ impl AppState {
                 Ok(())
             }
             Effect::OpenNative { dialog, then } => {
-                self.pending_native = Some(PendingNative {
-                    dialog,
-                    then: NativeTask::Command(then),
-                });
+                if then == CommandId::AppQuit {
+                    // The quit flow chooses the running dialog or the plain confirm itself.
+                    self.request_quit();
+                } else {
+                    self.raise_native(dialog, NativeTask::Command(then));
+                }
                 Ok(())
             }
         }
@@ -420,36 +551,34 @@ impl AppState {
     /// Open the dialog a window target names, or refuse a window this release does not build.
     fn open_window(&mut self, window: &'static str) -> Result<(), DispatchError> {
         match window {
-            "ride_setup_dlg" => {
-                self.open_setup_dialog(time::OffsetDateTime::now_utc().date());
-                return Ok(());
+            "ride_setup_dlg" => self.open_setup_dialog(time::OffsetDateTime::now_utc().date()),
+            "rider_editor_dlg" => self.open_rider_editor(),
+            "team_editor_dlg" => self.open_team_editor(),
+            "rider_issues_dlg" => self.open_rider_issues(),
+            // The OS file picker arrives with PR D's craft_dialogs; until then the Import row
+            // names the missing piece instead of opening an empty preview.
+            "csv_preview_dlg" => self.note(FILE_PICKER_UNAVAILABLE),
+            "ride_library_dlg" => self.open_library(),
+            "audit_dlg" => self.open_audit(),
+            "settings_dlg" => self.open_settings(),
+            "selftest_dlg" => self.open_selftest(),
+            "edit_crossing_dlg" => self.open_add_crossing(),
+            "manual_deal_dlg" => self.open_manual_deal(),
+            "dnf_confirm_dlg" => self.open_dnf(),
+            "set_start_dlg" => self.open_set_start(),
+            "void_card_confirm_dlg" => self.open_void_card(),
+            "crossing_number_dlg" => self.open_crossing_number(),
+            "crossing_detail_dlg" => {}
+            _ => {
+                let Some(dialog) = dialogs::spec::spec(window) else {
+                    return Err(DispatchError::NotImplemented(window));
+                };
+                self.dialogs
+                    .open(dialog.id, None)
+                    .map_err(|_| DispatchError::NotImplemented(window))?;
             }
-            "rider_editor_dlg" => {
-                self.open_rider_editor();
-                return Ok(());
-            }
-            "team_editor_dlg" => {
-                self.open_team_editor();
-                return Ok(());
-            }
-            "rider_issues_dlg" => {
-                self.open_rider_issues();
-                return Ok(());
-            }
-            "csv_preview_dlg" => {
-                // The OS file picker arrives with PR D's craft_dialogs; until then the Import row
-                // names the missing piece instead of opening an empty preview.
-                self.note(FILE_PICKER_UNAVAILABLE);
-                return Ok(());
-            }
-            _ => {}
         }
-        let Some(dialog) = dialogs::spec::spec(window) else {
-            return Err(DispatchError::NotImplemented(window));
-        };
-        self.dialogs
-            .open(dialog.id, None)
-            .map_err(|_| DispatchError::NotImplemented(window))
+        Ok(())
     }
 
     // ------------------------------------------------------------- setup
@@ -612,6 +741,12 @@ impl AppState {
         self.note(message);
     }
 
+    /// Raise a native dialog and clear the in-app fallback flag.
+    pub(crate) fn raise_native(&mut self, dialog: NativeDialog, then: NativeTask) {
+        self.pending_native = Some(PendingNative { dialog, then });
+        self.native_in_app = false;
+    }
+
     /// Confirm the pending native dialog: queue its command and clear the pending dialog.
     ///
     /// Return whether a native dialog was pending. The command runs on the app's next logic pass.
@@ -619,17 +754,8 @@ impl AppState {
         let Some(native) = self.pending_native.take() else {
             return false;
         };
-        match native.then {
-            NativeTask::Command(command) => self.pending_command = Some(command),
-            NativeTask::DeleteRider { entry, rider_index } => {
-                self.rider_editor.selected = Some(RiderSelection { entry, rider_index });
-                let _ = self.delete_selected_rider();
-            }
-            NativeTask::RemoveTeam { entry } => {
-                self.team_editor.selected = Some(entry);
-                let _ = self.remove_selected_team();
-            }
-        }
+        self.native_in_app = false;
+        self.run_native_task(native.then);
         true
     }
 
@@ -637,6 +763,7 @@ impl AppState {
     ///
     /// Return whether a native dialog was pending.
     pub(crate) fn cancel_native(&mut self) -> bool {
+        self.native_in_app = false;
         self.pending_native.take().is_some()
     }
 
@@ -711,6 +838,15 @@ impl AppState {
             "add_team_dlg" if self.team_editor.editing.is_some() => Some(self.submit_edit_team()),
             "add_team_dlg" => Some(self.submit_add_team()),
             "csv_preview_dlg" => Some(self.submit_csv_import()),
+            "settings_dlg" => Some(self.submit_settings().map_err(|errors| errors.join("; "))),
+            "delete_ride_dlg" => Some(self.submit_delete_ride()),
+            "edit_crossing_dlg" => Some(self.submit_edit_crossing()),
+            "manual_deal_dlg" => Some(self.submit_manual_deal()),
+            "dnf_confirm_dlg" => Some(self.submit_dnf()),
+            "void_card_confirm_dlg" => Some(self.submit_void_card()),
+            "crossing_number_dlg" => Some(self.submit_crossing_number()),
+            "set_start_dlg" => Some(self.submit_set_start()),
+            "ride_library_dlg" => Some(self.open_library_selected()),
             _ => None,
         }
     }
@@ -1045,13 +1181,13 @@ impl AppState {
         let Some(selection) = self.rider_editor.selected.clone() else {
             return false;
         };
-        self.pending_native = Some(PendingNative {
-            dialog: NativeDialog::Danger,
-            then: NativeTask::DeleteRider {
+        self.raise_native(
+            NativeDialog::Danger,
+            NativeTask::DeleteRider {
                 entry: selection.entry,
                 rider_index: selection.rider_index,
             },
-        });
+        );
         true
     }
 
@@ -1419,10 +1555,7 @@ impl AppState {
         let Some(entry) = self.team_editor.selected.clone() else {
             return false;
         };
-        self.pending_native = Some(PendingNative {
-            dialog: NativeDialog::Danger,
-            then: NativeTask::RemoveTeam { entry },
-        });
+        self.raise_native(NativeDialog::Danger, NativeTask::RemoveTeam { entry });
         true
     }
 
@@ -1573,12 +1706,791 @@ impl AppState {
         }
     }
 
+    // ------------------------------------------------------- native tasks
+
+    /// Run the task a confirmed native dialog names.
+    pub(crate) fn run_native_task(&mut self, task: NativeTask) {
+        match task {
+            NativeTask::Command(command) => self.pending_command = Some(command),
+            NativeTask::DuplicateRide { id } => {
+                self.pending_store.push(StoreCommand::DuplicateRide { id });
+            }
+            NativeTask::DeleteRider { entry, rider_index } => {
+                self.rider_editor.selected = Some(RiderSelection { entry, rider_index });
+                let _ = self.delete_selected_rider();
+            }
+            NativeTask::RemoveTeam { entry } => {
+                self.team_editor.selected = Some(entry);
+                let _ = self.remove_selected_team();
+            }
+            NativeTask::DeleteCrossing { entry, seq } => {
+                let _ = self.delete_crossing(&entry, seq);
+            }
+        }
+    }
+
+    /// Return the native confirmation's title for the dialog kind.
+    #[must_use]
+    pub(crate) const fn native_title(dialog: NativeDialog) -> &'static str {
+        match dialog {
+            NativeDialog::Confirm => "Confirm",
+            NativeDialog::Danger => "Warning",
+            NativeDialog::Prompt => "Input required",
+            NativeDialog::Error => "Error",
+        }
+    }
+
+    /// Return the native confirmation's message, naming the action or record it guards.
+    #[must_use]
+    pub(crate) fn native_message(&self, pending: &PendingNative) -> String {
+        match &pending.then {
+            NativeTask::Command(CommandId::UndoCrossing) => "Undo the last crossing?".to_owned(),
+            NativeTask::Command(CommandId::StopRide) => "Stop the ride?".to_owned(),
+            NativeTask::Command(CommandId::FinishRide) => "Finish the ride?".to_owned(),
+            NativeTask::Command(CommandId::ClearRide) => {
+                "Clear the ride from the console? The database is untouched.".to_owned()
+            }
+            NativeTask::Command(CommandId::ReopenRide) => {
+                "Reopen the finished ride for corrections?".to_owned()
+            }
+            NativeTask::Command(CommandId::DuplicateRide) => "Duplicate the open ride?".to_owned(),
+            NativeTask::Command(CommandId::AppQuit) => "Quit RiverCrossing?".to_owned(),
+            NativeTask::Command(other) => format!("Run {}?", other.as_str()),
+            NativeTask::DuplicateRide { id } => self
+                .library
+                .store_rows
+                .iter()
+                .find(|row| row.id == *id)
+                .map_or_else(
+                    || "Duplicate this ride?".to_owned(),
+                    |row| library::duplicate_confirm(&row.name),
+                ),
+            NativeTask::DeleteRider { entry, .. } => self
+                .ride
+                .as_ref()
+                .and_then(|ride| ride.roster.entry_by_key(&entry.0))
+                .map_or_else(
+                    || "Delete the selected rider?".to_owned(),
+                    riders::delete_message,
+                ),
+            NativeTask::RemoveTeam { entry } => self
+                .ride
+                .as_ref()
+                .and_then(|ride| ride.roster.entry_by_key(&entry.0))
+                .map_or_else(
+                    || "Remove the selected team?".to_owned(),
+                    teams::remove_message,
+                ),
+            NativeTask::DeleteCrossing { .. } => "Delete this crossing?".to_owned(),
+        }
+    }
+
+    /// Return the native confirmation's confirm label.
+    #[must_use]
+    pub(crate) const fn native_confirm_label(pending: &PendingNative) -> &'static str {
+        match &pending.then {
+            NativeTask::Command(CommandId::UndoCrossing) => "Undo",
+            NativeTask::Command(CommandId::StopRide) => "Stop",
+            NativeTask::Command(CommandId::FinishRide) => "Finish",
+            NativeTask::Command(CommandId::ClearRide) => "Clear",
+            NativeTask::Command(CommandId::ReopenRide) => "Reopen",
+            NativeTask::Command(CommandId::AppQuit) => "Quit",
+            NativeTask::Command(CommandId::DuplicateRide) | NativeTask::DuplicateRide { .. } => {
+                "Duplicate"
+            }
+            NativeTask::Command(_) => "OK",
+            NativeTask::DeleteRider { .. } | NativeTask::DeleteCrossing { .. } => "Delete",
+            NativeTask::RemoveTeam { .. } => "Remove",
+        }
+    }
+
+    // -------------------------------------------------------- launch/quit
+
+    /// Record the previous session and decide the launch prompt.
+    pub(crate) fn apply_previous_session(&mut self, session: PreviousSession) {
+        self.previous_session = Some(session);
+        self.reconcile_launch();
+    }
+
+    /// Decide the launch prompt once the session and the ride list are both known.
+    pub(crate) fn reconcile_launch(&mut self) {
+        if self.launch_resolved {
+            return;
+        }
+        let Some(session) = self.previous_session.clone() else {
+            return;
+        };
+        self.launch_resolved = true;
+        let has_rides = !self.library.store_rows.is_empty();
+        match quit_resume::launch_choice(&session, has_rides) {
+            quit_resume::LaunchChoice::Nothing => {}
+            quit_resume::LaunchChoice::Library => self.open_library(),
+            quit_resume::LaunchChoice::Resume => {
+                let name = session
+                    .ride_id
+                    .and_then(|id| {
+                        self.library
+                            .store_rows
+                            .iter()
+                            .find(|row| row.id == id)
+                            .map(|row| row.name.clone())
+                    })
+                    .unwrap_or_else(|| "The last ride".to_owned());
+                let at = session.ended_at.unwrap_or_else(OffsetDateTime::now_utc);
+                let message = quit_resume::continue_message(&name, session.state, at)
+                    .unwrap_or_else(|_| format!("\"{name}\" is still open."));
+                self.launch_message = Some(message);
+                let _ = self.dialogs.open("resume_dlg", None);
+            }
+        }
+    }
+
+    /// Resume the ride that the resume dialog names.
+    pub(crate) fn resume_continue(&mut self) {
+        if let Some(id) = self
+            .previous_session
+            .as_ref()
+            .and_then(|session| session.ride_id)
+        {
+            self.pending_store.push(StoreCommand::LoadRide { id });
+        }
+        self.launch_message = None;
+        let _ = self.dialogs.cancel();
+    }
+
+    /// Open the ride library from the resume dialog.
+    pub(crate) fn resume_library(&mut self) {
+        self.launch_message = None;
+        let _ = self.dialogs.cancel();
+        self.open_library();
+    }
+
+    /// Offer the quit flow: the running dialog for a live ride, else the plain confirm.
+    pub(crate) fn request_quit(&mut self) {
+        let running = self
+            .ride
+            .as_ref()
+            .is_some_and(|ride| ride.engine.state() == RideStatus::Running);
+        if running {
+            let name = self
+                .ride
+                .as_ref()
+                .map_or_else(String::new, |ride| ride.config.name.clone());
+            self.quit_message = Some(quit_resume::running_exit_message(&name));
+            let _ = self.dialogs.open("exit_running_dlg", None);
+        } else {
+            self.raise_native(
+                NativeDialog::Confirm,
+                NativeTask::Command(CommandId::AppQuit),
+            );
+        }
+    }
+
+    /// Allow the app to close; the app sends the close and stops the store thread.
+    pub(crate) fn confirm_quit(&mut self) {
+        self.close_requested = true;
+    }
+
+    /// Finish the ride, then allow the app to close.
+    pub(crate) fn finish_and_quit(&mut self) {
+        self.finish_ride();
+        self.close_requested = true;
+    }
+
+    // ------------------------------------------------------------ backups
+
+    /// Run the startup backup and remember its hour.
+    pub(crate) fn startup_backup(&mut self) {
+        self.last_backup_hour = Some(hour_bucket(OffsetDateTime::now_utc()));
+        self.pending_store.push(StoreCommand::BackupNow);
+    }
+
+    /// Queue a backup when *now* enters a new hour.
+    pub(crate) fn due_hourly_backup(&mut self, now: OffsetDateTime) -> bool {
+        let hour = hour_bucket(now);
+        if self.last_backup_hour == Some(hour) {
+            return false;
+        }
+        self.last_backup_hour = Some(hour);
+        self.pending_store.push(StoreCommand::BackupNow);
+        true
+    }
+
+    /// Queue a backup on request (`mi_backup_now`).
+    pub(crate) fn queue_backup(&mut self) {
+        self.pending_store.push(StoreCommand::BackupNow);
+    }
+
+    // ----------------------------------------------------------- library
+
+    /// Open the ride library and ask the store for its rows.
+    pub(crate) fn open_library(&mut self) {
+        self.library.selected = None;
+        self.library.delete_message = None;
+        self.library.delete_id = None;
+        let _ = self.dialogs.open("ride_library_dlg", None);
+        self.pending_store.push(StoreCommand::Rides);
+    }
+
+    /// Replace the library rows and clamp the selection.
+    pub(crate) fn set_library_rows(&mut self, rows: Vec<RideRow>) {
+        self.library.rows = library::rows(&rows);
+        self.library.store_rows = rows;
+        if self
+            .library
+            .selected
+            .is_some_and(|index| index >= self.library.rows.len())
+        {
+            self.library.selected = None;
+        }
+    }
+
+    /// Return the selected library row.
+    fn selected_library_row(&self) -> Option<&RideRow> {
+        self.library
+            .selected
+            .and_then(|index| self.library.store_rows.get(index))
+    }
+
+    /// Load the selected library ride.
+    ///
+    /// # Errors
+    ///
+    /// Return the select-a-ride refusal.
+    pub(crate) fn open_library_selected(&mut self) -> Result<(), String> {
+        let Some(row) = self.selected_library_row() else {
+            return Err("Select a ride first".to_owned());
+        };
+        self.pending_store
+            .push(StoreCommand::LoadRide { id: row.id });
+        let _ = self.dialogs.cancel();
+        Ok(())
+    }
+
+    /// Ask to duplicate the selected library ride.
+    ///
+    /// Return whether a ride was selected.
+    pub(crate) fn duplicate_library_selected(&mut self) -> bool {
+        let Some(row) = self.selected_library_row() else {
+            return false;
+        };
+        self.raise_native(
+            NativeDialog::Prompt,
+            NativeTask::DuplicateRide { id: row.id },
+        );
+        true
+    }
+
+    /// Return whether a library row is selected.
+    #[must_use]
+    pub(crate) fn library_ready(&self) -> bool {
+        self.selected_library_row().is_some()
+    }
+
+    /// Return whether the selected library ride may be deleted (never a running one).
+    #[must_use]
+    pub(crate) fn library_delete_ready(&self) -> bool {
+        self.selected_library_row()
+            .is_some_and(|row| row.status != RideStatus::Running)
+    }
+
+    /// Return whether the typed confirmation arms the delete.
+    #[must_use]
+    pub(crate) fn delete_ride_armed(&self) -> bool {
+        let Some(id) = self.library.delete_id else {
+            return false;
+        };
+        let typed = self.dialogs.field("confirm_name_input").unwrap_or_default();
+        self.library
+            .store_rows
+            .iter()
+            .find(|row| row.id == id)
+            .is_some_and(|row| library::delete_matches(row, typed))
+    }
+
+    /// Open the typed delete confirmation for the selected library ride.
+    ///
+    /// Return whether a ride was selected.
+    pub(crate) fn delete_library_selected(&mut self) -> bool {
+        let Some(row) = self
+            .selected_library_row()
+            .map(|row| (row.id, library::delete_requires(row)))
+        else {
+            return false;
+        };
+        self.library.delete_message = Some(row.1);
+        self.library.delete_id = Some(row.0);
+        let _ = self.dialogs.open("delete_ride_dlg", None);
+        let _ = self.dialogs.set_field("confirm_name_input", "");
+        true
+    }
+
+    /// Submit the typed delete confirmation.
+    ///
+    /// # Errors
+    ///
+    /// Return the no-selection refusal and the type-the-name gate's refusal.
+    pub(crate) fn submit_delete_ride(&mut self) -> Result<(), String> {
+        let Some(id) = self.library.delete_id else {
+            return Err("Select a ride first".to_owned());
+        };
+        let Some(row) = self.library.store_rows.iter().find(|row| row.id == id) else {
+            return Err("Select a ride first".to_owned());
+        };
+        let typed = self
+            .dialogs
+            .field("confirm_name_input")
+            .unwrap_or_default()
+            .to_owned();
+        if !library::delete_matches(row, &typed) {
+            return Err(format!("Type \"{}\" to confirm.", row.name));
+        }
+        self.pending_store.push(StoreCommand::DeleteRide {
+            id,
+            typed_name: typed,
+        });
+        let _ = self.dialogs.cancel();
+        Ok(())
+    }
+
+    // ------------------------------------------------------------- audit
+
+    /// Open the audit viewer and ask the store for the ride's rows.
+    pub(crate) fn open_audit(&mut self) {
+        self.audit.search.clear();
+        audit::ALL_ACTIONS.clone_into(&mut self.audit.action);
+        let Some(id) = self.ride.as_ref().map(|ride| ride.ride_id) else {
+            self.note("Open a ride first");
+            return;
+        };
+        let _ = self.dialogs.open("audit_dlg", None);
+        self.pending_store.push(StoreCommand::AuditRows { id });
+    }
+
+    /// Replace the audit rows and render them against the open roster.
+    pub(crate) fn set_audit_rows(&mut self, rows: Vec<AuditRow>) {
+        self.audit.rows = match self.ride.as_ref() {
+            Some(ride) => audit::rows(&rows, &ride.roster),
+            None => Vec::new(),
+        };
+        self.audit.store_rows = rows;
+    }
+
+    /// Return the audit rows that the current filters keep.
+    #[must_use]
+    pub(crate) fn filtered_audit(&self) -> Vec<audit::AuditRowModel> {
+        audit::filter(&self.audit.rows, &self.audit.search, &self.audit.action)
+    }
+
+    // ---------------------------------------------------------- settings
+
+    /// Open the settings dialog on the stored values.
+    pub(crate) fn open_settings(&mut self) {
+        self.settings_form = Some(settings_form::from_settings(&self.settings));
+        self.settings_errors = None;
+        let _ = self.dialogs.open("settings_dlg", None);
+    }
+
+    /// Apply and save the settings dialog's form.
+    ///
+    /// # Errors
+    ///
+    /// Return the presenter's refusals and keep the dialog open with them in its infobar.
+    pub(crate) fn submit_settings(&mut self) -> Result<(), Vec<String>> {
+        let Some(values) = self.settings_form.clone() else {
+            return Err(vec!["The settings dialog is not open".to_owned()]);
+        };
+        let messages = settings_form::apply(&values, &mut self.settings);
+        if !messages.is_empty() {
+            self.settings_errors = Some(messages.clone());
+            return Err(messages);
+        }
+        self.settings_errors = None;
+        self.settings_form = None;
+        self.persist_settings();
+        let _ = self.dialogs.cancel();
+        Ok(())
+    }
+
+    // ---------------------------------------------------------- self-test
+
+    /// Open the self-test dialog on a fresh run.
+    pub(crate) fn open_selftest(&mut self) {
+        self.selftest_lines = selftest::run();
+        let _ = self.dialogs.open("selftest_dlg", None);
+    }
+
+    /// Run the self-test again.
+    pub(crate) fn rerun_selftest(&mut self) {
+        self.selftest_lines = selftest::run();
+    }
+
+    // -------------------------------------------------------- corrections
+
+    /// Open the edit-crossing dialog in add mode.
+    pub(crate) fn open_add_crossing(&mut self) {
+        self.correction = CorrectionTarget {
+            entry: None,
+            seq: None,
+            add: true,
+        };
+        let _ = self.dialogs.open("edit_crossing_dlg", None);
+        self.seed_correction_fields([
+            ("plate_input", ""),
+            ("time_picker", ""),
+            ("reason_input", ""),
+        ]);
+    }
+
+    /// Open the edit-crossing dialog on the Crossing Detail's crossing.
+    pub(crate) fn open_edit_crossing(&mut self) {
+        let Some(detail) = self.crossing_detail.clone() else {
+            return;
+        };
+        self.correction = CorrectionTarget {
+            entry: Some(detail.entry),
+            seq: Some(detail.seq),
+            add: false,
+        };
+        let plate = detail.model.plate;
+        let time = detail.model.time;
+        let _ = self.dialogs.open("edit_crossing_dlg", None);
+        self.seed_correction_fields([
+            ("plate_input", &plate),
+            ("time_picker", &time),
+            ("reason_input", ""),
+        ]);
+    }
+
+    /// Open the manual-deal dialog.
+    pub(crate) fn open_manual_deal(&mut self) {
+        let _ = self.dialogs.open("manual_deal_dlg", None);
+        self.seed_correction_fields([
+            ("plate_input", ""),
+            ("time_picker", ""),
+            ("reason_input", ""),
+        ]);
+    }
+
+    /// Open the DNF dialog.
+    pub(crate) fn open_dnf(&mut self) {
+        let _ = self.dialogs.open("dnf_confirm_dlg", None);
+        self.seed_correction_fields([
+            ("plate_input", ""),
+            ("time_picker", ""),
+            ("reason_input", ""),
+        ]);
+    }
+
+    /// Open the void-card dialog when the crossing holds a credited card.
+    pub(crate) fn open_void_card(&mut self) {
+        if self
+            .crossing_detail
+            .as_ref()
+            .is_none_or(|detail| detail.card.is_none())
+        {
+            return;
+        }
+        let _ = self.dialogs.open("void_card_confirm_dlg", None);
+        self.seed_correction_fields([
+            ("plate_input", ""),
+            ("time_picker", ""),
+            ("reason_input", ""),
+        ]);
+    }
+
+    /// Raise the native danger that guards the Crossing Detail's delete.
+    ///
+    /// Return whether a crossing is open.
+    pub(crate) fn raise_delete_crossing(&mut self) -> bool {
+        let Some(detail) = self.crossing_detail.clone() else {
+            return false;
+        };
+        self.raise_native(
+            NativeDialog::Danger,
+            NativeTask::DeleteCrossing {
+                entry: detail.entry,
+                seq: detail.seq,
+            },
+        );
+        true
+    }
+
+    /// Open the plate prompt on the Crossing Detail's crossing.
+    pub(crate) fn open_crossing_number(&mut self) {
+        let Some(detail) = self.crossing_detail.clone() else {
+            return;
+        };
+        let _ = self.dialogs.open("crossing_number_dlg", None);
+        let _ = self.dialogs.set_field("number_input", detail.model.plate);
+    }
+
+    /// Open the set-start dialog on the ride's event date and start.
+    pub(crate) fn open_set_start(&mut self) {
+        let Some(ride) = self.ride.as_ref() else {
+            return;
+        };
+        let date = format!(
+            "{:04}-{:02}-{:02}",
+            ride.config.event_date.year(),
+            u8::from(ride.config.event_date.month()),
+            ride.config.event_date.day()
+        );
+        let time = ride.engine.actual_start().map_or_else(
+            || "00:00:00".to_owned(),
+            |at| format!("{:02}:{:02}:{:02}", at.hour(), at.minute(), at.second()),
+        );
+        let _ = self.dialogs.open("set_start_dlg", None);
+        let _ = self.dialogs.set_field("start_date_picker", date);
+        let _ = self.dialogs.set_field("start_time_picker", time);
+    }
+
+    /// Seed the three correction form fields.
+    fn seed_correction_fields(&mut self, values: [(&str, &str); 3]) {
+        for (field, value) in values {
+            let _ = self.dialogs.set_field(field, value);
+        }
+    }
+
+    /// Read one correction field.
+    fn correction_field(&self, id: &str) -> String {
+        self.dialogs.field(id).unwrap_or_default().to_owned()
+    }
+
+    /// Submit the edit-crossing form in its current mode.
+    ///
+    /// # Errors
+    ///
+    /// Return the presenter's refusal (a blank reason, a bad time, the engine's own).
+    pub(crate) fn submit_edit_crossing(&mut self) -> Result<(), String> {
+        let plate = self.correction_field("plate_input");
+        let time = self.correction_field("time_picker");
+        let reason = self.correction_field("reason_input");
+        let target = self.correction.clone();
+        let fields = EditFields {
+            plate: &plate,
+            time: &time,
+            reason: &reason,
+        };
+        let outcome = match self.ride.as_mut() {
+            Some(ride) => edit_crossing_outcome(&target, ride, &fields),
+            None => Err(NO_RIDE.to_owned()),
+        };
+        self.finish_correction(outcome)
+    }
+
+    /// Submit the manual-deal form.
+    ///
+    /// # Errors
+    ///
+    /// Return the presenter's refusal.
+    pub(crate) fn submit_manual_deal(&mut self) -> Result<(), String> {
+        let plate = self.correction_field("plate_input");
+        let reason = self.correction_field("reason_input");
+        let outcome = match self.ride.as_mut() {
+            Some(ride) => corrections::deal_manual(&mut ride.engine, &plate, &reason),
+            None => Err(NO_RIDE.to_owned()),
+        };
+        self.finish_correction(outcome)
+    }
+
+    /// Submit the DNF form.
+    ///
+    /// # Errors
+    ///
+    /// Return the presenter's refusal.
+    pub(crate) fn submit_dnf(&mut self) -> Result<(), String> {
+        let plate = self.correction_field("plate_input");
+        let reason = self.correction_field("reason_input");
+        let outcome = match self.ride.as_mut() {
+            Some(ride) => corrections::mark_dnf(&mut ride.engine, &plate, &reason),
+            None => Err(NO_RIDE.to_owned()),
+        };
+        self.finish_correction(outcome)
+    }
+
+    /// Submit the void-card form on the Crossing Detail's card.
+    ///
+    /// # Errors
+    ///
+    /// Return the presenter's refusal (a blank reason, the engine's own).
+    pub(crate) fn submit_void_card(&mut self) -> Result<(), String> {
+        let reason = self.correction_field("reason_input");
+        let Some(detail) = self.crossing_detail.clone() else {
+            return Err("Open a crossing first".to_owned());
+        };
+        let Some(card) = detail.card else {
+            return Err("This crossing has no credited card".to_owned());
+        };
+        let plate = detail.model.plate.clone();
+        let outcome = match self.ride.as_mut() {
+            Some(ride) => corrections::void_card(&mut ride.engine, &plate, &card, &reason),
+            None => Err(NO_RIDE.to_owned()),
+        };
+        self.finish_correction(outcome)
+    }
+
+    /// Submit the plate prompt on the Crossing Detail's crossing.
+    ///
+    /// # Errors
+    ///
+    /// Return the no-crossing refusal and the engine's own refusal.
+    pub(crate) fn submit_crossing_number(&mut self) -> Result<(), String> {
+        let Some(detail) = self.crossing_detail.clone() else {
+            return Err("Open a crossing first".to_owned());
+        };
+        let plate = self.correction_field("number_input");
+        let outcome = match self.ride.as_mut() {
+            Some(ride) => {
+                let ordinal = crossing_ordinal(&ride.engine, &detail.entry, detail.seq)
+                    .ok_or_else(|| "the crossing is no longer in the ride".to_owned())?;
+                ride.engine
+                    .reassign_crossing(ordinal, plate.trim(), "crossing detail edit")
+                    .map_err(|error| error.to_string())
+            }
+            None => Err(NO_RIDE.to_owned()),
+        };
+        match outcome {
+            Ok(event) => {
+                self.append_event(&event);
+                self.note("Plate changed");
+                let _ = self.dialogs.cancel();
+                self.refresh_crossing_detail();
+                Ok(())
+            }
+            Err(message) => Err(message),
+        }
+    }
+
+    /// Submit the set-start form.
+    ///
+    /// # Errors
+    ///
+    /// Return the presenter's refusal.
+    pub(crate) fn submit_set_start(&mut self) -> Result<(), String> {
+        let date = self.correction_field("start_date_picker");
+        let time = self.correction_field("start_time_picker");
+        let outcome = match self.ride.as_mut() {
+            Some(ride) => corrections::set_start(&mut ride.engine, &date, &time),
+            None => Err(NO_RIDE.to_owned()),
+        };
+        self.finish_correction(outcome)
+    }
+
+    /// Queue one accepted correction's event and refresh the views.
+    fn finish_correction(
+        &mut self,
+        outcome: Result<corrections::CorrectionOutcome, String>,
+    ) -> Result<(), String> {
+        match outcome {
+            Ok(outcome) => {
+                self.append_event(&outcome.event);
+                self.note(outcome.notice);
+                let _ = self.dialogs.cancel();
+                self.refresh_models();
+                self.refresh_crossing_detail();
+                Ok(())
+            }
+            Err(message) => {
+                self.note(message.clone());
+                Err(message)
+            }
+        }
+    }
+
+    /// Queue one engine event for the store.
+    fn append_event(&mut self, event: &rivercrossing_ride::Event) {
+        let Some(id) = self.ride.as_ref().map(|ride| ride.ride_id) else {
+            return;
+        };
+        self.pending_store.push(StoreCommand::Append {
+            id,
+            event: Box::new(event.clone()),
+        });
+    }
+
+    /// Open the Crossing Detail dialog on the crossing at *entry* and lap *seq*.
+    pub(crate) fn open_crossing_detail(&mut self, entry: &EntryId, seq: u32) {
+        let Some(ride) = self.ride.as_ref() else {
+            return;
+        };
+        let Some(crossing) = ride
+            .engine
+            .crossings()
+            .iter()
+            .find(|crossing| crossing.entry_id == *entry && crossing.seq == seq)
+            .cloned()
+        else {
+            return;
+        };
+        let model = corrections::crossing_detail_fields(&crossing, &ride.engine, &ride.roster);
+        let actions = corrections::can_edit(&ride.engine, &crossing);
+        let card = ride.engine.card_for(&crossing);
+        self.crossing_detail = Some(CrossingDetailState {
+            entry: entry.clone(),
+            seq,
+            model,
+            actions,
+            card,
+        });
+        let _ = self.dialogs.open("crossing_detail_dlg", None);
+    }
+
+    /// Re-render the Crossing Detail dialog from the engine.
+    fn refresh_crossing_detail(&mut self) {
+        let Some(detail) = self.crossing_detail.clone() else {
+            return;
+        };
+        self.open_crossing_detail(&detail.entry, detail.seq);
+    }
+
+    /// Delete one crossing through the engine, after the native confirm.
+    ///
+    /// # Errors
+    ///
+    /// Return the no-ride and engine refusals.
+    pub(crate) fn delete_crossing(&mut self, entry: &EntryId, seq: u32) -> Result<(), String> {
+        let outcome = match self.ride.as_mut() {
+            Some(ride) => {
+                let newest = ride
+                    .engine
+                    .crossings()
+                    .last()
+                    .is_some_and(|last| last.entry_id == *entry && last.seq == seq);
+                if newest {
+                    ride.engine.undo_last().map_err(|error| error.to_string())
+                } else {
+                    ride.engine
+                        .void_crossing(entry, seq, "crossing detail delete")
+                        .map_err(|error| error.to_string())
+                }
+            }
+            None => Err(NO_RIDE.to_owned()),
+        };
+        match outcome {
+            Ok(event) => {
+                self.append_event(&event);
+                self.note("Crossing deleted");
+                self.crossing_detail = None;
+                let _ = self.dialogs.cancel();
+                self.refresh_models();
+                Ok(())
+            }
+            Err(message) => {
+                self.note(message.clone());
+                Err(message)
+            }
+        }
+    }
+
     /// Unload the ride from the console; the database is untouched.
     pub(crate) fn clear_ride(&mut self) {
         self.ride = None;
         self.exports = ExportPresence::default();
         self.audit_row_count = 0;
         self.clock_frozen = None;
+        self.crossing_detail = None;
+        self.pending_store.push(StoreCommand::ClearActiveRide);
         self.note("Ride cleared");
     }
 
@@ -1656,6 +2568,56 @@ fn team_rows(roster: &Roster, single_member_only: bool) -> Vec<TeamEditorRow> {
         }
     }
     rows
+}
+
+/// Return the ride-wide ordinal (one-based) of the crossing at *entry* and lap *seq*.
+fn crossing_ordinal(
+    engine: &RideEngine<Roster, SystemClock>,
+    entry: &EntryId,
+    seq: u32,
+) -> Option<u32> {
+    let index = engine
+        .crossings()
+        .iter()
+        .position(|crossing| crossing.entry_id == *entry && crossing.seq == seq)?;
+    u32::try_from(index).ok().map(|index| index + 1)
+}
+
+/// The three values the edit-crossing form carries.
+struct EditFields<'a> {
+    /// The typed plate.
+    plate: &'a str,
+    /// The typed crossing time.
+    time: &'a str,
+    /// The typed reason.
+    reason: &'a str,
+}
+
+/// Apply the edit-crossing form to *ride*: add a crossing, or edit the selected one.
+fn edit_crossing_outcome(
+    target: &CorrectionTarget,
+    ride: &mut LoadedRide,
+    fields: &EditFields<'_>,
+) -> Result<corrections::CorrectionOutcome, String> {
+    if target.add {
+        return corrections::add_crossing_at(
+            &mut ride.engine,
+            fields.plate,
+            fields.time,
+            fields.reason,
+        );
+    }
+    let seq = target.seq.unwrap_or(0);
+    let entry = target
+        .entry
+        .clone()
+        .ok_or_else(|| "Select a crossing first".to_owned())?;
+    corrections::edit_crossing(&mut ride.engine, &entry, seq, fields.time, fields.reason)
+}
+
+/// Return *now*'s hour bucket, the unit a backup runs once per.
+fn hour_bucket(now: OffsetDateTime) -> i64 {
+    now.unix_timestamp().div_euclid(3_600)
 }
 
 /// The rider record the Add/Edit form preloads and the editor displays.

@@ -71,13 +71,18 @@ fn test_a_destructive_dialog_starts_on_cancel() -> Result<(), DialogError> {
     // Arrange
     let mut stack = DialogStack::default();
 
-    // Act
+    // Act: the typed confirmation field takes the focus, and Enter still cancels.
     stack.open("delete_ride_dlg", Some("ride_library_dlg"))?;
+    let event = stack.confirm()?;
 
     // Assert
     assert_eq!(
-        stack.top().map(|dialog| dialog.focus.clone()),
-        Some(Focus::Button(Button::Cancel))
+        event,
+        DialogEvent::Confirmed {
+            id: "delete_ride_dlg",
+            button: Button::Cancel,
+            opener: Some("ride_library_dlg"),
+        }
     );
     Ok(())
 }
