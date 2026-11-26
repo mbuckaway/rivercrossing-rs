@@ -14,7 +14,7 @@ jobs:
 
       - name: Install build and Vulkan dependencies
         run: |
-          sudo apt-get update
+          sudo apt-get update -o Acquire::Retries=3 || true
           sudo apt-get install -y --no-install-recommends \
             libasound2-dev pkg-config libxkbcommon-dev \
             mesa-vulkan-drivers libvulkan1 libegl1 libgl1 python3
