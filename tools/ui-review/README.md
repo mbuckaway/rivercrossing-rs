@@ -30,18 +30,25 @@ loopback port, and quits the app when the sweep ends.
 }
 ```
 
-Steps: `command` (`ui.command`), `click` (`ui.click` with a selector object), `set` (`ui.set`),
-`wait` (seconds), `shot` (`ui.screenshot` then copy). A recipe that fails is reported and the sweep
-continues.
+Steps: `command` (`ui.command`), `try_command` (same, errors ignored — used by the reset prefix),
+`click` (`ui.click` with a selector), `set` (`ui.set`), `dialog_set` (`ui.dialog.set`),
+`dialog_confirm` / `dialog_cancel`, `try_dialog_confirm` (ignored when no dialog is open),
+`wait` (seconds), `shot` (`ui.screenshot` then copy; a same-size resize first so an idle window
+presents a frame). A recipe that fails is reported and the sweep continues.
+
+Every recipe starts with a reset prefix: stop, finish and clear any persisted active ride, answering
+each confirmation. A ride-dependent recipe then creates a ride, runs the simulator (Generate Riders,
+then GO) and resumes it where a correction dialog needs a live ride.
 
 ## Recipes present
 
-`about`, `console-no-ride`, `ride-library`, `ride-setup`, `self-test`, `settings`, `shortcuts`,
-`simulation`, `standings-no-ride`.
+Console: `console-no-ride`, `console-draft`, `console-finished`, `sim-running`.
+Dialogs: `settings`, `ride-setup`, `ride-library`, `standings-no-ride`, `standings-full`, `audit`,
+`simulation`, `shortcuts`, `self-test`, `about`, `edit-crossing`, `manual-deal`, `dnf`, `set-start`.
 
-Dialogs that need a ride state (audit, crossing detail, corrections, DNF, void, delete, resume,
-publishing, simulating) need a recipe that first creates and starts a ride; add them as the
-state-driven pass reaches them.
+Dialogs that still need a recipe: crossing detail (needs a feed-row click), void card (from the
+detail), delete ride (library row selection), resume (launch with a prior running ride), publish
+(needs a WordPress config), and the roster editors (need rider/team creation steps).
 
 ## What this is not
 

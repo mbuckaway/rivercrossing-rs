@@ -55,6 +55,8 @@
     <button data-target="s-sim-running">Simulating…</button>
     <button data-target="s-publish">Publish to WordPress</button>
     <button data-target="s-publish-running">Publishing…</button>
+    <div class="group">States &amp; outcomes</div>
+    <button data-target="s-states">Console States · Export Outcome</button>
   </nav>
 
   <main class="mockup-main">
@@ -706,6 +708,66 @@ publish options .......... PASS</pre>
         </div>
         <div class="dialog-footer"><button class="btn">Cancel</button></div>
       </div></div>
+    </section>
+
+    <section class="screen" id="s-states">
+      <p class="screen-caption">Console states and export outcome — <code>main_frame</code> · <code>exported_infobar</code><small>The five ride states the header badge and the feed's empty copy must cover, the export notices, and the Standings Solo pane.</small></p>
+      <div class="app-shell">
+        <div class="app-titlebar">RiverCrossing <span class="meta">— states and outcomes</span></div>
+        <div class="app-body">
+          <aside class="app-rail">
+            <button class="rail-btn"><span class="glyph">▤</span>Library</button>
+            <button class="rail-btn"><span class="glyph">☷</span>Riders</button>
+            <button class="rail-btn"><span class="glyph">⚑</span>Teams</button>
+            <button class="rail-btn"><span class="glyph">⚐</span>Issues</button>
+            <button class="rail-btn"><span class="glyph">▦</span>Standings</button>
+            <button class="rail-btn"><span class="glyph">⌕</span>Audit</button>
+            <button class="rail-btn"><span class="glyph">⚙</span>Settings</button>
+          </aside>
+          <div style="flex:1; display:flex; flex-direction:column; gap:12px; padding:12px; min-width:0;">
+            <div class="panel"><div class="body" style="display:flex; gap:18px; align-items:center; flex-wrap:wrap;">
+              <span class="badge neutral">NO RIDE</span>
+              <span class="badge neutral">DRAFT</span>
+              <span class="badge good">RUNNING</span>
+              <span class="badge warn">STOPPED</span>
+              <span class="badge info">FINISHED</span>
+              <span class="badge bad">REOPENED</span>
+              <span class="help">One badge; the word carries the state, never colour alone.</span>
+            </div></div>
+            <div class="panel"><div class="body">
+              <div class="section-label">Empty states</div>
+              <div class="help">Crossings · 0 — “No crossings yet”</div>
+              <div class="help">Riders · 0 — “No riders”</div>
+              <div class="help">Standings — “No standings yet”</div>
+              <div class="help">Audit — “No audit rows”</div>
+            </div></div>
+            <div class="panel"><div class="body">
+              <div class="section-label">Export outcome</div>
+              <div class="notice good"><span>Exported results.html</span><button class="btn small">Open</button></div>
+              <div class="notice bad"><span>Export failed: the file could not be written</span></div>
+            </div></div>
+            <div class="panel"><div class="body">
+              <div class="section-label">Standings — Solo pane</div>
+              <table class="table">
+                <thead><tr><th>Place</th><th>Plate</th><th>Entry</th><th>Laps</th><th>Hand</th><th>Draw</th><th>Total</th></tr></thead>
+                <tbody>
+                  <tr><td>1</td><td>18</td><td>FIRSTNAME-0018</td><td>2</td><td>High Card — Ace</td><td></td><td>1:37:00</td></tr>
+                  <tr><td>2</td><td>6</td><td>FIRSTNAME-0005</td><td>2</td><td>High Card — King</td><td></td><td>1:49:00</td></tr>
+                </tbody>
+              </table>
+            </div></div>
+          </div>
+        </div>
+        <div class="app-statusbar">
+          <span class="chip"><b>Crossings</b> 80</span>
+          <span class="chip"><b>Cards dealt</b> 78</span>
+          <span class="chip"><b>On course</b> 0</span>
+          <span class="chip"><b>Shoe</b> 337/417</span>
+          <span class="chip"><b>Riders</b> 40</span>
+          <span class="chip"><b>Teams</b> 0</span>
+          <span class="label">STOPPED · 6:00:00</span>
+        </div>
+      </div>
     </section>
 
   </main>

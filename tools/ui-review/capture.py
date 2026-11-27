@@ -107,10 +107,32 @@ def run_recipe(channel: Channel, workspace: Path, recipe: dict, out: Path) -> li
             channel.call("ui.click", {"selector": step["click"]})
         elif "set" in step:
             channel.call("ui.set", step["set"])
+        elif "dialog_set" in step:
+            channel.call("ui.dialog.set", step["dialog_set"])
+        elif "dialog_confirm" in step:
+            channel.call("ui.dialog.confirm", {})
+        elif "dialog_cancel" in step:
+            channel.call("ui.dialog.cancel", {})
+        elif "try_command" in step:
+            try:
+                channel.call("ui.command", {"name": step["try_command"]})
+            except RuntimeError:
+                pass
+        elif "try_dialog_confirm" in step:
+            try:
+                channel.call("ui.dialog.confirm", {})
+            except RuntimeError:
+                pass
         elif "wait" in step:
             time.sleep(float(step["wait"]))
         elif "shot" in step:
             name = step["shot"]
+            # An idle, unfocused window stops presenting frames; a same-size resize asks for one.
+            try:
+                channel.call("ui.resize", {"width": 1480, "height": 890})
+            except RuntimeError:
+                pass
+            time.sleep(0.2)
             channel.call("ui.screenshot", {"path": name})
             source = workspace / "target" / "control" / name
             if not source.is_file():

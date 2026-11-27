@@ -236,6 +236,14 @@ fn footer_buttons(state: &AppState, spec: &DialogSpec) -> Vec<FooterButton> {
 
 /// Show the dialog's body, dispatched by its frozen window id.
 fn body(ui: &mut Ui, state: &mut AppState, id: &str) {
+    // Frozen field ids repeat across windows (`plate_input` is the console's and the deal
+    // dialog's), and a dialog renders over the console in the same pass; a per-window scope keeps
+    // the widget ids unique.
+    ui.push_id(("dialog", id), |ui| body_in(ui, state, id));
+}
+
+/// Show the body of dialog *id* inside the window's id scope.
+fn body_in(ui: &mut Ui, state: &mut AppState, id: &str) {
     match id {
         "ride_setup_dlg" => setup::body(ui, state),
         "add_rider_dlg" => riders::form_body(ui, state),
@@ -541,6 +549,8 @@ pub(crate) fn stack_text_field_lines(
     let mut value = stored.clone();
     ui.push_id(id, |ui| {
         field_caption(ui, label);
+        // A content-sized field collapses to its text, and an empty field has none; the minimum
+        // width keeps a form field readable without a fill that would overrun a two-column cell.
         let _ = TextField::new(label, Bind::bound(&mut value))
             .lines(lines)
             .sizing(CONTROL_SIZING)
@@ -581,6 +591,29 @@ const NUMBER_FIELD_WIDTH: f32 = 120.0;
 /// column rather than the row cell, which pushes a `pair`'s right-hand control off the row; content
 /// sizing keeps each control in its own column.
 pub(crate) const CONTROL_SIZING: Sizing = Sizing::Content;
+
+/// Show one full-row text field that fills the dialog's form, for a single-column form.
+///
+/// Craft's content sizing collapses an empty field to its text, and its fill sizing would overrun a
+/// `pair`/`triple` cell; a single-column dialog has no cell to overrun, so it fills.
+pub(crate) fn stack_text_field_filled(
+    ui: &mut Ui,
+    state: &mut AppState,
+    id: &'static str,
+    label: &'static str,
+) {
+    let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
+    let mut value = stored.clone();
+    ui.push_id(id, |ui| {
+        field_caption(ui, label);
+        let _ = TextField::new(label, Bind::bound(&mut value))
+            .sizing(Sizing::FillWidth)
+            .show(ui);
+    });
+    if value != stored {
+        let _ = state.dialogs.set_field(id, value);
+    }
+}
 
 /// Show a field's caption above its control.
 ///

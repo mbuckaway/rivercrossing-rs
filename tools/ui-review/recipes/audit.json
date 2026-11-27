@@ -1,0 +1,131 @@
+{
+  "screen": "audit",
+  "steps": [
+    {
+      "try_command": "mi_stop_ride"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "try_dialog_confirm": true
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "try_command": "mi_finish_ride"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "try_dialog_confirm": true
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "try_command": "mi_clear_ride"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "try_dialog_confirm": true
+    },
+    {
+      "wait": 0.8
+    },
+    {
+      "wait": 0.8
+    },
+    {
+      "command": "mi_new_ride"
+    },
+    {
+      "wait": 0.5
+    },
+    {
+      "dialog_set": {
+        "field": "name_input",
+        "value": "GORBA TEST RIDE"
+      }
+    },
+    {
+      "dialog_set": {
+        "field": "venue_input",
+        "value": "Kamloops"
+      }
+    },
+    {
+      "dialog_set": {
+        "field": "organizer_input",
+        "value": "GORBA"
+      }
+    },
+    {
+      "dialog_set": {
+        "field": "scorer_input",
+        "value": "Scorer"
+      }
+    },
+    {
+      "dialog_confirm": true
+    },
+    {
+      "wait": 2
+    },
+    {
+      "command": "mi_simulation"
+    },
+    {
+      "wait": 0.5
+    },
+    {
+      "dialog_set": {
+        "field": "riders_spin",
+        "value": "40"
+      }
+    },
+    {
+      "dialog_set": {
+        "field": "teams_spin",
+        "value": "6"
+      }
+    },
+    {
+      "dialog_set": {
+        "field": "laps_spin",
+        "value": "2"
+      }
+    },
+    {
+      "click": {
+        "role": "Button",
+        "label": "Generate Riders"
+      }
+    },
+    {
+      "wait": 1
+    },
+    {
+      "click": {
+        "role": "Button",
+        "label": "GO"
+      }
+    },
+    {
+      "wait": 8
+    },
+    {
+      "command": "mi_audit_trail"
+    },
+    {
+      "wait": 0.6
+    },
+    {
+      "shot": "audit.png"
+    }
+  ]
+}

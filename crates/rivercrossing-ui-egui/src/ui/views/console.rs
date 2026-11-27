@@ -490,7 +490,13 @@ fn header(ui: &mut Ui, state: &mut AppState, width: f32) {
                 .layout(Layout::right_to_left(Align::Min)),
             |ui| {
                 let reading = lap.map_or_else(|| NO_VALUE.to_owned(), |lap| lap.to_string());
-                stat(ui, "current_lap_lbl", "Current lap", reading);
+                stat(
+                    ui,
+                    "current_lap_lbl",
+                    "Current lap",
+                    reading,
+                    LAP_SLOT_WIDTH,
+                );
             },
         );
     });
@@ -548,17 +554,22 @@ fn ride_values(ui: &mut Ui, state: &AppState) {
         ),
         None => (blank(), blank(), blank(), blank(), blank(), blank()),
     };
-    stat(ui, "ride_name_value", "Ride", name);
-    stat(ui, "ride_date_value", "Date", date);
-    stat(ui, "ride_venue_value", "Venue", venue);
-    stat(ui, "ride_organizer_value", "Organizer", organizer);
-    stat(ui, "ride_scorer_value", "Scorer", scorer);
-    stat(ui, "ride_lap_km_value", "Lap km", lap_km);
+    stat(ui, "ride_name_value", "Ride", name, 170.0);
+    stat(ui, "ride_date_value", "Date", date, 100.0);
+    stat(ui, "ride_venue_value", "Venue", venue, 120.0);
+    stat(ui, "ride_organizer_value", "Organizer", organizer, 110.0);
+    stat(ui, "ride_scorer_value", "Scorer", scorer, 100.0);
+    stat(ui, "ride_lap_km_value", "Lap km", lap_km, 70.0);
 }
 
 /// Show one label-over-value statistic, the design's header unit; the value carries its frozen id.
-fn stat(ui: &mut Ui, id: &'static str, caption: &'static str, value: String) {
-    ui.vertical(|ui| {
+fn stat(ui: &mut Ui, id: &'static str, caption: &'static str, value: String, width: f32) {
+    // A fixed cell per statistic keeps the captions and their values in columns; sizing to content
+    // ran the line together, and one shared width wrapped the ride's name.
+    let cell = vec2(width, ui.available_height());
+    let layout = Layout::top_down(Align::Min);
+    let _ = ui.allocate_ui_with_layout(cell, layout, |ui| {
+        ui.set_min_width(width);
         let _ = Text::new(caption)
             .role(TypeRole::Caption)
             .shade(Shade::Muted)
@@ -922,8 +933,9 @@ fn feed_columns(show_lap_time: bool, show_total: bool) -> Vec<ColumnSpec> {
     let mut columns = vec![
         ColumnSpec::new(TIME, "Time", ColumnWidth::Content).numeric(),
         ColumnSpec::new(PLATE, "Plate", ColumnWidth::Content).numeric(),
-        ColumnSpec::new(NAME, "Name", ColumnWidth::Content),
-        ColumnSpec::new(TEAM, "Team", ColumnWidth::Content),
+        // Name and team take the slack, so a long generated name is not clipped to `FIRST…`.
+        ColumnSpec::new(NAME, "Name", ColumnWidth::fill(2.0)),
+        ColumnSpec::new(TEAM, "Team", ColumnWidth::fill(1.0)),
         ColumnSpec::new(CARD, "Card", ColumnWidth::Content),
         ColumnSpec::new(LAP, "Lap", ColumnWidth::Content).numeric(),
     ];

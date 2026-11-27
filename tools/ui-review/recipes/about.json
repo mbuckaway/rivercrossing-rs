@@ -2,6 +2,45 @@
   "screen": "about",
   "steps": [
     {
+      "try_command": "mi_stop_ride"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "try_dialog_confirm": true
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "try_command": "mi_finish_ride"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "try_dialog_confirm": true
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "try_command": "mi_clear_ride"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "try_dialog_confirm": true
+    },
+    {
+      "wait": 0.8
+    },
+    {
+      "wait": 0.8
+    },
+    {
       "command": "wxID_ABOUT"
     },
     {

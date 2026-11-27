@@ -5,10 +5,10 @@
 use craft::egui::Ui;
 use craft::theme::Variant;
 use craft::ui::buttons::Button;
-use craft::ui::contract::{Bind, Props as _, Show as _};
+use craft::ui::contract::{Bind, Props as _, Show as _, Sizing};
 use craft::ui::text::TextField;
 
-use super::dialogs::{CONTROL_SIZING, field_caption, stack_date_field, stack_text_field, value};
+use super::dialogs::{field_caption, stack_date_field, stack_text_field_filled, value};
 use crate::ui::state::AppState;
 
 #[cfg(test)]
@@ -19,9 +19,9 @@ mod tests;
 /// Edit mode also carries the contract's `void_btn`, which opens the void-card flow for the
 /// crossing the operator selected (`design/docs-md/control-mapping.md`, `edit_crossing_dlg`).
 pub(crate) fn edit_crossing(ui: &mut Ui, state: &mut AppState) {
-    stack_text_field(ui, state, "plate_input", "Plate");
-    stack_text_field(ui, state, "time_picker", "Time (H:MM:SS)");
-    stack_text_field(ui, state, "reason_input", "Reason");
+    stack_text_field_filled(ui, state, "plate_input", "Plate");
+    stack_text_field_filled(ui, state, "time_picker", "Time (H:MM:SS)");
+    stack_text_field_filled(ui, state, "reason_input", "Reason");
     void_action(ui, state);
 }
 
@@ -48,15 +48,15 @@ fn void_action(ui: &mut Ui, state: &mut AppState) {
 
 /// Show the manual-deal form.
 pub(crate) fn manual_deal(ui: &mut Ui, state: &mut AppState) {
-    stack_text_field(ui, state, "plate_input", "Plate");
-    stack_text_field(ui, state, "reason_input", "Reason");
+    stack_text_field_filled(ui, state, "plate_input", "Plate");
+    stack_text_field_filled(ui, state, "reason_input", "Reason");
 }
 
 /// Show the DNF form: the plate or the entry the operator types names the target.
 pub(crate) fn dnf(ui: &mut Ui, state: &mut AppState) {
-    stack_text_field(ui, state, "plate_input", "Plate");
+    stack_text_field_filled(ui, state, "plate_input", "Plate");
     entry_field(ui, state);
-    stack_text_field(ui, state, "reason_input", "Reason");
+    stack_text_field_filled(ui, state, "reason_input", "Reason");
 }
 
 /// Show the Entry field: a rider or team name, a plate, or a team key.
@@ -65,7 +65,7 @@ fn entry_field(ui: &mut Ui, state: &mut AppState) {
         field_caption(ui, "Entry");
         let _ = TextField::new("Entry", Bind::bound(&mut state.correction_entry))
             .placeholder("Plate or entry")
-            .sizing(CONTROL_SIZING)
+            .sizing(Sizing::FillWidth)
             .show(ui);
     });
 }
@@ -82,18 +82,18 @@ pub(crate) fn void_card(ui: &mut Ui, state: &mut AppState) {
         .as_ref()
         .map_or_else(String::new, |detail| detail.model.rider.clone());
     value(ui, "entry_lbl", "Entry", entry);
-    stack_text_field(ui, state, "reason_input", "Reason");
+    stack_text_field_filled(ui, state, "reason_input", "Reason");
 }
 
 /// Show the plate prompt.
 pub(crate) fn crossing_number(ui: &mut Ui, state: &mut AppState) {
-    stack_text_field(ui, state, "number_input", "Plate");
+    stack_text_field_filled(ui, state, "number_input", "Plate");
 }
 
 /// Show the set-start form.
 pub(crate) fn set_start(ui: &mut Ui, state: &mut AppState) {
     stack_date_field(ui, state, "start_date_picker", "Start date");
-    stack_text_field(ui, state, "start_time_picker", "Start time (H:MM:SS)");
+    stack_text_field_filled(ui, state, "start_time_picker", "Start time (H:MM:SS)");
 }
 
 /// Show the Crossing Detail's nine read-only values.
