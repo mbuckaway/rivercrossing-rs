@@ -18,7 +18,7 @@ use craft::behavior::{
 };
 use craft::egui::{Align, Color32, Layout, Sense, Ui, UiBuilder, vec2};
 use craft::theme::variant::{Emphasis, Tone};
-use craft::theme::{Srgba, Variant};
+use craft::theme::{Srgba, TypeRole, Variant};
 use craft::ui::bars::{Bar, BarKind};
 use craft::ui::buttons::Button;
 use craft::ui::choice::Checkbox;
@@ -253,6 +253,15 @@ fn density_spelling(choice: u8) -> &'static str {
 
 // -------------------------------------------------------------------- the rail
 
+/// The ride header card's height: one row of statistics.
+const HEADER_CARD_HEIGHT: f32 = 56.0;
+
+/// The clock card's height: the design's pair of clocks under the ride header.
+const CLOCK_CARD_HEIGHT: f32 = 64.0;
+
+/// The plate-entry card's height: one row of controls.
+const ENTRY_CARD_HEIGHT: f32 = 56.0;
+
 /// The rail's width: the approved mockup's 96-point labelled column (`design/mockups/index.html`,
 /// `.app-rail`). The `ArtCraft` rail token is narrower because it is an icon-only rail; this app's
 /// rail carries the design's words, so it sets its own width and lets the slot follow its content.
@@ -379,36 +388,46 @@ fn body(ui: &mut Ui, state: &mut AppState) {
     // `.app-body`): the rail spans the header, the clocks, the entry row and the docks. It is body
     // content, not a shell slot, because the slot measures its extent from the content it clips —
     // a button elided to that measure would hold the rail at the ellipsis width for ever.
+    let full = ui.available_size();
     ui.horizontal_top(|ui| {
         rail(ui, state);
         let _ = Divider::vertical().show(ui);
         // The workspace takes the rest of the body, and the docks take the rest of the workspace:
         // a nested `ui.vertical` sizes to its content, which leaves the docks a strip and the
-        // window a dead band under them.
-        let rest = vec2(ui.available_width(), ui.available_height());
+        // window a dead band under them. The width is handed down, because a nested layout reports
+        // a room wider than the window and the second card then draws past the right edge.
+        let used = ui.cursor().left();
+        let rest = vec2((full.x - used).max(0.0), full.y);
         ui.allocate_ui_with_layout(rest, Layout::top_down(Align::Min), |ui| {
-            header(ui, state);
-            clocks_row(ui, state);
-            entry_row(ui, state);
+            header(ui, state, rest.x);
+            clocks_row(ui, state, rest.x);
+            entry_row(ui, state, rest.x);
             docks(ui, state);
         });
     });
 }
 
 /// Show the header strip: the status badge and word, the ride identity and the current lap.
-fn header(ui: &mut Ui, state: &mut AppState) {
+fn header(ui: &mut Ui, state: &mut AppState, width: f32) {
     let (light, word, lap) = ride_identity(state);
-    ui.push_id("ride_status_panel", |ui| {
-        ui.horizontal_wrapped(|ui| {
-            ui.push_id("ride_status_light", |ui| {
-                ride_badge(ui, light, word.clone());
-            });
-            ui.push_id("ride_status_lbl", |ui| {
-                let _ = Text::new(word.clone()).show(ui);
-            });
-            ride_values(ui, state);
-            ui.push_id("current_lap_lbl", |ui| {
-                let _ = Text::new(format!("Lap {lap}")).show(ui);
+    card(ui, width, HEADER_CARD_HEIGHT, |ui| {
+        ui.push_id("ride_status_panel", |ui| {
+            ui.horizontal(|ui| {
+                ui.push_id("ride_status_light", |ui| {
+                    ride_badge(ui, light, word.clone());
+                });
+                ui.push_id("ride_status_lbl", |ui| {
+                    let _ = Text::new(word.clone()).role(TypeRole::BodyStrong).show(ui);
+                });
+                ui.add_space(Env::of(ui).tokens.space.pad.regular);
+                ride_values(ui, state);
+                // The lap sits at the far end of the card, as the design's `Current lap` does. The
+                // inner rect is bounded, so the right-to-left layout cannot take a row's height.
+                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                    ui.push_id("current_lap_lbl", |ui| {
+                        stat(ui, "Current lap", lap.to_string());
+                    });
+                });
             });
         });
     });
@@ -471,42 +490,61 @@ fn ride_values(ui: &mut Ui, state: &AppState) {
     value(ui, "ride_lap_km_value", "Lap km", lap_km);
 }
 
+/// Show one label-over-value statistic, the design's header unit.
+fn stat(ui: &mut Ui, caption: &'static str, value: String) {
+    ui.vertical(|ui| {
+        let _ = Text::new(caption)
+            .role(TypeRole::Caption)
+            .shade(Shade::Muted)
+            .show(ui);
+        let _ = Text::new(value).role(TypeRole::Label).show(ui);
+    });
+}
+
 /// Show one header value as its caption beside the value.
 fn value(ui: &mut Ui, id: &'static str, caption: &'static str, value: String) {
     ui.push_id(id, |ui| {
         ui.vertical(|ui| {
-            let _ = Text::new(caption).shade(Shade::Muted).show(ui);
-            let _ = Text::new(value).show(ui);
+            let _ = Text::new(caption)
+                .role(TypeRole::Caption)
+                .shade(Shade::Muted)
+                .show(ui);
+            let _ = Text::new(value).role(TypeRole::Label).show(ui);
         });
     });
 }
 
 /// Show the two flattened clock columns.
-fn clocks_row(ui: &mut Ui, state: &mut AppState) {
+fn clocks_row(ui: &mut Ui, state: &mut AppState, width: f32) {
     let (elapsed, remaining, total) = clock_readings(state);
+    let views = [
+        ClockView {
+            panel: "elapsed_clock_panel",
+            clock: "elapsed_clock",
+            label: "clock_elapsed_lbl",
+            caption: "Elapsed",
+            fraction: data_source::clock_fraction(elapsed, total),
+            reading: format_duration(elapsed),
+        },
+        ClockView {
+            panel: "remaining_clock_panel",
+            clock: "remaining_clock",
+            label: "clock_remaining_lbl",
+            caption: "Remaining",
+            fraction: data_source::clock_fraction(remaining, total),
+            reading: format_duration(remaining),
+        },
+    ];
+    // Two equal cards across the workspace, as the design lays them out.
+    let gap = Env::of(ui).tokens.space.pad.regular;
+    let half = ((width - gap - gap) / 2.0).max(0.0);
     ui.horizontal_top(|ui| {
-        clock_column(
-            ui,
-            ClockView {
-                panel: "elapsed_clock_panel",
-                clock: "elapsed_clock",
-                label: "clock_elapsed_lbl",
-                caption: "Elapsed",
-                fraction: data_source::clock_fraction(elapsed, total),
-                reading: format_duration(elapsed),
-            },
-        );
-        clock_column(
-            ui,
-            ClockView {
-                panel: "remaining_clock_panel",
-                clock: "remaining_clock",
-                label: "clock_remaining_lbl",
-                caption: "Remaining",
-                fraction: data_source::clock_fraction(remaining, total),
-                reading: format_duration(remaining),
-            },
-        );
+        for (index, view) in views.into_iter().enumerate() {
+            if index > 0 {
+                ui.add_space(gap);
+            }
+            clock_column(ui, view, half);
+        }
     });
 }
 
@@ -543,7 +581,7 @@ struct ClockView {
 }
 
 /// Show one clock column: the caption and read-out over the progress bar.
-fn clock_column(ui: &mut Ui, view: ClockView) {
+fn clock_column(ui: &mut Ui, view: ClockView, width: f32) {
     let ClockView {
         panel,
         clock,
@@ -552,18 +590,27 @@ fn clock_column(ui: &mut Ui, view: ClockView) {
         fraction,
         reading,
     } = view;
-    ui.push_id(panel, |ui| {
-        ui.horizontal(|ui| {
-            let _ = Text::new(caption).shade(Shade::Muted).show(ui);
-            ui.push_id(label, |ui| {
-                let _ = Text::new(reading.clone()).show(ui);
+    card(ui, width, CLOCK_CARD_HEIGHT, |ui| {
+        ui.push_id(panel, |ui| {
+            ui.horizontal(|ui| {
+                let _ = Text::new(caption)
+                    .role(TypeRole::Caption)
+                    .shade(Shade::Muted)
+                    .show(ui);
+                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                    ui.push_id(label, |ui| {
+                        let _ = Text::new(reading.clone())
+                            .role(TypeRole::BodyLarge)
+                            .show(ui);
+                    });
+                });
             });
-        });
-        ui.push_id(clock, |ui| {
-            let _ = Progress::new(fraction)
-                .label(caption)
-                .sizing(Sizing::FillWidth)
-                .show(ui);
+            ui.push_id(clock, |ui| {
+                let _ = Progress::new(fraction)
+                    .label(caption)
+                    .sizing(Sizing::FillWidth)
+                    .show(ui);
+            });
         });
     });
 }
@@ -571,7 +618,7 @@ fn clock_column(ui: &mut Ui, view: ClockView) {
 // ------------------------------------------------------------------ entry row
 
 /// Show the Start and Stop buttons, the plate field, Record and Undo, and the last-crossing line.
-fn entry_row(ui: &mut Ui, state: &mut AppState) {
+fn entry_row(ui: &mut Ui, state: &mut AppState, width: f32) {
     let entry_open = state.phase() == RidePhase::Running;
     let hint = if entry_open {
         ENTRY_OPEN_HINT
@@ -580,44 +627,46 @@ fn entry_row(ui: &mut Ui, state: &mut AppState) {
     };
     let last = last_crossing(state);
     let gate = state.gate();
-    ui.horizontal_wrapped(|ui| {
-        run_buttons(ui, state, gate);
-        let _ = Divider::vertical().show(ui);
-        let submitted = ui
-            .push_id("plate_input", |ui| {
-                TextField::new(labels::PLATE_LABEL, Bind::bound(&mut state.plate))
-                    .placeholder(hint)
-                    .submits()
-                    .enabled(entry_open)
-                    .show(ui)
-                    .submitted
-            })
-            .inner;
-        if submitted {
-            state.submit_plate();
-        }
-        ui.push_id("record_btn", |ui| {
-            let clicked = Button::new(labels::RECORD_LABEL)
-                .variant(Variant::PRIMARY)
-                .enabled(entry_open)
-                .show(ui)
-                .clicked();
-            if clicked {
+    card(ui, width, ENTRY_CARD_HEIGHT, |ui| {
+        ui.horizontal(|ui| {
+            run_buttons(ui, state, gate);
+            ui.add_space(Env::of(ui).tokens.space.pad.regular);
+            let submitted = ui
+                .push_id("plate_input", |ui| {
+                    TextField::new(labels::PLATE_LABEL, Bind::bound(&mut state.plate))
+                        .placeholder(hint)
+                        .submits()
+                        .enabled(entry_open)
+                        .show(ui)
+                        .submitted
+                })
+                .inner;
+            if submitted {
                 state.submit_plate();
             }
-        });
-        ui.push_id("undo_btn", |ui| {
-            let clicked = Button::new(labels::UNDO_LABEL)
-                .variant(Variant::SECONDARY)
-                .enabled(enabled(MI_UNDO_CROSSING, &gate))
-                .show(ui)
-                .clicked();
-            if clicked {
-                let _ = state.act(MI_UNDO_CROSSING);
-            }
-        });
-        ui.push_id("last_crossing_lbl", |ui| {
-            let _ = Text::new(last).shade(Shade::Muted).show(ui);
+            ui.push_id("record_btn", |ui| {
+                let clicked = Button::new(labels::RECORD_LABEL)
+                    .variant(Variant::PRIMARY)
+                    .enabled(entry_open)
+                    .show(ui)
+                    .clicked();
+                if clicked {
+                    state.submit_plate();
+                }
+            });
+            ui.push_id("undo_btn", |ui| {
+                let clicked = Button::new(labels::UNDO_LABEL)
+                    .variant(Variant::SECONDARY)
+                    .enabled(enabled(MI_UNDO_CROSSING, &gate))
+                    .show(ui)
+                    .clicked();
+                if clicked {
+                    let _ = state.act(MI_UNDO_CROSSING);
+                }
+            });
+            ui.push_id("last_crossing_lbl", |ui| {
+                let _ = Text::new(last).shade(Shade::Muted).show(ui);
+            });
         });
     });
 }
@@ -702,6 +751,36 @@ fn dock(ui: &mut Ui, width: f32, height: f32, mut content: impl FnMut(&mut Ui)) 
     ui.scope_builder(inside, |ui| {
         content(ui);
     });
+}
+
+/// Paint a panel surface: the design's fill, hairline and corner radius.
+fn surface(ui: &Ui, rect: craft::egui::Rect) {
+    let env = Env::of(ui);
+    let corners = UiTokens::corner(env.tokens.shape.radius.panel);
+    let fill = Color32::from(Srgba::from(env.tokens.color.surface.panel));
+    let line = Color32::from(Srgba::from(env.tokens.color.line.border));
+    ui.painter().rect_filled(rect, corners, fill);
+    ui.painter().rect_stroke(
+        rect,
+        corners,
+        craft::egui::Stroke::new(1.0, line),
+        craft::egui::StrokeKind::Inside,
+    );
+}
+
+/// Show `content` on a panel card `width` by `height` points.
+///
+/// The surface is painted at the rect the layout gives, as the dock does, so the card takes exactly
+/// that size whatever its content measures.
+fn card(ui: &mut Ui, width: f32, height: f32, content: impl FnOnce(&mut Ui)) {
+    let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+    surface(ui, rect);
+    let pad = Env::of(ui).tokens.space.pad.regular;
+    let inside = UiBuilder::new()
+        .max_rect(rect.shrink(pad))
+        .layout(Layout::top_down(Align::Min));
+    ui.scope_builder(inside, content);
+    ui.add_space(pad);
 }
 
 /// Return the splitter handle's width from the theme's pointer tolerance.
