@@ -698,6 +698,33 @@ fn rail_entry(fixture: &Fixture, label: &str) -> Target {
 /// The x past which a control is no longer in the rail column.
 const RAIL_COLUMN_EDGE: f32 = 140.0;
 
+#[test]
+fn test_dragging_a_tie_break_chip_reorders_the_list() {
+    // Arrange: a fresh ride-setup form in its default order.
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut()
+        .state
+        .open_setup_dialog(time::OffsetDateTime::now_utc().date());
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+    let chip = fixture.by_label("Best hand").expect("the first chip shows");
+
+    // Act: drag it one place to the right.
+    fixture.drag(&chip, Vec2::new(148.0, 0.0));
+    fixture.idle(2);
+
+    // Assert
+    assert_eq!(
+        app.borrow().state.setup_tiebreak,
+        ["laps", "high_card", "total_time"]
+    );
+}
+
 #[rstest]
 #[case::library("Library", "ride_library_dlg")]
 #[case::riders("Riders", "rider_editor_dlg")]

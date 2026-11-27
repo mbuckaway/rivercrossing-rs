@@ -12,13 +12,15 @@ use craft::theme::TypeRole;
 use craft::theme::Variant;
 use craft::theme::variant::Tone;
 use craft::ui::buttons::Button;
-use craft::ui::contract::{Props as _, Show as _, ShowContainer as _};
+use craft::ui::contract::{Bind, Props as _, Show as _, ShowContainer as _};
 use craft::ui::display::{Shade, Text};
+use craft::ui::runtime::env::Env;
 use craft::ui::sections::Section;
+use craft::ui::text::TextField;
 
 use super::dialogs::{
-    field_caption, notice, radio_group, select_value, stack_date_field, stack_decimal_field,
-    stack_select, stack_text_field, stack_whole_field,
+    field_caption, notice, radio_group, stack_date_field, stack_decimal_field, stack_select,
+    stack_text_field, stack_whole_field,
 };
 use crate::ui::state::AppState;
 
@@ -146,74 +148,130 @@ const TIEBREAK_CHOICES: [(&str, &str); 3] = [
     ("Total time", "total_time"),
 ];
 
-/// Show the tie-break order: three choices, first to last.
+/// Show the tie-break order as the design's chips, dragged into place.
 ///
-/// The order is one frozen field, `tiebreak_list`, holding the stored spellings joined by commas;
-/// each choice reads it and writes the whole list back.
+/// The order is one frozen field, `tiebreak_list`, holding the stored spellings joined by commas.
+/// A chip dragged onto another's place moves there, and the whole list is written back.
 fn tiebreak_group(ui: &mut Ui, state: &mut AppState) {
-    let stored = state
-        .dialogs
-        .field("tiebreak_list")
-        .unwrap_or_default()
-        .to_owned();
-    let mut order = tiebreak_values(&stored);
+    let mut order = state.setup_tiebreak;
     let before = order;
     field_caption(ui, "Tie-break order");
-    pair(ui, |left, right| {
-        if let Some(picked) =
-            select_value(left, "tiebreak_first", "First", order[0], &TIEBREAK_CHOICES)
-        {
-            order[0] = picked;
-        }
-        if let Some(picked) = select_value(
-            right,
-            "tiebreak_second",
-            "Second",
-            order[1],
-            &TIEBREAK_CHOICES,
-        ) {
-            order[1] = picked;
-        }
-    });
-    pair(ui, |left, _right| {
-        if let Some(picked) =
-            select_value(left, "tiebreak_third", "Third", order[2], &TIEBREAK_CHOICES)
-        {
-            order[2] = picked;
-        }
-    });
-    if order != before {
-        let _ = state.dialogs.set_field("tiebreak_list", order.join(","));
-    }
-}
-
-/// Return the three tie-break spellings the stored list holds, defaulting any it lacks.
-fn tiebreak_values(stored: &str) -> [&'static str; 3] {
-    let mut order = ["high_card", "laps", "total_time"];
-    for (slot, text) in order.iter_mut().zip(stored.split(',')) {
-        if let Some(known) = TIEBREAK_CHOICES
-            .iter()
-            .map(|(_, value)| *value)
-            .find(|value| *value == text)
-        {
-            *slot = known;
-        }
-    }
-    order
-}
-
-/// Show the organizer logo row: the chosen file, its state, and the browse button.
-///
-/// The frozen ids are the design's (`logo_preview_bmp`, `logo_status_lbl`, `logo_browse_btn`). The
-/// path is typed or pasted until the platform file picker lands; browsing reports that.
-fn logo_group(ui: &mut Ui, state: &mut AppState) {
-    stack_text_field(ui, state, "logo_preview_bmp", "Logo file");
+    let mut grabbed: Option<usize> = None;
+    let mut dropped: Option<usize> = None;
+    let mut row_left = 0.0;
     ui.horizontal(|ui| {
-        let stored = state
-            .dialogs
-            .field("logo_preview_bmp")
-            .unwrap_or_default()
-            .to_owned();
+        row_left = ui.cursor().left();
+        for (index, value) in order.iter().enumerate() {
+            let label = tiebreak_label(value);
+            let (rect, response) = ui.allocate_exact_size(
+                craft::egui::vec2(CHIP_WIDTH, CHIP_HEIGHT),
+                craft::egui::Sense::click_and_drag(),
+            );
+            let active = response.hovered() || response.dragged();
+            chip(ui, rect, label, active);
+            response.widget_info(|| {
+                craft::egui::WidgetInfo::labeled(craft::egui::Role::Button, true, label)
+            });
+            if response.drag_stopped() {
+                // The chip that was dragged reports the stop itself, so its own place is the
+                // source even though `dragged` is already false on this frame.
+                grabbed = Some(index);
+                let x = ui
+                    .ctx()
+                    .pointer_interact_pos()
+                    .map_or(rect.center().x, |at| at.x);
+                dropped = Some(slot_at(row_left, x));
+            }
+            ui.add_space(CHIP_GAP);
+        }
+    });
+    if let (Some(from), Some(to)) = (grabbed, dropped)
+        && from != to
+    {
+        let mut moved: Vec<&'static str> = order.to_vec();
+        let taken = moved.remove(from);
+        moved.insert(to.min(moved.len()), taken);
+        order.copy_from_slice(&moved);
+    }
+    if order != before {
+        state.setup_tiebreak = order;
+    }
+}
+
+/// Return the chip's word for a stored tie-break spelling.
+fn tiebreak_label(value: &'static str) -> &'static str {
+    TIEBREAK_CHOICES
+        .iter()
+        .find(|(_, stored)| *stored == value)
+        .map_or(value, |(name, _)| *name)
+}
+
+/// Return the chip slot a pointer at *x* names, given the row's left edge.
+fn slot_at(row_left: f32, x: f32) -> usize {
+    let stride = CHIP_WIDTH + CHIP_GAP;
+    let slot = ((x - row_left) / stride).round();
+    if slot <= 0.0 {
+        return 0;
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a chip slot is a small count of three, and the negative case returned above"
+    )]
+    let index = slot as usize;
+    index.min(2)
+}
+
+/// Paint one chip: the design's pill, filled while it is hovered or dragged.
+fn chip(ui: &mut Ui, rect: craft::egui::Rect, label: &'static str, active: bool) {
+    let env = Env::of(ui);
+    let corners = craft::ui::style::UiTokens::corner(env.tokens.shape.radius.control);
+    let fill = if active {
+        craft::egui::Color32::from(craft::theme::Srgba::from(env.tokens.color.state.hover))
+    } else {
+        craft::egui::Color32::from(craft::theme::Srgba::from(env.tokens.color.surface.panel))
+    };
+    let line = craft::egui::Color32::from(craft::theme::Srgba::from(env.tokens.color.line.border));
+    ui.painter().rect_filled(rect, corners, fill);
+    ui.painter().rect_stroke(
+        rect,
+        corners,
+        craft::egui::Stroke::new(1.0, line),
+        craft::egui::StrokeKind::Inside,
+    );
+    // Painted at the chip's centre: a text widget in a fixed cell keeps to its start edge.
+    let ink = craft::egui::Color32::from(craft::theme::Srgba::from(env.tokens.color.text.normal));
+    ui.painter().text(
+        rect.center(),
+        craft::egui::Align2::CENTER_CENTER,
+        label,
+        craft::egui::FontId::proportional(13.0),
+        ink,
+    );
+}
+
+/// One tie-break chip's width.
+const CHIP_WIDTH: f32 = 140.0;
+
+/// One tie-break chip's height.
+const CHIP_HEIGHT: f32 = 28.0;
+
+/// The gap between two chips.
+const CHIP_GAP: f32 = 8.0;
+
+/// Show the organizer logo row: the chosen file, its preview and state, and the browse button.
+///
+/// The frozen ids are the design's (`logo_preview_bmp`, `logo_status_lbl`, `logo_browse_btn`); the
+/// path is kept in the dialog's state rather than its frozen field map, since the design names that
+/// control outside the fields.
+fn logo_group(ui: &mut Ui, state: &mut AppState) {
+    logo_path_field(ui, state);
+    ui.horizontal(|ui| {
+        let stored = state.setup_logo.clone();
+        let path = std::path::PathBuf::from(stored.trim());
+        let chosen = (!stored.trim().is_empty()).then_some(path.as_path());
+        crate::ui::logo::tile(ui, state, chosen);
+        ui.add_space(Env::of(ui).tokens.space.pad.regular);
         let status = if stored.trim().is_empty() {
             "No logo chosen"
         } else {
@@ -235,6 +293,19 @@ fn logo_group(ui: &mut Ui, state: &mut AppState) {
             }
         });
     });
+}
+
+/// Show the logo path under its caption, reading and writing the dialog's state.
+fn logo_path_field(ui: &mut Ui, state: &mut AppState) {
+    let mut value = state.setup_logo.clone();
+    ui.push_id("logo_preview_bmp", |ui| {
+        field_caption(ui, "Logo file");
+        ui.set_max_width(420.0);
+        let _ = TextField::new("Logo file", Bind::bound(&mut value)).show(ui);
+    });
+    if value != state.setup_logo {
+        state.setup_logo = value;
+    }
 }
 
 /// Show the shoe's options, two to a row where the design pairs them.

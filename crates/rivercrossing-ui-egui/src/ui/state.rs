@@ -335,6 +335,13 @@ pub(crate) struct AppState {
     pub(crate) settings_path: PathBuf,
     /// The open ride, when one is loaded.
     pub(crate) ride: Option<LoadedRide>,
+    /// The organizer logos already decoded, so a tile does not decode on every frame.
+    pub(crate) logos: crate::ui::logo::LogoTextures,
+    /// The setup form's tie-break order, in stored spellings, first to last. The design's
+    /// `tiebreak_list` is a control rather than a frozen field, so the dialog keeps it here.
+    pub(crate) setup_tiebreak: [&'static str; 3],
+    /// The setup form's chosen logo path, for the same reason.
+    pub(crate) setup_logo: String,
     /// The open dialogs.
     pub(crate) dialogs: DialogStack,
     /// The status notice, when one is posted.
@@ -460,6 +467,9 @@ impl AppState {
             settings_path,
             ride: None,
             dialogs: DialogStack::default(),
+            logos: crate::ui::logo::LogoTextures::default(),
+            setup_tiebreak: ["high_card", "laps", "total_time"],
+            setup_logo: String::new(),
             notice: None,
             exports: ExportPresence::default(),
             results: exports::ResultsState::default(),
@@ -693,7 +703,11 @@ impl AppState {
         if top.id != "ride_setup_dlg" {
             return Err(vec![NO_SETUP_DIALOG.to_owned()]);
         }
-        let params = setup::params_from_fields(&top.fields)?;
+        // The two controls the design keeps outside the field map join the presenter's input here.
+        let mut fields = top.fields.clone();
+        let _ = fields.insert("tiebreak_list".to_owned(), self.setup_tiebreak.join(","));
+        let _ = fields.insert("logo_preview_bmp".to_owned(), self.setup_logo.clone());
+        let params = setup::params_from_fields(&fields)?;
         let config = setup::validated_config(&params)?;
         self.pending_create = Some(config);
         let _ = self.dialogs.cancel();
@@ -717,11 +731,12 @@ impl AppState {
             ("solo_radio", "true".to_owned()),
             ("pooled_radio", "true".to_owned()),
             ("jokers_total_radio", "true".to_owned()),
-            ("tiebreak_list", "high_card,laps,total_time".to_owned()),
         ];
         for (field, value) in seeds {
             let _ = self.dialogs.set_field(field, value);
         }
+        self.setup_tiebreak = ["high_card", "laps", "total_time"];
+        self.setup_logo.clear();
     }
 
     // --------------------------------------------------------- plate entry

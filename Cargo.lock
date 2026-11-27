@@ -5744,6 +5744,7 @@ dependencies = [
  "mockall",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
+ "png 0.17.16",
  "pretty_assertions",
  "rivercrossing-cards",
  "rivercrossing-csvio",
