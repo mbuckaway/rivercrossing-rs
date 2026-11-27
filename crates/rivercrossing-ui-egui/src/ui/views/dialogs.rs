@@ -420,7 +420,7 @@ fn dialog_title(state: &AppState, spec: &DialogSpec) -> &'static str {
 /// Return the human label of a dialog button.
 fn button_label(state: &AppState, id: &str, button: Button) -> &'static str {
     match (id, button) {
-        ("add_rider_dlg" | "settings_dlg", Button::Ok) => "Save",
+        ("add_rider_dlg" | "settings_dlg" | "ride_setup_dlg", Button::Ok) => "Save",
         ("add_team_dlg", Button::Ok) if state.team_editor.editing.is_some() => "Save",
         ("add_team_dlg", Button::Ok) => "Add",
         ("csv_preview_dlg", Button::Ok) => "Import",

@@ -1008,7 +1008,9 @@ fn riders_tab(ui: &mut Ui, state: &mut AppState) {
                     .cells(icx.cells())
                     .striped(icx.row.striped);
                 if let Some(rider) = rows.get(*key) {
-                    row = row.cell(PLATE, rider.plate.clone());
+                    row = row
+                        .cell(PLATE, rider.plate.clone())
+                        .cell(LAP, rider.laps.to_string());
                 }
                 row
             });
@@ -1026,6 +1028,8 @@ struct RiderRow {
     plate: String,
     /// The rider's full name.
     name: String,
+    /// The laps the rider's entry has crossed, as the design's review table shows them.
+    laps: u32,
 }
 
 /// Return the live roster's flattened rows.
@@ -1033,8 +1037,15 @@ fn rider_rows(state: &AppState) -> Vec<RiderRow> {
     let Some(ride) = &state.ride else {
         return Vec::new();
     };
+    // Each entry's laps: its crossings, counted once for every rider of the entry.
+    let mut laps: std::collections::HashMap<&rivercrossing_ride::EntryId, u32> =
+        std::collections::HashMap::new();
+    for crossing in ride.engine.crossings() {
+        *laps.entry(&crossing.entry_id).or_default() += 1;
+    }
     let mut rows = Vec::new();
     for entry in RosterView::entries(&ride.roster) {
+        let entry_laps = laps.get(&entry.id).copied().unwrap_or(0);
         for rider in &entry.riders {
             let plate = rider
                 .plate
@@ -1044,6 +1055,7 @@ fn rider_rows(state: &AppState) -> Vec<RiderRow> {
             rows.push(RiderRow {
                 plate,
                 name: rider.full_name.clone(),
+                laps: entry_laps,
             });
         }
     }
@@ -1057,6 +1069,7 @@ fn rider_columns() -> Vec<ColumnSpec> {
     vec![
         ColumnSpec::new(PLATE, "Plate", ColumnWidth::Content).numeric(),
         ColumnSpec::new(NAME, "Name", ColumnWidth::Content),
+        ColumnSpec::new(LAP, "Laps", ColumnWidth::Content).numeric(),
     ]
 }
 
