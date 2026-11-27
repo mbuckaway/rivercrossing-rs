@@ -11,12 +11,12 @@ use craft::egui::{Align, Layout, Ui};
 use craft::theme::Variant;
 use craft::theme::variant::Tone;
 use craft::ui::buttons::Button;
-use craft::ui::contract::{Bind, Props as _, Show as _};
+use craft::ui::contract::{Bind, Props as _, Show as _, Sizing};
 use craft::ui::text::TextField;
 
 use super::dialogs::{
-    CONTROL_SIZING, NAME, PLATE, SEX, TEAM, TableData, TableRow, columns, field_caption, notice,
-    pair, select_owned, split, stack_select, stack_text_field, table, value,
+    NAME, PLATE, SEX, TEAM, TableData, TableRow, columns, field_caption, notice, pair,
+    select_owned, split, stack_select, stack_text_field, table, value,
 };
 use crate::ui::state::{AppState, RiderEditorRow, RiderSelection};
 
@@ -53,7 +53,7 @@ pub(crate) fn editor_body(ui: &mut Ui, state: &mut AppState) {
     ui.push_id("rider_search", |ui| {
         let _ = TextField::search("Search", Bind::bound(&mut state.rider_editor.search))
             .placeholder(SEARCH_HINT)
-            .sizing(CONTROL_SIZING)
+            .sizing(Sizing::FillWidth)
             .show(ui);
     });
     let visible = state.rider_editor.visible();

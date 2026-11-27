@@ -44,7 +44,8 @@ then GO) and resumes it where a correction dialog needs a live ride.
 
 Console: `console-no-ride`, `console-draft`, `console-finished`, `sim-running`.
 Dialogs: `settings`, `ride-setup`, `ride-library`, `standings-no-ride`, `standings-full`, `audit`,
-`simulation`, `shortcuts`, `self-test`, `about`, `edit-crossing`, `manual-deal`, `dnf`, `set-start`.
+`simulation`, `shortcuts`, `self-test`, `about`, `edit-crossing`, `manual-deal`, `dnf`, `set-start`,
+`rider-editor`.
 
 Dialogs that still need a recipe: crossing detail (needs a feed-row click), void card (from the
 detail), delete ride (library row selection), resume (launch with a prior running ride), publish

@@ -31,6 +31,7 @@ Regenerate with `python3 tools/ui-review/capture.py --all` (see `tools/ui-review
 | Mark DNF | `dnf` | Captured, not yet compared. |
 | Set Start Time | `set-start` | Captured, not yet compared. |
 | Simulating… | `sim-running` | Captured, not yet compared. |
+| Rider Editor | `rider-editor` | Reviewed. Two-pane split, Sex column, search fills the heading row, DRAFT delete notice, Close. |
 | Rider Simulator | `simulation` | Captured, not yet compared. |
 | About | `about` | Captured, not yet compared. |
 | Evaluator Self-Test | `self-test` | Captured, not yet compared. |
@@ -39,7 +40,7 @@ Regenerate with `python3 tools/ui-review/capture.py --all` (see `tools/ui-review
 ## Dialogs not yet captured
 
 `csv_preview`, `crossing_detail`, `crossing_number`, `void_card_confirm`, `delete_ride`, `resume`,
-`start_blocked`, `exit_running`, `rider_editor`, `add_rider`, `team_editor`, `add_team`,
+`start_blocked`, `exit_running`, `add_rider`, `team_editor`, `add_team`,
 `rider_issues`, `publish_wordpress`, `publish_running`.
 
 All are golden-covered by `-P ui`; what is missing is the mockup comparison, which needs the
