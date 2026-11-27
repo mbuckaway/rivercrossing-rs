@@ -22,6 +22,7 @@ use craft::theme::{Srgba, TypeRole, Variant};
 use craft::ui::bars::{Bar, BarKind};
 use craft::ui::buttons::Button;
 use craft::ui::choice::Checkbox;
+use craft::ui::choice::Segmented;
 use craft::ui::contract::{
     Bind, CollectionEvent, ColumnSpec, Entry, Props as _, Show as _, ShowCollection as _,
     ShowContainer as _, Sizing,
@@ -29,7 +30,6 @@ use craft::ui::contract::{
 use craft::ui::display::{Badge, Divider, Progress, Shade, Text};
 use craft::ui::docking::Splitter;
 use craft::ui::list::ListRow;
-use craft::ui::pickers::Select;
 use craft::ui::primitives::IconSpec;
 use craft::ui::runtime::env::{Env, WindowKey};
 use craft::ui::shell::{AppShell, Title, TitleBar};
@@ -51,6 +51,12 @@ use crate::ui::presenters::data_source::{
 };
 use crate::ui::state::{AppState, ConsoleTab};
 use crate::ui::window::APP_NAME;
+
+/// The appearance strip's label, which names the control for assistive technology.
+const APPEARANCE_LABEL: &str = "Appearance";
+
+/// The density strip's label.
+const DENSITY_LABEL: &str = "Density";
 
 /// The status label's text when no ride is open.
 const NO_RIDE: &str = "NO RIDE";
@@ -191,9 +197,13 @@ fn appearance_choice(ui: &mut Ui, state: &mut AppState) {
     ];
     let current = appearance_index(&state.settings.appearance);
     let mut picked = current;
-    let _ = Select::new("Appearance", Bind::bound(&mut picked), &entries)
-        .sizing(Sizing::Content)
+    // The design shows the three modes as a labelled segmented strip, not a dropdown
+    // (`design/mockups/index.html`, the options bar).
+    let _ = Text::new(APPEARANCE_LABEL)
+        .role(TypeRole::Caption)
+        .shade(Shade::Muted)
         .show(ui);
+    let _ = Segmented::new(APPEARANCE_LABEL, Bind::bound(&mut picked), &entries).show(ui);
     if picked != current {
         appearance_spelling(picked).clone_into(&mut state.settings.appearance);
         let _ = state.save_settings();
@@ -208,9 +218,11 @@ fn density_choice(ui: &mut Ui, state: &mut AppState) {
     ];
     let current = density_index(&state.settings.density);
     let mut picked = current;
-    let _ = Select::new("Density", Bind::bound(&mut picked), &entries)
-        .sizing(Sizing::Content)
+    let _ = Text::new(DENSITY_LABEL)
+        .role(TypeRole::Caption)
+        .shade(Shade::Muted)
         .show(ui);
+    let _ = Segmented::new(DENSITY_LABEL, Bind::bound(&mut picked), &entries).show(ui);
     if picked != current {
         density_spelling(picked).clone_into(&mut state.settings.density);
         let _ = state.save_settings();
