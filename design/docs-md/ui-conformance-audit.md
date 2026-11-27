@@ -140,12 +140,12 @@ cards, entry card, two dock cards, filled chips. What the data exposes, still op
 | D22 | The review panel's table runs out of room: `Name` is clipped and `Team` is cut at the panel edge; the design's review table is `Plate · Name · Laps`. | Review card, Riders tab. | `views/console.rs` `riders_tab` |
 | D23 | The clock read-outs are body-sized; the design's are the largest type on the screen. | `0:00:37` beside the design's `02:14:07`. | `views/console.rs` `clock_column` |
 
-## 8. Still open after the redesign pass
+## 8. The last pass, and what it leaves
 
-| # | Item | Note |
+| # | Item | State |
 |---|---|---|
-| R1 | The rail stacks its glyph above the label in the design; this app's rail is icon beside label. The cells are craft `Button`s, which give the row its access node and its frozen id; a hand-painted cell would have to carry both. | cosmetic, deliberate |
-| R2 | The ride header has no logo tile: the design shows a 64 × 64 preview beside the statistics. | needs the ride's logo in the view model |
-| R3 | Ride Setup has no tie-break order or organizer logo rows, and saves with `OK` where the design says `Save`. | the fields do not exist in `RideConfig` |
-| R4 | The clock read-outs take the title role; the design's are larger still. | the type scale stops at `Display` |
-| R5 | The review panel's table is `Plate · Name`; the design adds `Laps`. | the row model carries no lap count |
+| R1 | The rail stacks its icon over its word, as the design does: each entry is a cell of its own that senses the click, fills under the pointer and reports itself as a button named by its word. | done |
+| R2 | The ride header carries the organizer-logo tile between the status word and the statistics; it shows the chosen logo file's name and the design's `LOGO` placeholder until one is picked. | done, but the tile shows the file's name, not the bitmap: rendering the image needs the imaging path |
+| R3 | Ride Setup gains the design's tie-break order (three captioned choices over the frozen `tiebreak_list` field) and the organizer-logo row (`logo_preview_bmp`, `logo_status_lbl`, `logo_browse_btn`); its primary button reads `Save`. | done, with two notes: the tie-break is three selects rather than the design's drag chips, and Browse reports the missing platform file picker |
+| R4 | The clock read-outs take the display role, the largest type the theme has. | done |
+| R5 | The review table is `Plate · Name · Laps`, the laps read from each entry's crossing count. | done |
