@@ -8,7 +8,7 @@ use craft::ui::choice::Checkbox;
 use craft::ui::contract::{Bind, Props as _, Show as _, ShowContainer as _};
 use craft::ui::sections::Section;
 
-use super::dialogs::{decimal_value, notice, radio_group, select_value};
+use super::dialogs::{decimal_value, field_caption, notice, radio_group, select_value};
 use crate::ui::presenters::settings_form;
 use crate::ui::state::AppState;
 
@@ -94,6 +94,7 @@ fn axis(
     value: &mut String,
     choices: &[(&'static str, &'static str)],
 ) {
+    field_caption(ui, label);
     if let Some(picked) = select_value(ui, id, label, value, choices) {
         picked.clone_into(value);
     }
@@ -120,6 +121,7 @@ fn console_group(ui: &mut Ui, form: &mut settings_form::FormValues) {
         "Verbose logging",
         &mut form.verbose_logging,
     );
+    field_caption(ui, "Avg Lap Time (kmh)");
     decimal_value(
         ui,
         "avg_speed_spin",

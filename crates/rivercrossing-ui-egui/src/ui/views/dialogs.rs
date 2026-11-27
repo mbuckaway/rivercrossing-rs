@@ -488,7 +488,7 @@ pub(crate) fn stack_text_field(
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
     let mut value = stored.clone();
     ui.push_id(id, |ui| {
-        stack_label(ui, label);
+        field_caption(ui, label);
         let _ = TextField::new(label, Bind::bound(&mut value)).show(ui);
     });
     if value != stored {
@@ -504,7 +504,7 @@ const NUMBER_FIELD_WIDTH: f32 = 120.0;
 /// A field's label names it for assistive technology; the design also draws it, muted and small,
 /// above the control (`design/mockups/index.html`, `.field label`). Without this a form is a column
 /// of unlabelled boxes.
-fn stack_label(ui: &mut Ui, caption: &'static str) {
+pub(crate) fn field_caption(ui: &mut Ui, caption: &'static str) {
     let _ = Text::new(caption)
         .role(TypeRole::Caption)
         .shade(Shade::Muted)
@@ -521,7 +521,7 @@ pub(crate) fn stack_secret_field(
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
     let mut value = stored.clone();
     ui.push_id(id, |ui| {
-        stack_label(ui, label);
+        field_caption(ui, label);
         let _ = TextField::new(label, Bind::bound(&mut value))
             .masked()
             .show(ui);
@@ -541,7 +541,7 @@ pub(crate) fn stack_date_field(
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
     let mut picked = PickedDate::parse(&stored);
     ui.push_id(id, |ui| {
-        stack_label(ui, label);
+        field_caption(ui, label);
         let _ = DatePicker::new(label, Bind::bound(&mut picked)).show(ui);
     });
     let text = picked.map_or_else(String::new, |date| date.iso());
@@ -562,7 +562,7 @@ pub(crate) fn stack_whole_field(
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
     let mut value = Some(stored.trim().parse().unwrap_or(default));
     ui.push_id(id, |ui| {
-        stack_label(ui, label);
+        field_caption(ui, label);
         // A narrow cell: the design's numeric inputs are a tenth of a column wide, not the column.
         let cell = craft::egui::vec2(NUMBER_FIELD_WIDTH, ui.spacing().interact_size.y);
         let _ = ui.allocate_ui_with_layout(
@@ -595,7 +595,7 @@ pub(crate) fn stack_decimal_field(
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
     let mut value = Some(stored.trim().parse().unwrap_or(default));
     ui.push_id(id, |ui| {
-        stack_label(ui, label);
+        field_caption(ui, label);
         let cell = craft::egui::vec2(NUMBER_FIELD_WIDTH, ui.spacing().interact_size.y);
         let _ = ui.allocate_ui_with_layout(
             cell,
@@ -644,7 +644,7 @@ pub(crate) fn stack_select(
     choices: &[(&'static str, &'static str)],
 ) {
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
-    stack_label(ui, label);
+    field_caption(ui, label);
     if let Some(value) = select_value(ui, id, label, &stored, choices) {
         let _ = state.dialogs.set_field(id, value);
     }
