@@ -342,7 +342,7 @@ the scenario JSON is the cross-language contract.
   `control_channel_smoke`), outside the gate, run by hand each PR. Tier C: see below.
 - **R-73 route×state.** `test_every_action_is_drivable_or_refused_in_every_ride_state` builds a fresh
   app state for each of the six rows (no ride, Draft, Running, stopped-Running, Finished, Reopened)
-  and dispatches all 53 actions: an enabled action must return `Ok` (every target is implemented),
+  and dispatches all 52 actions: an enabled action must return `Ok` (every target is implemented),
   a disabled one must return `Err(Disabled(id))`. The failure message names the action and the
   state. The sweep caught one latent drift: `mi_export_csv` (the riders CSV) shared
   `CommandId::ExportCsv` with `mi_export_results_csv`, so the riders row opened the standings save
@@ -381,3 +381,44 @@ the scenario JSON is the cross-language contract.
   run, audio on a machine with an output device, and the Windows cross-check with `ring` in the
   graph at release. The Windows *target* check is runnable from this box; a real Windows run is
   EPIC-13.
+
+## ArtCraft size axes — the confirmed model (2026-11-27)
+
+Three facts were confirmed against the pinned craft-libs rev before the shell change, and they are
+the reason the legacy zoom rows were retired rather than repaired:
+
+1. **No zoom presets exist.** `RootEnv.scale` is a free `f32` interface multiplier
+   (`crates/ui-contract/src/runtime/env/values.rs:12`); there is no Normal/Expanded/Compact scale
+   vocabulary. The app's own `ctx.set_zoom_factor` was overwritten every frame by the runtime's
+   `set_input`, so the seven `mi_zoom_*` rows never held.
+2. **The library's size model is two axes.** Density is `Size::{Compact, Comfortable}`
+   (`crates/theme/src/theme.rs:293-299`); text size is
+   `TextSize::{Tiny, Small (factor 1.0), Medium (1.17), Large (1.33)}` (`theme.rs:305-322`,
+   `:337`). View now exposes both as radio sets; Settings keeps both as appearance axes.
+3. **Theme and mode are orthogonal.** `ThemeDef.variants` is `Both | LightOnly | DarkOnly`, and
+   `RootEnv.mode` picks which variant renders. Settings therefore offers one combined picker whose
+   entries are a theme plus a mode, and the separate Mode radios are retired.
+
+Defaults are `density = comfortable` and `text_size = small`, so a fresh settings file renders at
+the library's 1.0 type factor with the roomier spacing preset.
+
+## Reviewing a screen against the mockup
+
+1. **Build the debug app**: `cargo build -p rivercrossing --locked`. The release binary ignores
+   `--control`, so the review always uses the debug build.
+2. **Capture**: `python3 tools/ui-review/capture.py --recipe tools/ui-review/recipes/<screen>.json`
+   (or `--all`). The script launches the app with a generated 64-hex token, authenticates, runs the
+   recipe, copies each `ui.screenshot` out of `target/control/` into
+   `design/screenshots/review/`, and quits.
+3. **Get the screen into its state.** A menu action is a `ui.command {"name": "<action id>"}`; a
+   control that only exists in the UI is a `ui.click` with a selector object; a value is `ui.set`.
+   Dialogs that need a ride need a leading `mi_new_ride` plus the setup form, or a ride created
+   through the simulator.
+4. **Compare** the capture with the mockup section in `design/mockups/index.html` (the
+   `s-<name>` anchor) and record the verdict in `design/docs-md/ui-conformance-matrix.md`:
+   screen, state, theme, verdict, and any delta with the class it diverges from.
+5. **Fix** the delta, re-capture, and update the matrix. A screen with no capture is `pending`, never
+   `pass`.
+6. **Regression evidence** stays the `-P ui` goldens: regenerate them on the Linux host with
+   `UPDATE_SNAPSHOTS=force WGPU_BACKEND=vulkan cargo nextest run -P ui -p rivercrossing-ui-egui
+   --locked`, copy back, and delete stray `._*` files before committing.

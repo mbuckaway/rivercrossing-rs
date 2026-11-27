@@ -5,7 +5,7 @@
 //! The app owns the state the views render, the one store thread, the sound player, the launch log
 //! and the debug control channel. `logic` drives the native menu bar and the documented
 //! accelerators, drains the store replies, persists a submitted ride, runs the queued commands,
-//! answers the native dialogs, plays the queued cues and applies the zoom; `frame_input` hands the
+//! answers the native dialogs and plays the queued cues; `frame_input` hands the
 //! runtime the `ArtCraft` appearance the settings describe; `ui` renders
 //! the menu bar (the in-window bar when no platform bar is installed), the console and the top
 //! dialog.
@@ -24,18 +24,20 @@ use craft::ui::runtime::frame::FrameInput;
 use craft::ui::shell::app::{ShellApp, run as run_shell};
 use craft::ui::shell::embed::CloseDecision;
 use craft::window::restore::Store;
+use rivercrossing_ride::RideConfig;
 use serde_json::json;
 use time::OffsetDateTime;
 
 use super::action::enable::RidePhase;
 use super::action::spec::{CommandId, NativeDialog};
 use super::automation::{self, Control, ControlConfig};
+use super::help;
 use super::logging::LaunchLog;
 #[cfg(target_os = "macos")]
 use super::macos;
 use super::native::{self, NativeDialogs};
 use super::native_menu::NativeBar;
-use super::presenters::simulator;
+use super::presenters::{publish_wordpress, simulator};
 use super::publish_job::{self, PublishOutcome, WordPressWriter};
 use super::sound::{SilentBackend, SoundPlayer};
 use super::state::exports::ExportKind;
@@ -119,10 +121,10 @@ pub struct RiverCrossingApp {
     worker: Option<StoreWorker>,
     /// The console's cue player.
     sound: SoundPlayer,
+    /// The browser that opens the user guide.
+    browser: Box<dyn help::BrowserLauncher>,
     /// This launch's NDJSON log.
     log: Option<LaunchLog>,
-    /// The zoom percentage last applied to the context.
-    applied_zoom: Option<u16>,
     /// The native message boxes (R-85).
     native: NativeDialogs,
     /// The root window's platform menu bar; uninstalled off macOS and in a headless host.
@@ -145,8 +147,8 @@ impl fmt::Debug for RiverCrossingApp {
             .field("state", &self.state)
             .field("worker", &self.worker.is_some())
             .field("sound_muted", &self.sound.is_muted())
+            .field("browser", &self.browser)
             .field("log", &self.log.as_ref().map(LaunchLog::path))
-            .field("applied_zoom", &self.applied_zoom)
             .field("native", &self.native)
             .field("menubar", &self.menubar.is_installed())
             .field("minimize_next_frame", &self.minimize_next_frame)
@@ -229,8 +231,8 @@ impl RiverCrossingApp {
             state: AppState::new(settings, paths.settings),
             worker: None,
             sound,
+            browser: Box::new(help::SystemLauncher),
             log: None,
-            applied_zoom: None,
             native,
             menubar: NativeBar::default(),
             minimize_next_frame: false,
@@ -310,10 +312,16 @@ impl RiverCrossingApp {
         })));
     }
 
+    /// Open the user guide through *launcher* (tests).
+    #[cfg(test)]
+    pub(crate) fn set_browser(&mut self, launcher: Box<dyn help::BrowserLauncher>) {
+        self.browser = launcher;
+    }
+
     /// Export the open ride's roster as CSV.
     ///
-    /// The OS save picker that chooses *path* arrives with PR D's `craft_dialogs`; a headless host
-    /// and the snapshot tests call this directly.
+    /// The File ▸ Export Riders CSV command raises the OS save picker; a headless host and the
+    /// snapshot tests call this directly.
     ///
     /// # Errors
     ///
@@ -324,7 +332,8 @@ impl RiverCrossingApp {
 
     /// Preview *path* and open the CSV preview dialog.
     ///
-    /// The OS open picker that chooses *path* arrives with PR D's `craft_dialogs`.
+    /// The File ▸ Import Riders CSV command raises the OS open picker; a headless host and the
+    /// snapshot tests call this directly.
     ///
     /// # Errors
     ///
@@ -504,11 +513,20 @@ impl RiverCrossingApp {
                 continue;
             }
             match (&pending.then, &answer) {
+                (NativeTask::ChooseCsv, craft::dialogs::Answer::Paths(paths)) => {
+                    self.pick_csv(paths);
+                }
+                (NativeTask::ExportRosterCsv, craft::dialogs::Answer::Paths(paths)) => {
+                    self.pick_roster(paths);
+                }
                 (NativeTask::ExportFile { kind }, craft::dialogs::Answer::Paths(paths)) => {
                     self.pick_export(*kind, paths);
                 }
                 (
-                    NativeTask::ChooseLogo | NativeTask::ExportFile { .. },
+                    NativeTask::ChooseLogo
+                    | NativeTask::ChooseCsv
+                    | NativeTask::ExportFile { .. }
+                    | NativeTask::ExportRosterCsv,
                     craft::dialogs::Answer::Unavailable(reason),
                 ) => {
                     self.event("native-unavailable", json!({ "reason": reason }));
@@ -613,6 +631,7 @@ impl RiverCrossingApp {
                 self.event("ride-created", json!({ "ride_id": id }));
                 self.request_load(id);
             }
+            Ok(StoreReply::RideUpdated { id, config }) => self.apply_ride_update(id, config),
             Ok(StoreReply::PreviousSession(session)) => {
                 self.event(
                     "previous-session",
@@ -635,7 +654,7 @@ impl RiverCrossingApp {
             Ok(StoreReply::RideDuplicated(id)) => {
                 self.library_changed(("ride-duplicated", "Ride duplicated"), id);
             }
-            Ok(StoreReply::AuditRows(rows)) => self.state.audit_row_count = rows.len(),
+            Ok(StoreReply::AuditRows(rows)) => self.apply_audit_rows(rows),
             Ok(StoreReply::Backup(path)) => self.backup_reply(&path),
             Ok(StoreReply::Exported { kind, path }) => {
                 self.event(
@@ -652,11 +671,14 @@ impl RiverCrossingApp {
                 self.state.note(message);
             }
             Ok(_other) => {}
-            Err(message) => {
-                self.state.note(message.clone());
-                self.event("store-error", json!({ "message": message }));
-            }
+            Err(message) => self.apply_store_error(&message),
         }
+    }
+
+    /// Post a store failure as the notice and the log event.
+    fn apply_store_error(&mut self, message: &str) {
+        self.state.note(message.to_owned());
+        self.event("store-error", json!({ "message": message }));
     }
 
     /// Report a library change and ask the store for the fresh rows.
@@ -667,6 +689,38 @@ impl RiverCrossingApp {
         self.send_store(StoreCommand::Rides);
     }
 
+    /// Apply an edited setup to the open ride, leaving its shoe, roster and event log alone.
+    ///
+    /// The dialog closes only once the store confirms the write, so a refused edit keeps the
+    /// operator's values on screen.
+    fn apply_ride_update(&mut self, id: i64, config: RideConfig) {
+        match self.update_open_engine(id, config) {
+            Some(Ok(())) => {
+                self.state.note(RIDE_UPDATED);
+                self.state.close_setup_dialog();
+            }
+            Some(Err(message)) => self.state.note(message),
+            None => {}
+        }
+        self.event("ride-updated", json!({ "ride_id": id }));
+    }
+
+    /// Replace the open ride's setup when it is *id*; return `None` for another ride.
+    fn update_open_engine(&mut self, id: i64, config: RideConfig) -> Option<Result<(), String>> {
+        let ride = self.state.ride.as_mut()?;
+        if ride.ride_id != id {
+            return None;
+        }
+        match ride.engine.update_config(config.clone()) {
+            Ok(()) => {
+                ride.config = config;
+                ride.roster.set_status(ride.engine.state());
+                Some(Ok(()))
+            }
+            Err(error) => Some(Err(error.to_string())),
+        }
+    }
+
     /// Load the ride a store reply carries, and point the store at it.
     fn apply_ride_reply(&mut self, reply: StoreReply) {
         let StoreReply::Ride {
@@ -674,6 +728,7 @@ impl RiverCrossingApp {
             config,
             roster,
             engine,
+            audit_row_count,
         } = reply
         else {
             return;
@@ -687,9 +742,15 @@ impl RiverCrossingApp {
         ride.roster.set_status(ride.engine.state());
         self.event("ride-loaded", json!({ "ride_id": ride_id }));
         self.state.ride = Some(ride);
-        self.state.audit_row_count = 0;
+        self.state.audit_row_count = audit_row_count;
         self.state.refresh_models();
         self.send_store(StoreCommand::SetActiveRide { id: ride_id });
+    }
+
+    /// Show one ride's audit rows and refresh the §15 row count.
+    fn apply_audit_rows(&mut self, rows: Vec<rivercrossing_store::AuditRow>) {
+        self.state.audit_row_count = rows.len();
+        self.state.set_audit_rows(rows);
     }
 
     /// Send one command to the store thread, when it is running.
@@ -743,15 +804,37 @@ impl RiverCrossingApp {
                     self.raise_export_picker(kind);
                 }
             }
-            // The roster CSV's own save picker is deferred; the export names the missing piece.
-            CommandId::ExportRosterCsv => self.state.note(FILE_PICKER_UNAVAILABLE),
+            // The roster CSV writes through the same save picker the results exports use.
+            CommandId::ExportRosterCsv => self.raise_roster_picker(),
             CommandId::PreviewHtml => self.preview(ExportKind::Html),
             CommandId::PreviewPosterHtml => self.preview(ExportKind::PosterHtml),
             CommandId::PreviewPdf => self.preview(ExportKind::Pdf),
-            other => self.state.note(format!(
-                "{} is not available in this release",
-                other.as_str()
-            )),
+            CommandId::OpenUserGuide => self.open_user_guide(),
+            CommandId::DuplicateRide => self.state.duplicate_open_ride(),
+        }
+    }
+
+    /// Write the bundled guide beside the settings file and open it in the browser.
+    ///
+    /// The settings file lives in the per-user config directory, so the guide lands at
+    /// `config_dir_for(...)/user-guide.html` and opens with the platform handler.
+    fn open_user_guide(&mut self) {
+        let directory = self
+            .state
+            .settings_path
+            .parent()
+            .map_or_else(PathBuf::new, Path::to_path_buf);
+        match help::write_user_guide(&directory) {
+            Ok(path) => self.launch_guide(&path),
+            Err(message) => self.state.note(message),
+        }
+    }
+
+    /// Open *path*, posting the launcher's message when it cannot start.
+    fn launch_guide(&mut self, path: &Path) {
+        if let Err(message) = self.browser.open(path) {
+            self.state
+                .note(format!("cannot open the user guide: {message}"));
         }
     }
 
@@ -780,6 +863,60 @@ impl RiverCrossingApp {
             .filter("PNG", &["png"]);
         self.event("logo-picker", json!({}));
         self.native.ask_file(&pending, dialog);
+    }
+
+    /// Raise the platform's open picker for the riders CSV.
+    fn choose_csv(&mut self) {
+        let pending = PendingNative {
+            dialog: NativeDialog::Confirm,
+            then: NativeTask::ChooseCsv,
+        };
+        let dialog = FileDialog::open()
+            .title("Import Riders CSV")
+            .filter("CSV", &["csv"]);
+        self.event("csv-picker", json!({}));
+        self.native.ask_file(&pending, dialog);
+    }
+
+    /// Raise the platform's save picker for the roster CSV.
+    fn raise_roster_picker(&mut self) {
+        let pending = PendingNative {
+            dialog: NativeDialog::Confirm,
+            then: NativeTask::ExportRosterCsv,
+        };
+        let file_name = roster_file_name(
+            self.state
+                .ride
+                .as_ref()
+                .map(|ride| ride.config.name.as_str()),
+        );
+        let dialog = FileDialog::save()
+            .title("Save roster CSV")
+            .filter("CSV", &["csv"])
+            .file_name(file_name);
+        self.event("roster-picker", json!({}));
+        self.native.ask_file(&pending, dialog);
+    }
+
+    /// Preview the picked riders CSV and open the preview dialog.
+    fn pick_csv(&mut self, paths: &[PathBuf]) {
+        let Some(path) = paths.first() else {
+            return;
+        };
+        if let Err(message) = self.open_csv_preview(path) {
+            self.state.note(message);
+        }
+    }
+
+    /// Write the picked roster CSV, posting the writer's refusal when it cannot.
+    fn pick_roster(&mut self, paths: &[PathBuf]) {
+        let Some(path) = paths.first() else {
+            return;
+        };
+        if let Err(message) = self.export_csv(path) {
+            self.state.note(message);
+        }
+        self.event("roster-export", json!({}));
     }
 
     /// Open the last file that *kind* wrote, or post why it cannot.
@@ -954,19 +1091,6 @@ impl RiverCrossingApp {
         }
     }
 
-    /// Apply the text zoom whenever it changes.
-    ///
-    /// The mode, contrast, density, text size and theme reach the runtime through
-    /// [`ShellApp::frame_input`]; the frozen zoom rungs stay a separate axis.
-    fn apply_zoom(&mut self, ctx: &Context) {
-        let zoom = self.state.settings.zoom_percent;
-        if self.applied_zoom != Some(zoom) {
-            let factor = f32::from(zoom.max(10)) / 100.0;
-            ctx.set_zoom_factor(factor);
-            self.applied_zoom = Some(zoom);
-        }
-    }
-
     /// Close the window at the quit deadline, or ask for a frame at it.
     fn quit_deadline(&self, ctx: &Context) {
         let Some(deadline) = self.quit_after else {
@@ -1023,6 +1147,12 @@ impl ShellApp for RiverCrossingApp {
         if std::mem::take(&mut self.state.choose_logo) {
             self.choose_logo();
         }
+        if std::mem::take(&mut self.state.choose_csv) {
+            self.choose_csv();
+        }
+        if let Some(path) = self.state.take_open_export() {
+            self.open_target(&path.to_string_lossy());
+        }
         self.run_pending_command();
         self.sync_cancel_flags();
         self.start_pending_publish();
@@ -1030,7 +1160,6 @@ impl ShellApp for RiverCrossingApp {
         self.start_pending_sim();
         self.drain_sim();
         self.play_pending_cues();
-        self.apply_zoom(ctx);
         let _ = self.state.due_hourly_backup(OffsetDateTime::now_utc());
         self.drain_pending_store();
         if let Some(control) = self.control.as_mut() {
@@ -1122,6 +1251,9 @@ const CLOCK_TICK_INTERVAL: Duration = Duration::from_secs(1);
 /// the log.
 const BACKUP_WRITTEN: &str = "Backup written";
 
+/// What the status bar says after an Edit Ride save reaches the live engine and the database.
+const RIDE_UPDATED: &str = "Ride setup saved";
+
 /// Whether this pass consumed a pointer click or a key press.
 fn activation_consumed(ctx: &Context) -> bool {
     ctx.input(|input| {
@@ -1138,6 +1270,14 @@ fn open_notice(target: &str, opener: &dyn Fn(&str) -> Result<(), String>) -> Opt
     opener(target)
         .err()
         .map(|error| format!("cannot open {target}: {error}"))
+}
+
+/// Return the roster CSV's suggested file name: the ride's slug, or the plain fallback.
+fn roster_file_name(ride: Option<&str>) -> String {
+    ride.map_or_else(
+        || "roster.csv".to_owned(),
+        |name| format!("{}-roster.csv", publish_wordpress::slugify(name)),
+    )
 }
 
 /// Return the instant of the next whole UTC hour, or *now* when the clock is at it.

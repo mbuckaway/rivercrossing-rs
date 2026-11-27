@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use craft::dialogs::{Answer, FileDialog, Request};
 use craft::egui::{
     Context, Event, Key as EguiKey, Modifiers, RawInput, Theme, ThemePreference, Vec2,
     ViewportCommand, ViewportId,
@@ -16,9 +18,10 @@ use craft::ui::runtime::access::Role;
 use craft::ui::shell::app::ShellApp;
 use craft::ui::shell::embed::CloseDecision;
 use craft::ui::testing::access::{AccessTree, violations};
+use craft::ui::testing::focus::AccessActionKind;
 use craft::ui::testing::{Fixture, Target};
 use rivercrossing_ride::{
-    EntryMode, PlateModel, RideConfig, RideConfigParams, RideEngine, SystemClock,
+    EntryMode, PlateModel, RideConfig, RideConfigParams, RideEngine, RideStatus, SystemClock,
 };
 use rivercrossing_roster::enums::EntryType;
 use rivercrossing_roster::roster::Roster;
@@ -27,20 +30,26 @@ use rivercrossing_store::Store;
 use rstest::rstest;
 use tempfile::TempDir;
 
-use super::{AppPaths, RiverCrossingApp};
-use crate::ui::action::effect::DispatchError;
+use super::{AppPaths, RIDE_UPDATED, RiverCrossingApp};
+use crate::ui::action::effect::{DispatchError, Effect};
 use crate::ui::action::enable::{RidePhase, enabled};
 use crate::ui::action::id::{
-    MI_BACKUP_NOW, MI_NEW_RIDE, MI_OPEN_LIBRARY, MI_RIDER_EDITOR, MI_SHORTCUTS, MI_START_RIDE,
-    MI_TIME_BOARD, MI_UNDO_CROSSING, MI_ZOOM_100, WX_ID_ABOUT,
+    MI_AUDIT_TRAIL, MI_BACKUP_NOW, MI_DENSITY_COMFORTABLE, MI_DENSITY_COMPACT, MI_NEW_RIDE,
+    MI_OPEN_LIBRARY, MI_RIDER_EDITOR, MI_SHORTCUTS, MI_START_RIDE, MI_TEXT_SIZE_LARGE,
+    MI_TIME_BOARD, MI_UNDO_CROSSING, WX_ID_ABOUT,
 };
-use crate::ui::action::spec::ACTIONS;
+use crate::ui::action::spec::{ACTIONS, CommandId, NativeDialog, Target as SpecTarget};
+use crate::ui::help::{MockBrowserLauncher, USER_GUIDE, USER_GUIDE_FILE};
 use crate::ui::presenters::console::{
     PLATE_LABEL, RECORD_LABEL, RIDE_STARTED, START_RIDE_LABEL, STOP_RIDE_LABEL,
 };
-use crate::ui::state::{AppState, ConsoleTab, ExportPresence, LoadedRide};
+use crate::ui::presenters::settings_form;
+use crate::ui::state::{
+    AppState, ConsoleTab, ExportPresence, FILE_PICKER_UNAVAILABLE, LoadedRide, NativeTask,
+    PendingNative,
+};
 use crate::ui::views::menu;
-use crate::ui::worker::StoreWorker;
+use crate::ui::worker::{StoreCommand, StoreReply, StoreWorker};
 
 /// The ride name every fixture uses.
 const RIDE_NAME: &str = "GORBA EPIC 2026";
@@ -95,13 +104,12 @@ fn fixture_roster() -> Result<Roster, String> {
     Ok(roster)
 }
 
-/// Build a draft ride from a fresh database in *directory*.
-fn loaded_draft_ride(directory: &TempDir) -> Result<LoadedRide, String> {
+/// Build a draft ride with *config* from a fresh database in *directory*.
+fn draft_ride_with(directory: &TempDir, config: &RideConfig) -> Result<LoadedRide, String> {
     let mut store =
         Store::open(directory.path().join("fixture.db")).map_err(|error| error.to_string())?;
-    let config = fixture_config()?;
     let ride_id = store
-        .create_ride(&config, Some(SEED))
+        .create_ride(config, Some(SEED))
         .map_err(|error| error.to_string())?;
     let roster = fixture_roster()?;
     store
@@ -118,9 +126,23 @@ fn loaded_draft_ride(directory: &TempDir) -> Result<LoadedRide, String> {
     })
 }
 
+/// Build a draft ride from a fresh database in *directory*.
+fn loaded_draft_ride(directory: &TempDir) -> Result<LoadedRide, String> {
+    draft_ride_with(directory, &fixture_config()?)
+}
+
 /// Build a running ride from a fresh database in *directory*.
 fn loaded_running_ride(directory: &TempDir) -> Result<LoadedRide, String> {
     let mut ride = loaded_draft_ride(directory)?;
+    ride.engine.start(None).map_err(|error| error.to_string())?;
+    Ok(ride)
+}
+
+/// Build a running ride that credits every short lap's card, from a fresh database in *directory*.
+fn loaded_always_deal_ride(directory: &TempDir) -> Result<LoadedRide, String> {
+    let mut config = fixture_config()?;
+    config.hold_short_laps = false;
+    let mut ride = draft_ride_with(directory, &config)?;
     ride.engine.start(None).map_err(|error| error.to_string())?;
     Ok(ride)
 }
@@ -372,27 +394,6 @@ fn app_tick_requests_the_next_backup_hour() {
 }
 
 #[test]
-fn test_app_logic_applies_the_saved_zoom() {
-    // Arrange
-    let directory = tempfile::tempdir().expect("a temporary directory");
-    let paths = paths_in(&directory);
-    let mut settings = rivercrossing_store::default_settings();
-    settings.zoom_percent = 130;
-    rivercrossing_store::save_settings(&settings, &paths.settings).expect("the settings write");
-    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(None, None, paths)));
-    let ctx = Context::default();
-
-    // Act: the new zoom takes effect at the start of the next pass.
-    let _first = ctx.run_logic(&RawInput::default(), |ctx| app.borrow_mut().logic(ctx));
-    let pass = ctx.run_ui(RawInput::default(), |_ui| {});
-
-    // Assert
-    assert!((ctx.zoom_factor() - 1.3).abs() < 1e-6, "the zoom is 130%");
-    assert_eq!(app.borrow().applied_zoom, Some(130));
-    pass.drop_without_applying_deltas();
-}
-
-#[test]
 fn test_app_frame_input_maps_the_saved_appearance() -> Result<(), Box<dyn std::error::Error>> {
     // Arrange
     let directory = tempfile::tempdir()?;
@@ -472,7 +473,7 @@ fn test_app_logic_leaves_the_egui_theme_to_the_root_env() -> Result<(), Box<dyn 
 // ------------------------------------------------------------- the menu
 
 #[test]
-fn test_the_menu_registry_has_53_rows() {
+fn test_the_menu_registry_has_52_rows() {
     // Arrange
     let (app, _directory) = headless_app(None);
 
@@ -480,11 +481,11 @@ fn test_the_menu_registry_has_53_rows() {
     let rows = menu::rows(&app.borrow().state);
 
     // Assert
-    assert_eq!(rows.len(), 53);
+    assert_eq!(rows.len(), 52);
     assert_eq!(
         rows.iter().filter(|row| row.enabled).count(),
-        25,
-        "the empty console enables twenty-five rows"
+        24,
+        "the empty console enables twenty-four rows"
     );
 }
 
@@ -507,7 +508,10 @@ fn test_the_menu_disables_the_rows_the_gate_or_the_release_refuses() {
     assert!(enabled(MI_NEW_RIDE), "New Ride is enabled with no ride");
     assert!(enabled(MI_BACKUP_NOW), "Back Up Database is always enabled");
     assert!(enabled(MI_SHORTCUTS), "the shortcuts dialog is built");
-    assert!(enabled(MI_ZOOM_100), "the zoom rows are always enabled");
+    assert!(
+        enabled(MI_DENSITY_COMPACT),
+        "the density and text-size rows are always enabled"
+    );
     assert!(enabled(WX_ID_ABOUT), "the about dialog is built");
     assert!(enabled(MI_OPEN_LIBRARY), "the ride library is built");
     assert!(!enabled(MI_START_RIDE), "Start Ride needs a ride");
@@ -520,12 +524,13 @@ fn test_the_menu_disables_the_rows_the_gate_or_the_release_refuses() {
 }
 
 #[test]
-fn test_the_menu_shows_the_saved_checks_and_zoom() {
+fn test_the_menu_shows_the_saved_checks_and_size_axes() {
     // Arrange
     let directory = tempfile::tempdir().expect("a temporary directory");
     let paths = paths_in(&directory);
     let mut settings = rivercrossing_store::default_settings();
-    settings.zoom_percent = 110;
+    settings.density = "comfortable".to_owned();
+    settings.text_size = "large".to_owned();
     settings.publish_laps_board = false;
     rivercrossing_store::save_settings(&settings, &paths.settings).expect("the settings write");
     let app = RiverCrossingApp::headless(None, None, paths);
@@ -540,12 +545,16 @@ fn test_the_menu_shows_the_saved_checks_and_zoom() {
         Some(false)
     );
     assert_eq!(
-        row(crate::ui::action::id::MI_ZOOM_110).and_then(|row| row.radio),
+        row(MI_DENSITY_COMFORTABLE).and_then(|row| row.radio),
         Some(true)
     );
     assert_eq!(
-        row(crate::ui::action::id::MI_ZOOM_100).and_then(|row| row.radio),
+        row(MI_DENSITY_COMPACT).and_then(|row| row.radio),
         Some(false)
+    );
+    assert_eq!(
+        row(MI_TEXT_SIZE_LARGE).and_then(|row| row.radio),
+        Some(true)
     );
 }
 
@@ -641,11 +650,58 @@ fn test_the_console_status_bar_renders_the_six_count_chips() {
     // Assert
     let tree = fixture.tree();
     assert!(tree_mentions(tree, "Crossings 0"));
-    assert!(tree_mentions(tree, "Cards 0"));
+    assert!(tree_mentions(tree, "Cards dealt 0"));
     assert!(tree_mentions(tree, "On course 0"));
     assert!(tree_mentions(tree, "Shoe 0/0"));
     assert!(tree_mentions(tree, "Riders 0"));
     assert!(tree_mentions(tree, "Teams 0"));
+}
+
+#[test]
+fn test_the_cards_chip_counts_a_credited_card() {
+    // Arrange: a running always-deal ride with one short-lap crossing, so its card is credited.
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let mut ride = loaded_always_deal_ride(&directory).expect("the fixture ride");
+    let _ = ride.engine.record_crossing(PLATE, None);
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    fixture.idle(2);
+
+    // Assert
+    let tree = fixture.tree();
+    assert!(tree_mentions(tree, "Crossings 1"));
+    assert!(tree_mentions(tree, "Cards dealt 1"));
+}
+
+#[test]
+fn test_the_cards_chip_skips_a_held_card() {
+    // Arrange: a default holding ride with one short-lap crossing, so its card waits in the hold
+    // queue.
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let mut ride = loaded_running_ride(&directory).expect("the fixture ride");
+    let _ = ride.engine.record_crossing(PLATE, None);
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    fixture.idle(2);
+
+    // Assert
+    let tree = fixture.tree();
+    assert!(tree_mentions(tree, "Crossings 1"));
+    assert!(tree_mentions(tree, "Cards dealt 0"));
 }
 
 #[test]
@@ -714,8 +770,9 @@ fn test_dragging_a_tie_break_chip_reorders_the_list() {
     fixture.idle(2);
     let chip = fixture.by_label("Best hand").expect("the first chip shows");
 
-    // Act: drag it one place to the right.
-    fixture.drag(&chip, Vec2::new(148.0, 0.0));
+    // Act: drag it onto the next chip's place, just past its own end.
+    let by = Vec2::new(chip.rect.width() / 2.0 + 2.0, 0.0);
+    fixture.drag(&chip, by);
     fixture.idle(2);
 
     // Assert
@@ -757,6 +814,61 @@ fn test_the_console_rail_dispatches_the_action(#[case] label: &str, #[case] dial
         app.borrow().state.dialogs.top().map(|dialog| dialog.id),
         Some(dialog)
     );
+}
+
+#[test]
+fn test_the_muted_rail_entry_describes_the_gate() {
+    // Arrange: no ride, so the Riders entry is muted.
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+    let riders = rail_entry(&fixture, "Riders");
+
+    // Act
+    let description = fixture.tree().description_of(riders.node);
+
+    // Assert
+    assert_eq!(description, Some("Open a ride first"));
+}
+
+#[test]
+fn test_the_enabled_rail_entry_describes_no_gate() {
+    // Arrange: a running mixed ride with an audit row, so every rail entry is enabled.
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let ride = loaded_running_ride(&directory).expect("the fixture ride");
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    app.borrow_mut().state.audit_row_count = 1;
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+    let riders = rail_entry(&fixture, "Riders");
+
+    // Act
+    let description = fixture.tree().description_of(riders.node);
+
+    // Assert
+    assert_eq!(description, None);
+}
+
+#[test]
+fn test_the_standings_dialog_with_no_ride_offers_a_ride() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    app.borrow_mut().state.open_results();
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    fixture.idle(2);
+
+    // Assert
+    assert!(tree_mentions(
+        fixture.tree(),
+        "No standings yet — open a ride."
+    ));
 }
 
 #[test]
@@ -949,6 +1061,7 @@ fn test_the_new_ride_command_opens_the_setup_dialog() {
     // Assert
     assert!(tree_mentions(fixture.tree(), "Ride Setup"));
     assert!(tree_mentions(fixture.tree(), "Ride name"));
+    assert_eq!(app.borrow().state.setup_edit, None);
     assert_eq!(
         app.borrow()
             .state
@@ -1014,6 +1127,389 @@ fn test_apply_reply_posts_a_store_error_as_the_notice() {
         app.borrow().state.notice.as_deref(),
         Some("the database refused")
     );
+}
+
+/// Build a `Ride` reply from *ride*, carrying `audit_row_count`.
+fn ride_reply(ride: LoadedRide, audit_row_count: usize) -> StoreReply {
+    StoreReply::Ride {
+        id: ride.ride_id,
+        config: ride.config,
+        roster: Box::new(ride.roster),
+        engine: Box::new(ride.engine),
+        audit_row_count,
+    }
+}
+
+#[test]
+fn test_apply_ride_reply_with_audit_rows_enables_the_audit_trail()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let (app, _app_directory) = headless_app(None);
+
+    // Act
+    app.borrow_mut().apply_reply(Ok(ride_reply(ride, 2)));
+
+    // Assert
+    assert_eq!(app.borrow().state.audit_row_count, 2);
+    assert!(enabled(MI_AUDIT_TRAIL, &app.borrow().state.gate()));
+    Ok(())
+}
+
+#[test]
+fn test_apply_ride_reply_without_audit_rows_keeps_the_audit_trail_disabled()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let (app, _app_directory) = headless_app(None);
+
+    // Act
+    app.borrow_mut().apply_reply(Ok(ride_reply(ride, 0)));
+
+    // Assert
+    assert_eq!(app.borrow().state.audit_row_count, 0);
+    assert!(!enabled(MI_AUDIT_TRAIL, &app.borrow().state.gate()));
+    Ok(())
+}
+
+#[test]
+fn test_opening_the_audit_viewer_after_a_ride_load_shows_the_rows()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: the ride load reports two audit rows.
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let (app, _app_directory) = headless_app(None);
+    app.borrow_mut().apply_reply(Ok(ride_reply(ride, 2)));
+    let at = time::OffsetDateTime::from_unix_timestamp(1_700_000_000)?;
+    let rows = vec![
+        rivercrossing_store::AuditRow {
+            at,
+            action: "record_crossing".to_owned(),
+            entry: PLATE.to_owned(),
+            reason: "Ada Lovelace".to_owned(),
+        },
+        rivercrossing_store::AuditRow {
+            at,
+            action: "start".to_owned(),
+            entry: String::new(),
+            reason: "0:00:00".to_owned(),
+        },
+    ];
+
+    // Act: open the viewer, then answer its row request.
+    app.borrow_mut().state.open_audit();
+    app.borrow_mut()
+        .apply_reply(Ok(StoreReply::AuditRows(rows)));
+
+    // Assert
+    let guard = app.borrow();
+    assert_eq!(guard.state.audit.store_rows.len(), 2);
+    assert_eq!(guard.state.filtered_audit().len(), 2);
+    Ok(())
+}
+
+#[test]
+fn test_apply_audit_rows_with_no_rows_clears_the_count_and_the_viewer()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: a ride load reports two audit rows.
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let (app, _app_directory) = headless_app(None);
+    app.borrow_mut().apply_reply(Ok(ride_reply(ride, 2)));
+
+    // Act
+    app.borrow_mut()
+        .apply_reply(Ok(StoreReply::AuditRows(Vec::new())));
+
+    // Assert
+    assert_eq!(app.borrow().state.audit_row_count, 0);
+    assert_eq!(app.borrow().state.audit.store_rows.len(), 0);
+    Ok(())
+}
+
+#[test]
+fn test_apply_ride_reply_given_another_reply_leaves_the_ride_unset() {
+    // Arrange
+    let (app, _app_directory) = headless_app(None);
+
+    // Act
+    app.borrow_mut()
+        .apply_ride_reply(StoreReply::Rides(Vec::new()));
+
+    // Assert
+    assert!(app.borrow().state.ride.is_none());
+}
+
+// ------------------------------------------------------ edit ride
+
+/// Build a headless app holding *ride* over *directory*'s paths.
+fn app_with_ride(directory: &TempDir, ride: LoadedRide) -> Rc<RefCell<RiverCrossingApp>> {
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    app
+}
+
+#[test]
+fn test_the_edit_ride_command_opens_the_live_setup_titled_edit_ride()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: a draft ride loaded into a headless app.
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let ride_id = ride.ride_id;
+    let app = app_with_ride(&directory, ride);
+
+    // Act
+    let opened = app.borrow_mut().command("mi_edit_ride")?;
+
+    // Assert
+    assert_eq!(opened, serde_json::json!({ "ok": true }));
+    assert_eq!(app.borrow().state.setup_edit, Some(ride_id));
+    assert_eq!(
+        app.borrow().state.dialogs.field("name_input"),
+        Some(RIDE_NAME)
+    );
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+    assert!(tree_mentions(fixture.tree(), "Edit Ride"));
+    assert_eq!(
+        violations(fixture.ctx(), fixture.tree()),
+        Vec::<String>::new()
+    );
+    Ok(())
+}
+
+#[test]
+fn test_saving_an_edit_queues_an_update_not_a_create() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: a draft ride open in the edit setup. Its planned duration is whole hours, so the
+    // `H:MM` field round-trips it.
+    let directory = tempfile::tempdir()?;
+    let mut ride = loaded_draft_ride(&directory)?;
+    ride.config.planned_duration_s = 7_200;
+    let ride_id = ride.ride_id;
+    let app = app_with_ride(&directory, ride);
+    app.borrow_mut().command("mi_edit_ride")?;
+
+    // Act
+    let result = app.borrow_mut().state.submit_setup();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    let guard = app.borrow();
+    assert_eq!(guard.state.pending_create, None);
+    let updated = guard
+        .state
+        .pending_store
+        .iter()
+        .find_map(|command| match command {
+            StoreCommand::UpdateRide { id, config } if *id == ride_id => Some(config.name.as_str()),
+            _ => None,
+        });
+    assert_eq!(updated, Some(RIDE_NAME));
+    Ok(())
+}
+
+#[test]
+fn test_the_ride_updated_reply_changes_the_live_config_and_keeps_the_ride_data()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: a running ride holding one crossing.
+    let directory = tempfile::tempdir()?;
+    let mut ride = loaded_running_ride(&directory)?;
+    let _ = ride.engine.record_crossing(PLATE, None);
+    let ride_id = ride.ride_id;
+    let crossings = ride.engine.crossings().len();
+    let events = ride.engine.events().len();
+    let mut config = ride.config.clone();
+    config.name = "RENAMED RIDE".to_owned();
+    let app = app_with_ride(&directory, ride);
+
+    // Act
+    app.borrow_mut().apply_reply(Ok(StoreReply::RideUpdated {
+        id: ride_id,
+        config,
+    }));
+
+    // Assert
+    let guard = app.borrow();
+    let ride = guard.state.ride.as_ref().ok_or("the ride is loaded")?;
+    assert_eq!(ride.config.name, "RENAMED RIDE");
+    assert_eq!(ride.engine.config().name, "RENAMED RIDE");
+    assert_eq!(ride.engine.crossings().len(), crossings);
+    assert_eq!(ride.engine.events().len(), events);
+    assert_eq!(guard.state.notice.as_deref(), Some(RIDE_UPDATED));
+    assert_eq!(guard.state.dialogs.top(), None);
+    Ok(())
+}
+
+#[test]
+fn test_editing_a_running_ride_leaves_it_running() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: a live ride that the operator edits.
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_running_ride(&directory)?;
+    let ride_id = ride.ride_id;
+    let mut config = ride.config.clone();
+    config.lap_km = 9.5;
+    let app = app_with_ride(&directory, ride);
+
+    // Act
+    app.borrow_mut().apply_reply(Ok(StoreReply::RideUpdated {
+        id: ride_id,
+        config,
+    }));
+
+    // Assert
+    let guard = app.borrow();
+    let ride = guard.state.ride.as_ref().ok_or("the ride is loaded")?;
+    assert_eq!(ride.engine.state(), RideStatus::Running);
+    assert_eq!(ride.engine.config().lap_km, 9.5);
+    Ok(())
+}
+
+#[test]
+fn test_a_ride_updated_reply_for_another_ride_is_ignored() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Arrange: the open ride is id 1; the reply names id 2.
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let ride_id = ride.ride_id;
+    let mut config = ride.config.clone();
+    config.name = "ANOTHER RIDE".to_owned();
+    let app = app_with_ride(&directory, ride);
+
+    // Act
+    app.borrow_mut().apply_reply(Ok(StoreReply::RideUpdated {
+        id: ride_id + 1,
+        config,
+    }));
+
+    // Assert
+    let guard = app.borrow();
+    let ride = guard.state.ride.as_ref().ok_or("the ride is loaded")?;
+    assert_eq!(ride.engine.config().name, RIDE_NAME);
+    assert_eq!(ride.config.name, RIDE_NAME);
+    assert_eq!(guard.state.notice, None);
+    Ok(())
+}
+
+#[test]
+fn test_a_ride_updated_reply_reports_an_engine_refusal() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: a draft ride whose edited setup names 256 decks, which the shoe cannot build.
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let ride_id = ride.ride_id;
+    let mut config = ride.config.clone();
+    config.deck_count = 256;
+    let app = app_with_ride(&directory, ride);
+
+    // Act
+    app.borrow_mut().apply_reply(Ok(StoreReply::RideUpdated {
+        id: ride_id,
+        config,
+    }));
+
+    // Assert
+    let guard = app.borrow();
+    let ride = guard.state.ride.as_ref().ok_or("the ride is loaded")?;
+    assert_eq!(
+        guard.state.notice.as_deref(),
+        Some("invalid ride config: deck_count must be at most 255, got 256")
+    );
+    assert_eq!(ride.engine.config().deck_count, 8);
+    Ok(())
+}
+
+#[test]
+fn test_a_ride_updated_reply_with_no_open_ride_lands_nothing()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: no ride is loaded when the reply arrives.
+    let (app, _directory) = headless_app(None);
+    let config = fixture_config()?;
+
+    // Act
+    app.borrow_mut()
+        .apply_reply(Ok(StoreReply::RideUpdated { id: 1, config }));
+
+    // Assert
+    let guard = app.borrow();
+    assert_eq!(guard.state.ride.as_ref().map(|ride| ride.ride_id), None);
+    assert_eq!(guard.state.notice, None);
+    Ok(())
+}
+
+#[test]
+fn test_a_ride_updated_reply_keeps_a_later_new_setup_dialog_open()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: the operator cancelled the edit and opened New Ride before the reply landed.
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let ride_id = ride.ride_id;
+    let mut config = ride.config.clone();
+    config.name = "EDITED".to_owned();
+    let app = app_with_ride(&directory, ride);
+    app.borrow_mut()
+        .state
+        .open_setup_dialog(time::OffsetDateTime::now_utc().date());
+
+    // Act
+    app.borrow_mut().apply_reply(Ok(StoreReply::RideUpdated {
+        id: ride_id,
+        config,
+    }));
+
+    // Assert
+    let guard = app.borrow();
+    assert_eq!(guard.state.setup_edit, None);
+    assert_eq!(
+        guard.state.dialogs.top().map(|dialog| dialog.id),
+        Some("ride_setup_dlg")
+    );
+    assert_eq!(
+        guard
+            .state
+            .ride
+            .as_ref()
+            .map(|ride| ride.engine.config().name.clone()),
+        Some("EDITED".to_owned())
+    );
+    Ok(())
+}
+
+#[test]
+fn test_a_ride_updated_reply_keeps_a_dialog_above_the_edit_setup_open()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: another dialog sits on top of the edit setup when the reply lands.
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let ride_id = ride.ride_id;
+    let mut config = ride.config.clone();
+    config.name = "EDITED".to_owned();
+    let app = app_with_ride(&directory, ride);
+    app.borrow_mut().command("mi_edit_ride")?;
+    app.borrow_mut()
+        .state
+        .dialogs
+        .open("about_dlg", None)
+        .map_err(|_| "the about dialog refuses to open")?;
+
+    // Act
+    app.borrow_mut().apply_reply(Ok(StoreReply::RideUpdated {
+        id: ride_id,
+        config,
+    }));
+
+    // Assert
+    let guard = app.borrow();
+    assert_eq!(guard.state.setup_edit, None);
+    assert_eq!(
+        guard.state.dialogs.top().map(|dialog| dialog.id),
+        Some("about_dlg")
+    );
+    Ok(())
 }
 
 #[test]
@@ -1433,6 +1929,65 @@ fn test_the_csv_preview_opens_from_the_picker_seam() -> Result<(), Box<dyn std::
 }
 
 #[test]
+fn test_the_csv_import_row_opens_the_preview_on_the_picked_path()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let app = app_with_editors(&directory)?;
+    let path = directory.path().join("entries.csv");
+    std::fs::write(
+        &path,
+        "FIRSTNAME,LASTNAME,TYPE,TEAMNAME,PLATE,NOTES,SEX\nKatherine,Johnson,solo,,111,,\n",
+    )?;
+    app.borrow_mut()
+        .answer_file_pickers_with(vec![path.clone()]);
+    app.borrow_mut().command("mi_import_csv")?;
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    pump(&app, &mut fixture, 3);
+
+    // Assert
+    let app_guard = app.borrow();
+    let state = &app_guard.state;
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("csv_preview_dlg")
+    );
+    assert_eq!(state.csv_preview.path.as_deref(), Some(path.as_path()));
+    assert_eq!(
+        state
+            .csv_preview
+            .model
+            .as_ref()
+            .map(|model| model.summary.clone()),
+        Some("entries.csv → 1 riders · 0 teams · 0 conflicts".to_owned())
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_csv_import_row_without_a_picker_posts_the_notice()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: the headless host answers every picker as unavailable.
+    let directory = tempfile::tempdir()?;
+    let app = app_with_editors(&directory)?;
+    app.borrow_mut().command("mi_import_csv")?;
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    pump(&app, &mut fixture, 3);
+
+    // Assert
+    assert_eq!(
+        app.borrow().state.notice.as_deref(),
+        Some(FILE_PICKER_UNAVAILABLE)
+    );
+    assert_eq!(app.borrow().state.dialogs.top(), None);
+    Ok(())
+}
+
+#[test]
 fn test_the_console_rider_row_opens_the_editor_at_the_plate()
 -> Result<(), Box<dyn std::error::Error>> {
     // Arrange
@@ -1490,6 +2045,14 @@ fn app_ride_row(id: i64, name: &str, status: rivercrossing_ride::RideStatus) -> 
 fn run_logic(app: &Rc<RefCell<RiverCrossingApp>>, fixture: &Fixture) {
     let ctx = fixture.ctx().clone();
     app.borrow_mut().logic(&ctx);
+}
+
+/// Run *passes* ui-and-logic passes over *fixture*, so a native answer reaches the logic pass.
+fn pump(app: &Rc<RefCell<RiverCrossingApp>>, fixture: &mut Fixture, passes: usize) {
+    for _ in 0..passes {
+        fixture.idle(1);
+        run_logic(app, fixture);
+    }
 }
 
 #[test]
@@ -1608,9 +2171,19 @@ fn test_the_quit_confirm_closes_the_app(#[case] os: Os) -> Result<(), Box<dyn st
     Ok(())
 }
 
+/// Pick the appearance entry labelled *entry* in the open Settings dialog.
+fn pick_appearance(fixture: &mut Fixture, entry: &str) {
+    let picker = fixture.by_label("Theme").expect("the theme picker");
+    fixture.click(&picker);
+    fixture.idle(2);
+    let row = fixture.by_label(entry).expect("the appearance entry shows");
+    fixture.click(&row);
+    fixture.idle(2);
+}
+
 #[test]
-fn test_the_settings_dialog_keeps_the_three_mode_radios() -> Result<(), Box<dyn std::error::Error>>
-{
+fn test_the_settings_dialog_shows_the_theme_picker_and_no_mode_radios()
+-> Result<(), Box<dyn std::error::Error>> {
     // Arrange
     let (app, _directory) = headless_app(None);
     let mut fixture = app_fixture(&app);
@@ -1618,10 +2191,15 @@ fn test_the_settings_dialog_keeps_the_three_mode_radios() -> Result<(), Box<dyn 
     fixture.idle(2);
 
     // Act
-    let rendered = ["System", "Light", "Dark"].map(|label| fixture.by_label(label).is_some());
+    let picker = fixture
+        .by_label("Theme")
+        .map(|target| fixture.tree().role_of(target.node));
+    let radios = fixture.by_role(Role::RADIO_BUTTON).len();
+    let groups = fixture.by_role(Role::RADIO_GROUP).len();
 
-    // Assert
-    assert_eq!(rendered, [true, true, true]);
+    // Assert: the combined picker owns the appearance, and the Mode radio group is gone.
+    assert_eq!(picker, Some(Some(Role::COMBO_BOX)));
+    assert_eq!((radios, groups), (0, 0));
     Ok(())
 }
 
@@ -1637,9 +2215,280 @@ fn test_the_settings_dialog_renders_the_appearance_axes() -> Result<(), Box<dyn 
     // Act
     let rendered = ["Contrast", "Density", "Text size", "Theme"]
         .map(|label| fixture.by_label(label).is_some());
+    let current = fixture
+        .by_label("Theme")
+        .and_then(|target| fixture.tree().value_of(target.node))
+        .map(str::to_owned);
+
+    // Assert: the picker opens on the stored pair's own entry.
+    assert_eq!(rendered, [true, true, true, true]);
+    assert_eq!(current.as_deref(), Some("ArtCraft — System"));
+    Ok(())
+}
+
+#[test]
+fn test_picking_a_graphite_dark_appearance_sets_the_theme_and_the_dark_appearance()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("wxID_PREFERENCES")?;
+    fixture.idle(2);
+
+    // Act
+    pick_appearance(&mut fixture, "Graphite — Dark");
 
     // Assert
-    assert_eq!(rendered, [true, true, true, true]);
+    let form = app
+        .borrow()
+        .state
+        .settings_form
+        .clone()
+        .expect("the settings form stays open");
+    assert_eq!(
+        (form.theme.as_str(), form.appearance.as_str()),
+        ("craft.graphite", "dark")
+    );
+    Ok(())
+}
+
+#[test]
+fn test_picking_a_dark_only_appearance_sets_the_dark_appearance()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("wxID_PREFERENCES")?;
+    fixture.idle(2);
+
+    // Act: Solarized Dark sits below the popup's first screen, so pick it by its entry index.
+    let picker = fixture.by_label("Theme").expect("the theme picker");
+    let entry = settings_form::appearance_entries()
+        .iter()
+        .position(|(label, _)| label == "Solarized Dark")
+        .expect("the dark-only entry");
+    let index = f64::from(u32::try_from(entry).expect("the entry index fits a u32"));
+    fixture.access(AccessActionKind::SetValue(index), &picker);
+    fixture.idle(2);
+
+    // Assert
+    let form = app
+        .borrow()
+        .state
+        .settings_form
+        .clone()
+        .expect("the settings form stays open");
+    assert_eq!(
+        (form.theme.as_str(), form.appearance.as_str()),
+        ("craft.solarized-dark", "dark")
+    );
+    Ok(())
+}
+
+#[test]
+fn test_picking_a_both_themes_system_entry_sets_the_system_appearance()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("wxID_PREFERENCES")?;
+    fixture.idle(2);
+
+    // Act: move off the stored pair first, then pick the system entry to prove it writes back.
+    pick_appearance(&mut fixture, "Graphite — Dark");
+    pick_appearance(&mut fixture, "ArtCraft — System");
+
+    // Assert
+    let form = app
+        .borrow()
+        .state
+        .settings_form
+        .clone()
+        .expect("the settings form stays open");
+    assert_eq!(
+        (form.theme.as_str(), form.appearance.as_str()),
+        ("craft.artcraft", "system")
+    );
+    Ok(())
+}
+
+#[test]
+fn test_opening_settings_with_an_unsupported_variant_keeps_the_pair_and_shows_the_first_entry()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: Classic is light-only, so the stored System appearance names no entry.
+    let (app, _directory) = headless_app(None);
+    {
+        let mut app = app.borrow_mut();
+        app.state.settings.theme = "craft.classic".to_owned();
+        app.state.settings.appearance = "system".to_owned();
+    }
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("wxID_PREFERENCES")?;
+    fixture.idle(2);
+
+    // Act
+    let form = app
+        .borrow()
+        .state
+        .settings_form
+        .clone()
+        .expect("the settings form stays open");
+    let shown = fixture
+        .by_label("Theme")
+        .and_then(|target| fixture.tree().value_of(target.node))
+        .map(str::to_owned);
+
+    // Assert: the picker shows the theme's first entry, and the form keeps the stored pair.
+    assert_eq!(
+        (form.theme.as_str(), form.appearance.as_str()),
+        ("craft.classic", "system")
+    );
+    assert_eq!(shown.as_deref(), Some("Classic"));
+    Ok(())
+}
+
+#[test]
+fn test_the_settings_rows_put_each_caption_beside_its_control()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("wxID_PREFERENCES")?;
+    fixture.idle(2);
+
+    // Act: a caption on the control's own row shares its vertical band.
+    let rows = ["Theme", "Contrast", "Density", "Text size"].map(|label| {
+        let caption = fixture
+            .by_role(Role::LABEL)
+            .into_iter()
+            .find(|target| fixture.tree().name_of(target.node) == Some(label))
+            .expect("the caption shows");
+        let control = fixture.by_label(label).expect("the control shows");
+        let middle = caption.rect.center().y;
+        middle > control.rect.min.y && middle < control.rect.max.y
+    });
+
+    // Assert
+    assert_eq!(rows, [true, true, true, true]);
+    Ok(())
+}
+
+#[test]
+fn test_the_settings_dialog_footer_reads_ok_and_not_save() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("wxID_PREFERENCES")?;
+    fixture.idle(2);
+
+    // Act
+    let ok = fixture.by_label("OK").is_some();
+    let save = fixture.by_label("Save").is_some();
+
+    // Assert
+    assert_eq!((ok, save), (true, false));
+    Ok(())
+}
+
+#[test]
+fn test_the_settings_columns_share_a_row() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("wxID_PREFERENCES")?;
+    fixture.idle(2);
+
+    // Act: Contrast and Density stand in the design's two-column row.
+    let contrast = fixture.by_label("Contrast").expect("the contrast picker");
+    let density = fixture.by_label("Density").expect("the density picker");
+
+    // Assert: the two captions share a row, and the second stands in the right-hand column.
+    let shared =
+        contrast.rect.min.y < density.rect.max.y && density.rect.min.y < contrast.rect.max.y;
+    assert!(
+        shared,
+        "the two pickers share one row: {:?} {:?}",
+        contrast.rect, density.rect
+    );
+    assert!(
+        density.rect.min.x > contrast.rect.min.x,
+        "the density column stands right of contrast: {:?} {:?}",
+        contrast.rect,
+        density.rect
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_settings_notice_sits_over_the_footer() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("wxID_PREFERENCES")?;
+    fixture.idle(2);
+    let message = "Average speed is out of range";
+    app.borrow_mut().state.settings_errors = Some(vec![message.to_owned()]);
+    fixture.idle(2);
+
+    // Act
+    let verbose = fixture
+        .by_label("Verbose logging")
+        .expect("the last console check");
+    let notice = fixture
+        .tree()
+        .keys()
+        .into_iter()
+        .find(|key| {
+            fixture
+                .tree()
+                .name_of(*key)
+                .is_some_and(|name| name.contains(message))
+        })
+        .and_then(|key| fixture.target(key))
+        .expect("the refusal notice shows");
+    let ok = fixture.by_label("OK").expect("the footer OK");
+
+    // Assert: the notice follows the checks and precedes the footer.
+    assert!(
+        notice.rect.center().y > verbose.rect.center().y,
+        "the notice follows the console checks: {:?} {:?}",
+        notice.rect,
+        verbose.rect
+    );
+    assert!(
+        notice.rect.max.y <= ok.rect.min.y,
+        "the notice stands directly over the footer: {:?} {:?}",
+        notice.rect,
+        ok.rect
+    );
+    Ok(())
+}
+
+#[test]
+fn test_picking_a_contrast_entry_writes_the_form() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("wxID_PREFERENCES")?;
+    fixture.idle(2);
+
+    // Act: the horizontal axis row still writes the picked choice back.
+    let contrast = fixture.by_label("Contrast").expect("the contrast picker");
+    fixture.click(&contrast);
+    fixture.idle(2);
+    let high = fixture.by_label("High").expect("the High entry");
+    fixture.click(&high);
+    fixture.idle(2);
+
+    // Assert
+    let form = app
+        .borrow()
+        .state
+        .settings_form
+        .clone()
+        .expect("the settings form stays open");
+    assert_eq!(form.contrast, "high");
     Ok(())
 }
 
@@ -1652,21 +2501,20 @@ fn test_the_settings_dialog_applies_through_the_view() -> Result<(), Box<dyn std
     fixture.idle(2);
 
     // Act
-    let dark = fixture.by_label("Dark").expect("the dark radio");
-    fixture.click(&dark);
-    fixture.idle(1);
+    pick_appearance(&mut fixture, "ArtCraft — Dark");
     let sound = fixture
         .by_label("Sound on crossing")
         .expect("the sound checkbox");
     fixture.click(&sound);
     fixture.idle(1);
-    let save = fixture.by_label("Save").expect("the save button");
-    fixture.click(&save);
+    let ok = fixture.by_label("OK").expect("the OK button");
+    fixture.click(&ok);
     fixture.idle(2);
 
     // Assert
     let app_guard = app.borrow();
     assert_eq!(app_guard.state.settings.appearance, "dark");
+    assert_eq!(app_guard.state.settings.theme, "craft.artcraft");
     assert!(!app_guard.state.settings.sound_on);
     assert_eq!(app_guard.state.dialogs.top(), None);
     assert_eq!(
@@ -1864,6 +2712,197 @@ fn test_an_export_picker_answer_queues_the_worker_job() -> Result<(), Box<dyn st
         Some(target.as_path())
     );
     Ok(())
+}
+
+#[test]
+fn test_the_export_roster_command_asks_for_a_csv_path() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    let seen: Rc<RefCell<Vec<Request>>> = Rc::new(RefCell::new(Vec::new()));
+    let recorded = Rc::clone(&seen);
+    app.borrow_mut()
+        .native
+        .set_override(Some(Box::new(move |request| {
+            recorded.borrow_mut().push(request.clone());
+            Answer::Cancelled
+        })));
+    app.borrow_mut().state.pending_command = Some(CommandId::ExportRosterCsv);
+    let mut fixture = app_fixture(&app);
+
+    // Act: the command raises the picker, and the ui pass shows it.
+    app.borrow_mut().run_pending_command();
+    pump(&app, &mut fixture, 1);
+
+    // Assert
+    assert_eq!(
+        seen.borrow().first(),
+        Some(&Request::File(
+            FileDialog::save()
+                .title("Save roster CSV")
+                .filter("CSV", &["csv"])
+                .file_name("gorba-epic-2026-roster.csv")
+        ))
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_export_roster_command_without_a_ride_suggests_the_plain_name() {
+    // Arrange: no ride is open, so the picker falls back to the plain name.
+    let (app, _directory) = headless_app(None);
+    let seen: Rc<RefCell<Vec<Request>>> = Rc::new(RefCell::new(Vec::new()));
+    let recorded = Rc::clone(&seen);
+    app.borrow_mut()
+        .native
+        .set_override(Some(Box::new(move |request| {
+            recorded.borrow_mut().push(request.clone());
+            Answer::Cancelled
+        })));
+    app.borrow_mut().state.pending_command = Some(CommandId::ExportRosterCsv);
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    app.borrow_mut().run_pending_command();
+    pump(&app, &mut fixture, 1);
+
+    // Assert
+    assert_eq!(
+        seen.borrow().first(),
+        Some(&Request::File(
+            FileDialog::save()
+                .title("Save roster CSV")
+                .filter("CSV", &["csv"])
+                .file_name("roster.csv")
+        ))
+    );
+}
+
+#[test]
+fn test_the_roster_picker_answer_writes_the_csv_and_posts_the_notice()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    let path = directory.path().join("roster.csv");
+    app.borrow_mut()
+        .answer_file_pickers_with(vec![path.clone()]);
+    app.borrow_mut().state.pending_command = Some(CommandId::ExportRosterCsv);
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    app.borrow_mut().run_pending_command();
+    pump(&app, &mut fixture, 2);
+
+    // Assert
+    assert!(path.exists());
+    assert_eq!(
+        app.borrow().state.notice,
+        Some(format!("Exported {}", path.display()))
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_export_roster_command_without_a_picker_posts_the_notice()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: the headless host answers the picker as unavailable.
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    app.borrow_mut().state.pending_command = Some(CommandId::ExportRosterCsv);
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    app.borrow_mut().run_pending_command();
+    pump(&app, &mut fixture, 2);
+
+    // Assert
+    assert_eq!(
+        app.borrow().state.notice.as_deref(),
+        Some(FILE_PICKER_UNAVAILABLE)
+    );
+    assert_eq!(app.borrow().state.dialogs.top(), None);
+    Ok(())
+}
+
+#[test]
+fn test_the_roster_answer_without_a_ride_posts_the_refusal() {
+    // Arrange
+    let (app, directory) = headless_app(None);
+    let path = directory.path().join("roster.csv");
+
+    // Act
+    app.borrow_mut().pick_roster(&[path]);
+
+    // Assert
+    assert_eq!(
+        app.borrow().state.notice,
+        Some("Open a ride first".to_owned())
+    );
+}
+
+#[test]
+fn test_the_csv_answer_given_an_unreadable_file_posts_the_notice()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let app = app_with_editors(&directory)?;
+    let missing = directory.path().join("missing.csv");
+
+    // Act
+    app.borrow_mut().pick_csv(&[missing]);
+
+    // Assert
+    let notice = app.borrow().state.notice.clone().unwrap_or_default();
+    assert!(
+        notice.starts_with("Could not read missing.csv: "),
+        "unexpected notice: {notice}"
+    );
+    assert_eq!(app.borrow().state.dialogs.top(), None);
+    Ok(())
+}
+
+#[test]
+fn test_the_csv_answer_without_a_path_does_nothing() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+
+    // Act
+    app.borrow_mut().pick_csv(&[]);
+
+    // Assert
+    assert_eq!(app.borrow().state.notice, None);
+    assert_eq!(app.borrow().state.dialogs.top(), None);
+}
+
+#[test]
+fn test_the_roster_answer_without_a_path_does_nothing() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+
+    // Act
+    app.borrow_mut().pick_roster(&[]);
+
+    // Assert
+    assert_eq!(app.borrow().state.notice, None);
 }
 
 #[test]
@@ -2124,4 +3163,216 @@ fn test_the_simulation_go_button_starts_the_simulation() {
     );
     let laps = app.borrow().state.pending_sim.map(|sim| sim.settings.laps);
     assert_eq!(laps, Some(1));
+}
+
+// ------------------------------------------------- windows and the guide
+
+/// The one §15 window row that asks the platform for a file instead of opening a dialog.
+const PICKER_WINDOW: &str = "csv_preview_dlg";
+
+/// Assert that a window row's dispatch landed: a dialog opened, or the picker row asked.
+fn assert_window_row_landed(window: &str, state: &AppState) {
+    if window == PICKER_WINDOW {
+        assert!(
+            state.choose_csv,
+            "the import row did not ask for the picker"
+        );
+        assert_eq!(state.notice, None);
+        assert_eq!(state.dialogs.top(), None);
+    } else {
+        assert!(
+            state.dialogs.top().is_some(),
+            "{window} left the dialog stack empty"
+        );
+    }
+}
+
+#[test]
+fn test_every_window_target_opens_a_dialog_in_a_state_that_enables_it() -> Result<(), String> {
+    // Arrange
+    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let phases = [
+        RidePhase::None,
+        RidePhase::Draft,
+        RidePhase::Running,
+        RidePhase::RunningStopped,
+        RidePhase::Finished,
+        RidePhase::Reopened,
+    ];
+
+    // Act and assert: each window row is dispatched in the first state its gate allows, so a
+    // row whose arm opens nothing is caught here rather than by an operator mid-ride.
+    for (index, row) in ACTIONS.iter().enumerate() {
+        let SpecTarget::Window(window) = row.target else {
+            continue;
+        };
+        let path = directory.path().join(format!("window-{index}.db"));
+        let mut state = phases
+            .iter()
+            .copied()
+            .map(|phase| {
+                sweep_state(phase, &path)
+                    .unwrap_or_else(|error| panic!("{phase:?} fixture: {error}"))
+            })
+            .find(|state| enabled(row.id, &state.gate()))
+            .ok_or_else(|| format!("{} is enabled in no ride state", row.id.as_str()))?;
+        let result = state.act(row.id);
+
+        // Assert
+        assert_eq!(
+            result,
+            Ok(Effect::OpenWindow(window)),
+            "{} ({}) did not open {window}",
+            row.id.as_str(),
+            row.label
+        );
+        assert_window_row_landed(window, &state);
+    }
+    Ok(())
+}
+
+#[test]
+fn test_the_duplicate_ride_command_asks_for_the_open_ride() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let id = ride.ride_id;
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    app.borrow_mut().state.pending_command = Some(CommandId::DuplicateRide);
+
+    // Act
+    app.borrow_mut().run_pending_command();
+
+    // Assert
+    assert_eq!(
+        app.borrow().state.pending_native,
+        Some(PendingNative {
+            dialog: NativeDialog::Prompt,
+            then: NativeTask::DuplicateRide { id },
+        })
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_duplicate_ride_answer_queues_the_store_command()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: the command raised its prompt on the open ride.
+    let directory = tempfile::tempdir()?;
+    let ride = loaded_draft_ride(&directory)?;
+    let id = ride.ride_id;
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    app.borrow_mut().state.pending_command = Some(CommandId::DuplicateRide);
+    app.borrow_mut().run_pending_command();
+
+    // Act
+    let confirmed = app.borrow_mut().state.confirm_native();
+
+    // Assert
+    assert!(confirmed);
+    assert!(matches!(
+        app.borrow().state.pending_store.last(),
+        Some(StoreCommand::DuplicateRide { id: queued }) if *queued == id
+    ));
+    Ok(())
+}
+
+#[test]
+fn test_the_user_guide_command_writes_the_page_and_launches_it()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    let expected = directory.path().join(USER_GUIDE_FILE);
+    let mut launcher = MockBrowserLauncher::new();
+    launcher
+        .expect_open()
+        .withf(move |path: &Path| path == expected.as_path())
+        .times(1)
+        .returning(|_| Ok(()));
+    app.borrow_mut().set_browser(Box::new(launcher));
+    app.borrow_mut().state.pending_command = Some(CommandId::OpenUserGuide);
+
+    // Act
+    app.borrow_mut().run_pending_command();
+
+    // Assert
+    let written = std::fs::read(directory.path().join(USER_GUIDE_FILE))?;
+    assert_eq!(written, USER_GUIDE.as_bytes());
+    assert_eq!(app.borrow().state.notice, None);
+    Ok(())
+}
+
+#[test]
+fn test_the_user_guide_launch_failure_posts_a_notice() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    let mut launcher = MockBrowserLauncher::new();
+    launcher
+        .expect_open()
+        .withf(|path: &Path| path.ends_with(USER_GUIDE_FILE))
+        .times(1)
+        .returning(|_| Err("no browser".to_owned()));
+    app.borrow_mut().set_browser(Box::new(launcher));
+    app.borrow_mut().state.pending_command = Some(CommandId::OpenUserGuide);
+
+    // Act
+    app.borrow_mut().run_pending_command();
+
+    // Assert
+    assert_eq!(
+        app.borrow().state.notice,
+        Some("cannot open the user guide: no browser".to_owned())
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_user_guide_write_failure_posts_a_notice() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: the config directory's name is held by a file, so the guide cannot be created. The
+    // launcher has no expectation, so a launch would also fail the test.
+    let directory = tempfile::tempdir()?;
+    let blocked = directory.path().join("config");
+    std::fs::write(&blocked, "not a directory")?;
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.settings_path = blocked.join("settings.json");
+    app.borrow_mut()
+        .set_browser(Box::new(MockBrowserLauncher::new()));
+    app.borrow_mut().state.pending_command = Some(CommandId::OpenUserGuide);
+
+    // Act
+    app.borrow_mut().run_pending_command();
+
+    // Assert
+    let notice = app.borrow().state.notice.clone().unwrap_or_default();
+    let expected_prefix = format!("cannot create {}", blocked.display());
+    assert!(
+        notice.starts_with(&expected_prefix),
+        "unexpected notice: {notice}"
+    );
+    Ok(())
 }

@@ -11,7 +11,7 @@ from. Every path the EPIC prompts reference resolves inside this repository.
 | `docs-md/project-plan.md` | Rust EPIC plan (EPIC-0…15) with R-id traceability |
 | `docs-md/automation.md` | UI automation decision, live control channel, selector and parity contract |
 | `docs-md/test-plan.md` | Test tiers, flow → mechanism → assertion matrix, golden policy |
-| `docs-md/ui-contract.md` | Consolidated UI contract (30 windows, 53 actions, controls, flows, gates, parity gaps) |
+| `docs-md/ui-contract.md` | Consolidated UI contract (30 windows, 52 actions, controls, flows, gates, parity gaps) |
 | `docs-md/visual-style.md` | ArtCraft design system (tokens, typography, spacing, widget vocabulary, appearance) |
 | `docs-md/control-mapping.md` | Frozen §15b id → `craft_ui` widget + accessible label/role |
 | `docs-md/screen-specs.md` | Per-window layout, states and interactions |

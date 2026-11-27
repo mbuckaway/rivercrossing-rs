@@ -1,0 +1,14 @@
+{
+  "screen": "self-test",
+  "steps": [
+    {
+      "command": "mi_selftest"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "shot": "self-test.png"
+    }
+  ]
+}

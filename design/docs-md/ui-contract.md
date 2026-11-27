@@ -11,8 +11,20 @@ Authority: `spec.md` §15 (menu map), §15b (frozen names + naming rules), `gui-
 Rust snapshot), and the Python source tree. The Rust table in `crates/rivercrossing-ui-egui/src/ui/` is
 canonical; the ids-drift test fails if this document's machine block and the compiled registry drift.
 
-Counts: **30 top-level windows**, **53 actions** (50 `mi_*` + `wxID_PREFERENCES`/`wxID_EXIT`/`wxID_ABOUT`),
+Counts: **30 top-level windows**, **52 actions** (49 `mi_*` + `wxID_PREFERENCES`/`wxID_EXIT`/`wxID_ABOUT`),
 **67 settable fields**.
+
+## Appearance and size
+
+- **One surface for appearance.** Settings owns theme, mode, contrast, density and text size. The
+  title bar and the main window carry no appearance controls, and the View menu does not repeat the
+  mode: `System`/`Light`/`Dark` is chosen only through the combined Theme picker, whose entries are
+  a theme plus a mode (`ArtCraft — Light`, `ArtCraft — Dark`, `ArtCraft — System`; single-variant
+  themes offer one entry).
+- **Two size axes, no zoom.** The library's own model is used: Density (Compact · Comfortable) and
+  Text size (Tiny · Small · Medium · Large). Both also appear in the View menu as quick radio sets.
+  The seven legacy 90–150 % zoom rows are retired; defaults are Comfortable + Small (the library's
+  1.0 type factor). `RootEnv.scale` remains the sanctioned hook if a whole-UI scale is ever needed.
 
 ## 1. Window inventory
 
@@ -114,7 +126,12 @@ has an `engine.stopped` flag for a stopped-but-not-finished ride).
 **View**
 - `mi_show_total_times` — Show Total Times on Crossings Panel (check) — always
 - `mi_show_lap_time` — Show Lap Time on Crossings Panel (check) — always
-- `mi_zoom_90` … `mi_zoom_150` — Zoom 90%…150% (radio) — always
+- `mi_density_compact` — Compact (radio) — always
+- `mi_density_comfortable` — Comfortable (radio) — always
+- `mi_text_size_tiny` — Tiny (radio) — always
+- `mi_text_size_small` — Small (radio) — always
+- `mi_text_size_medium` — Medium (radio) — always
+- `mi_text_size_large` — Large (radio) — always
 
 **Help**
 - `mi_user_guide` — User Guide — F1 — always
@@ -130,6 +147,13 @@ detail), Delete (delete selected crossing), Ctrl+D (delete), Ctrl+E (edit plate)
 The full frozen control list per window is the `windows` map in `gui-windows.md` (machine block). This
 section records the behaviour each window's controls express; the redesign maps each name below to a
 `craft_ui` widget in `control-mapping.md`.
+
+**Dialog width.** Use craft's `LeastWidth::Dialog` for a short form (one column of fields, a message)
+and `LeastWidth::WideDialog` plus a 760 pt content column for everything else (tables, `.grid2` rows,
+multi-section forms). Craft's two dialog-content roles are ~380 and ~820 points, so the mockups' 760 pt
+dialog cannot be set directly: pick `WideDialog` and let the content settle inside it. A third width
+role is a craft change, not an app-side width. Form rows are horizontal — caption beside its control,
+radio groups in one row (mockup `.row`); never caption-above-control.
 
 - **main_frame**: `main_menubar` (resource), `ride_status_panel`/`elapsed_clock_panel`/`remaining_clock_panel`
   (code-side slots), `ride_status_light` (StopLight: green RUNNING / amber stopped-REOPENED / red DRAFT·
@@ -178,8 +202,10 @@ section records the behaviour each window's controls express; the redesign maps 
 - **delete_ride_dlg**: `message_lbl` (dynamic), `confirm_name_input` (type-to-confirm, exact match);
   Delete disabled until exact byte match.
 - **audit_dlg**: `audit_search`, `action_choice` (30 items), `audit_list` (When/Action/Entry/Reason).
-- **settings_dlg**: `appearance_system_radio`/`appearance_light_radio`/`appearance_dark_radio`, `sound_chk`,
-  `show_total_times_chk`, `show_lap_time_chk`, `verbose_log_chk`, `avg_speed_spin`.
+- **settings_dlg**: `appearance_theme_choice` (the combined theme + mode picker, added 2026-11-27; the
+  three `appearance_*_radio` ids are retired), the non-frozen `appearance_contrast_choice`/
+  `appearance_density_choice`/`appearance_text_size_choice`, `sound_chk`, `show_total_times_chk`,
+  `show_lap_time_chk`, `verbose_log_chk`, `avg_speed_spin`.
 - **about_dlg**: `version_lbl`, `author_lbl`, `copyright_lbl`, `license_lbl`, `gorba_link`.
 - **shortcuts_dlg**: `shortcuts_list` (generated from the accelerator table — cannot drift).
 - **selftest_dlg**: `selftest_output` (monospace PASS/FAIL), `rerun_btn` (disabled mid-run).

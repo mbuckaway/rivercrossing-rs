@@ -1,0 +1,11 @@
+{
+  "screen": "console-no-ride",
+  "steps": [
+    {
+      "wait": 0.5
+    },
+    {
+      "shot": "console-no-ride.png"
+    }
+  ]
+}

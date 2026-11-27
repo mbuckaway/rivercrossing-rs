@@ -2,11 +2,14 @@
 
 //! The app state that the views render and the §15 action gates read.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use rivercrossing_cards::Card;
+use rivercrossing_cards::{Card, JokersMode};
 use rivercrossing_csvio::ImportPreview;
-use rivercrossing_ride::{EntryId, EntryMode, RideConfig, RideEngine, RideStatus, SystemClock};
+use rivercrossing_ride::{
+    EntryId, EntryMode, PlateModel, RideConfig, RideEngine, RideStatus, SystemClock,
+};
 use rivercrossing_roster::enums::EntryType;
 use rivercrossing_roster::roster::Roster;
 use rivercrossing_roster::types::Rider;
@@ -14,7 +17,7 @@ use rivercrossing_store::settings::AppSettings;
 use rivercrossing_store::{AuditRow, PreviousSession, RideRow, StoreError};
 use uuid::Uuid;
 
-use time::{Date, OffsetDateTime};
+use time::{Date, OffsetDateTime, Time};
 
 use crate::ui::action::dispatch::dispatch;
 use crate::ui::action::effect::{DispatchError, Effect};
@@ -92,8 +95,12 @@ pub(crate) enum NativeTask {
         /// The file to write.
         kind: exports::ExportKind,
     },
+    /// Ask the save picker where to write the open roster CSV.
+    ExportRosterCsv,
     /// Choose the organizer logo through the platform's open picker.
     ChooseLogo,
+    /// Choose the riders CSV through the platform's open picker.
+    ChooseCsv,
     /// Open the page that a successful publish reported.
     OpenPublished {
         /// The page's public URL.
@@ -120,7 +127,9 @@ impl NativeTask {
                 exports::ExportKind::PosterHtml => "export_poster_html",
                 exports::ExportKind::Csv => "export_csv",
             },
+            Self::ExportRosterCsv => "export_roster_csv",
             Self::ChooseLogo => "choose_logo",
+            Self::ChooseCsv => "choose_csv",
             Self::OpenPublished { .. } => "open_published",
             Self::RetryPublish => "retry_publish",
         }
@@ -312,6 +321,33 @@ pub(crate) struct ExportPresence {
     pub(crate) last_pdf: Option<PathBuf>,
 }
 
+/// The setup form's four radio choices, kept outside the frozen field map.
+///
+/// The frozen registry has no radio field kind, so the setup view renders these values directly
+/// and the submit path joins them back into the parser's input.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SetupRadios {
+    /// The ride's team policy.
+    pub(crate) entry_mode: EntryMode,
+    /// The ride's plate policy.
+    pub(crate) plate_model: PlateModel,
+    /// How the shoe counts its jokers.
+    pub(crate) jokers_mode: JokersMode,
+    /// Whether a short lap holds its card for review.
+    pub(crate) hold_short_laps: bool,
+}
+
+impl Default for SetupRadios {
+    fn default() -> Self {
+        Self {
+            entry_mode: EntryMode::Solo,
+            plate_model: PlateModel::RiderPooled,
+            jokers_mode: JokersMode::Total,
+            hold_short_laps: true,
+        }
+    }
+}
+
 /// One loaded ride and the model that drives it.
 #[derive(Debug)]
 pub(crate) struct LoadedRide {
@@ -347,10 +383,16 @@ pub(crate) struct AppState {
     pub(crate) setup_logo: String,
     /// Set by the setup form's Browse button: the next logic pass raises the platform file picker.
     pub(crate) choose_logo: bool,
+    /// Set by the Import Riders CSV row: the next logic pass raises the platform file picker.
+    pub(crate) choose_csv: bool,
     /// The open dialogs.
     pub(crate) dialogs: DialogStack,
     /// The status notice, when one is posted.
     pub(crate) notice: Option<String>,
+    /// The file the last export wrote, while its success notice offers to open it.
+    pub(crate) exported_file: Option<PathBuf>,
+    /// The export file that the success notice's Open action queued for the next logic pass.
+    pub(crate) open_export: Option<PathBuf>,
     /// The exports that exist this session.
     pub(crate) exports: ExportPresence,
     /// The results window's cached model and export watermark.
@@ -397,6 +439,10 @@ pub(crate) struct AppState {
     pub(crate) pending_cues: Vec<Cue>,
     /// The ride setup the operator submitted, until the app persists it.
     pub(crate) pending_create: Option<RideConfig>,
+    /// The ride id the setup dialog edits, or `None` for a new ride.
+    pub(crate) setup_edit: Option<i64>,
+    /// The setup form's four radio choices.
+    pub(crate) setup_radios: SetupRadios,
     /// The clock reading captured when the ride stopped.
     pub(crate) clock_frozen: Option<f64>,
     /// The ride-setup refusal that the dialog's infobar shows.
@@ -423,6 +469,8 @@ pub(crate) struct AppState {
     pub(crate) selftest_lines: Vec<String>,
     /// The correction dialog's target and mode.
     pub(crate) correction: CorrectionTarget,
+    /// The DNF dialog's Entry field: a name, a plate or an entry the roster resolves.
+    pub(crate) correction_entry: String,
     /// The Crossing Detail dialog's open state.
     pub(crate) crossing_detail: Option<CrossingDetailState>,
     /// The previous session's resume record.
@@ -431,8 +479,12 @@ pub(crate) struct AppState {
     pub(crate) launch_resolved: bool,
     /// The resume dialog's message, while it is open.
     pub(crate) launch_message: Option<String>,
+    /// The ride name the resume message emphasises.
+    pub(crate) launch_ride_name: Option<String>,
     /// The quit dialog's message, while it is open.
     pub(crate) quit_message: Option<String>,
+    /// The ride name the quit message emphasises.
+    pub(crate) quit_ride_name: Option<String>,
     /// The last hour bucket that a backup ran in.
     pub(crate) last_backup_hour: Option<i64>,
     /// Whether the next finished backup was asked for by the operator, so it earns a notice.
@@ -476,7 +528,10 @@ impl AppState {
             setup_tiebreak: ["high_card", "laps", "total_time"],
             setup_logo: String::new(),
             choose_logo: false,
+            choose_csv: false,
             notice: None,
+            exported_file: None,
+            open_export: None,
             exports: ExportPresence::default(),
             results: exports::ResultsState::default(),
             pending_export: None,
@@ -500,6 +555,8 @@ impl AppState {
             console_tab: ConsoleTab::Riders,
             pending_cues: Vec::new(),
             pending_create: None,
+            setup_edit: None,
+            setup_radios: SetupRadios::default(),
             clock_frozen: None,
             setup_errors: None,
             rider_editor: RiderEditorModel::default(),
@@ -513,11 +570,14 @@ impl AppState {
             settings_errors: None,
             selftest_lines: Vec::new(),
             correction: CorrectionTarget::default(),
+            correction_entry: String::new(),
             crossing_detail: None,
             previous_session: None,
             launch_resolved: false,
             launch_message: None,
+            launch_ride_name: None,
             quit_message: None,
+            quit_ride_name: None,
             last_backup_hour: None,
             announce_backup: false,
             close_requested: false,
@@ -562,9 +622,17 @@ impl AppState {
     }
 
     /// Set the status notice; an empty message clears it.
+    ///
+    /// A new notice retires the export notice: the bar shows one outcome at a time.
     pub(crate) fn note(&mut self, message: impl Into<String>) {
         let message = message.into();
         self.notice = (!message.is_empty()).then_some(message);
+        self.exported_file = None;
+    }
+
+    /// Take the export file that the success notice's Open action queued.
+    pub(crate) fn take_open_export(&mut self) -> Option<PathBuf> {
+        self.open_export.take()
     }
 
     /// Write the settings to the state file.
@@ -579,8 +647,9 @@ impl AppState {
     /// Execute one action: gate it, dispatch it, then apply the effect to the state.
     ///
     /// `OpenWindow` opens the dialog when this release builds it, `RunCommand` stores
-    /// [`Self::pending_command`], `ToggleCheck` flips its setting and saves, `SetZoom` stores the
-    /// percentage and saves, and `OpenNative` stores [`Self::pending_native`].
+    /// [`Self::pending_command`], `ToggleCheck` flips its setting and saves, `SetDensity` and
+    /// `SetTextSize` store their spelling and save, and `OpenNative` stores
+    /// [`Self::pending_native`].
     ///
     /// # Errors
     ///
@@ -594,7 +663,7 @@ impl AppState {
     }
 
     /// Return whether the action's target exists in this release: a dialog this build renders, or
-    /// a command, check, zoom or native dialog the app handles directly.
+    /// a command, check, density, text size or native dialog the app handles directly.
     #[must_use]
     #[expect(
         clippy::unused_self,
@@ -620,9 +689,18 @@ impl AppState {
                 self.toggle_check(check);
                 Ok(())
             }
-            Effect::SetZoom(percent) => {
-                self.settings.zoom_percent = percent;
+            Effect::SetDensity(spelling) => {
+                spelling.clone_into(&mut self.settings.density);
                 self.persist_settings();
+                Ok(())
+            }
+            Effect::SetTextSize(spelling) => {
+                spelling.clone_into(&mut self.settings.text_size);
+                self.persist_settings();
+                Ok(())
+            }
+            Effect::OpenEditRide => {
+                self.open_edit_setup_dialog();
                 Ok(())
             }
             Effect::OpenNative { dialog, then } => {
@@ -644,9 +722,9 @@ impl AppState {
             "rider_editor_dlg" => self.open_rider_editor(),
             "team_editor_dlg" => self.open_team_editor(),
             "rider_issues_dlg" => self.open_rider_issues(),
-            // The OS file picker arrives with PR D's craft_dialogs; until then the Import row
-            // names the missing piece instead of opening an empty preview.
-            "csv_preview_dlg" => self.note(FILE_PICKER_UNAVAILABLE),
+            // The Import Riders CSV row asks the app for the platform picker; the app's logic
+            // pass raises it and previews the picked file.
+            "csv_preview_dlg" => self.choose_csv = true,
             "ride_library_dlg" => self.open_library(),
             "audit_dlg" => self.open_audit(),
             "settings_dlg" => self.open_settings(),
@@ -657,7 +735,6 @@ impl AppState {
             "set_start_dlg" => self.open_set_start(),
             "void_card_confirm_dlg" => self.open_void_card(),
             "crossing_number_dlg" => self.open_crossing_number(),
-            "crossing_detail_dlg" => {}
             "results_dlg" => self.open_results(),
             "publish_wordpress_dlg" => self.open_publish(),
             "simulation_dlg" => self.open_simulation(),
@@ -679,10 +756,42 @@ impl AppState {
     pub(crate) fn open_setup_dialog(&mut self, today: Date) {
         let _ = self.dialogs.open("ride_setup_dlg", None);
         self.setup_errors = None;
+        self.setup_edit = None;
         self.seed_setup_defaults(today);
     }
 
-    /// Submit the open ride-setup dialog: validate its fields and store the config to persist.
+    /// Open the ride-setup dialog preloaded with the open ride's setup, ready to edit it.
+    ///
+    /// The §15 gate allows this only while a ride is open, so a state with no ride opens nothing.
+    pub(crate) fn open_edit_setup_dialog(&mut self) {
+        let Some(ride) = self.ride.as_ref() else {
+            return;
+        };
+        let ride_id = ride.ride_id;
+        let config = ride.config.clone();
+        let _ = self.dialogs.open("ride_setup_dlg", None);
+        self.setup_errors = None;
+        self.setup_edit = Some(ride_id);
+        self.seed_setup_from_ride(&config);
+    }
+
+    /// Close the edit setup once its write lands, leaving a later dialog alone.
+    ///
+    /// The operator may have cancelled the edit and opened a New Ride dialog meanwhile, so the top
+    /// dialog is closed only while the state is still in edit mode.
+    pub(crate) fn close_setup_dialog(&mut self) {
+        let editing = self.setup_edit.take().is_some();
+        if editing
+            && self
+                .dialogs
+                .top()
+                .is_some_and(|dialog| dialog.id == "ride_setup_dlg")
+        {
+            let _ = self.dialogs.cancel();
+        }
+    }
+
+    /// Submit the open ride-setup dialog: validate its fields and queue its config.
     ///
     /// # Errors
     ///
@@ -701,7 +810,7 @@ impl AppState {
         }
     }
 
-    /// Validate the open setup dialog and store the config to persist.
+    /// Validate the open setup dialog and queue its config.
     fn validate_setup(&mut self) -> Result<(), Vec<String>> {
         let Some(top) = self.dialogs.top() else {
             return Err(vec![NO_SETUP_DIALOG.to_owned()]);
@@ -709,15 +818,95 @@ impl AppState {
         if top.id != "ride_setup_dlg" {
             return Err(vec![NO_SETUP_DIALOG.to_owned()]);
         }
-        // The two controls the design keeps outside the field map join the presenter's input here.
+        // The controls the design keeps outside the field map join the presenter's input here.
         let mut fields = top.fields.clone();
         let _ = fields.insert("tiebreak_list".to_owned(), self.setup_tiebreak.join(","));
         let _ = fields.insert("logo_preview_bmp".to_owned(), self.setup_logo.clone());
+        self.inject_setup_radios(&mut fields);
         let params = setup::params_from_fields(&fields)?;
         let config = setup::validated_config(&params)?;
-        self.pending_create = Some(config);
-        let _ = self.dialogs.cancel();
+        self.queue_setup(config);
         Ok(())
+    }
+
+    /// Join the four radio choices into the form fields that the parser reads.
+    ///
+    /// The frozen field map has no radio kind, so the view only stores these choices here.
+    fn inject_setup_radios(&self, fields: &mut BTreeMap<String, String>) {
+        let radios = self.setup_radios;
+        let pairs = [
+            ("mixed_radio", radios.entry_mode == EntryMode::Mixed),
+            ("relay_radio", radios.plate_model == PlateModel::TeamRelay),
+            (
+                "jokers_per_deck_radio",
+                radios.jokers_mode == JokersMode::PerDeck,
+            ),
+            ("always_deal_radio", !radios.hold_short_laps),
+        ];
+        for (field, on) in pairs {
+            let _ = fields.insert(field.to_owned(), bool_word(on).to_owned());
+        }
+    }
+
+    /// Queue the validated setup as a new ride, or as an update of the ride being edited.
+    ///
+    /// A new ride closes its dialog at once; an edit keeps it open until the store answers, so a
+    /// failed write leaves the operator's values in place.
+    fn queue_setup(&mut self, config: RideConfig) {
+        if let Some(id) = self.setup_edit {
+            self.pending_store
+                .push(StoreCommand::UpdateRide { id, config });
+        } else {
+            self.pending_create = Some(config);
+            let _ = self.dialogs.cancel();
+        }
+    }
+
+    /// Seed each ride-setup field from the live ride's setup.
+    ///
+    /// The radio choices are seeded directly: the frozen field map has no radio kind.
+    fn seed_setup_from_ride(&mut self, config: &RideConfig) {
+        let cap = config
+            .max_cards
+            .map_or_else(|| "Disabled".to_owned(), |cap| cap.to_string());
+        let seeds = [
+            ("name_input", config.name.clone()),
+            ("date_picker", format_date(config.event_date)),
+            (
+                "start_time_picker",
+                format_time(config.planned_start.time()),
+            ),
+            ("venue_input", config.venue.clone()),
+            ("organizer_input", config.organizer.clone()),
+            ("scorer_input", config.scorer.clone()),
+            ("lap_km_spin", format!("{:.1}", config.lap_km)),
+            (
+                "duration_input",
+                setup::format_duration(i64::from(config.planned_duration_s)),
+            ),
+            (
+                "min_lap_input",
+                setup::format_min_lap(i64::from(config.min_lap_s)),
+            ),
+            ("team_size_spin", config.max_team_size.to_string()),
+            ("decks_spin", config.deck_count.to_string()),
+            ("jokers_spin", config.jokers_per_deck.to_string()),
+            ("cap_choice", cap),
+        ];
+        for (field, value) in seeds {
+            let _ = self.dialogs.set_field(field, value);
+        }
+        self.setup_radios = SetupRadios {
+            entry_mode: config.entry_mode,
+            plate_model: config.plate_model,
+            jokers_mode: config.jokers_mode,
+            hold_short_laps: config.hold_short_laps,
+        };
+        self.setup_tiebreak = config.tiebreak_order.map(|tiebreak| tiebreak.as_str());
+        self.setup_logo = config
+            .logo_path
+            .as_ref()
+            .map_or_else(String::new, |path| path.display().to_string());
     }
 
     /// Seed each ride-setup field with its preloaded value.
@@ -733,14 +922,11 @@ impl AppState {
             ("decks_spin", defaults.decks.to_string()),
             ("jokers_spin", defaults.jokers_per_deck.to_string()),
             ("cap_choice", "Disabled".to_owned()),
-            ("hold_short_radio", "true".to_owned()),
-            ("solo_radio", "true".to_owned()),
-            ("pooled_radio", "true".to_owned()),
-            ("jokers_total_radio", "true".to_owned()),
         ];
         for (field, value) in seeds {
             let _ = self.dialogs.set_field(field, value);
         }
+        self.setup_radios = SetupRadios::default();
         self.setup_tiebreak = ["high_card", "laps", "total_time"];
         self.setup_logo.clear();
     }
@@ -1829,7 +2015,9 @@ impl AppState {
             // The app runs these itself: a file picker answers with a path, and the publish
             // outcomes own their own button rules.
             NativeTask::ChooseLogo
+            | NativeTask::ChooseCsv
             | NativeTask::ExportFile { .. }
+            | NativeTask::ExportRosterCsv
             | NativeTask::OpenPublished { .. }
             | NativeTask::RetryPublish => {}
         }
@@ -1863,6 +2051,7 @@ impl AppState {
             NativeTask::Command(CommandId::AppQuit) => "Quit RiverCrossing?".to_owned(),
             NativeTask::Command(other) => format!("Run {}?", other.as_str()),
             NativeTask::ChooseLogo => "Choose the organizer logo".to_owned(),
+            NativeTask::ChooseCsv => "Choose the riders CSV.".to_owned(),
             NativeTask::DuplicateRide { id } => self
                 .library
                 .store_rows
@@ -1890,6 +2079,7 @@ impl AppState {
                 ),
             NativeTask::DeleteCrossing { .. } => "Delete this crossing?".to_owned(),
             NativeTask::ExportFile { .. } => "Choose where to save the export.".to_owned(),
+            NativeTask::ExportRosterCsv => "Choose where to save the roster CSV.".to_owned(),
             NativeTask::OpenPublished { link } => format!("Published to {link}"),
             NativeTask::RetryPublish => "The publish failed. Retry?".to_owned(),
         }
@@ -1911,8 +2101,10 @@ impl AppState {
             NativeTask::Command(_) => "OK",
             NativeTask::DeleteRider { .. } | NativeTask::DeleteCrossing { .. } => "Delete",
             NativeTask::RemoveTeam { .. } => "Remove",
-            NativeTask::ExportFile { .. } | NativeTask::ChooseLogo => "Save",
-            NativeTask::OpenPublished { .. } => "Open",
+            NativeTask::ExportFile { .. }
+            | NativeTask::ExportRosterCsv
+            | NativeTask::ChooseLogo => "Save",
+            NativeTask::OpenPublished { .. } | NativeTask::ChooseCsv => "Open",
             NativeTask::RetryPublish => "Retry",
         }
     }
@@ -1953,6 +2145,7 @@ impl AppState {
                 let message = quit_resume::continue_message(&name, session.state, at)
                     .unwrap_or_else(|_| format!("\"{name}\" is still open."));
                 self.launch_message = Some(message);
+                self.launch_ride_name = Some(name);
                 let _ = self.dialogs.open("resume_dlg", None);
             }
         }
@@ -1968,12 +2161,14 @@ impl AppState {
             self.pending_store.push(StoreCommand::LoadRide { id });
         }
         self.launch_message = None;
+        self.launch_ride_name = None;
         let _ = self.dialogs.cancel();
     }
 
     /// Open the ride library from the resume dialog.
     pub(crate) fn resume_library(&mut self) {
         self.launch_message = None;
+        self.launch_ride_name = None;
         let _ = self.dialogs.cancel();
         self.open_library();
     }
@@ -1990,6 +2185,7 @@ impl AppState {
                 .as_ref()
                 .map_or_else(String::new, |ride| ride.config.name.clone());
             self.quit_message = Some(quit_resume::running_exit_message(&name));
+            self.quit_ride_name = Some(name);
             let _ = self.dialogs.open("exit_running_dlg", None);
         } else {
             self.raise_native(
@@ -2098,6 +2294,15 @@ impl AppState {
             NativeTask::DuplicateRide { id: row.id },
         );
         true
+    }
+
+    /// Ask to duplicate the open ride, or post the no-ride notice.
+    pub(crate) fn duplicate_open_ride(&mut self) {
+        let Some(id) = self.ride.as_ref().map(|ride| ride.ride_id) else {
+            self.note(NO_RIDE);
+            return;
+        };
+        self.raise_native(NativeDialog::Prompt, NativeTask::DuplicateRide { id });
     }
 
     /// Return whether a library row is selected.
@@ -2299,6 +2504,7 @@ impl AppState {
             ("time_picker", ""),
             ("reason_input", ""),
         ]);
+        self.correction_entry.clear();
     }
 
     /// Open the void-card dialog when the crossing holds a credited card.
@@ -2349,18 +2555,23 @@ impl AppState {
         let Some(ride) = self.ride.as_ref() else {
             return;
         };
-        let date = format!(
-            "{:04}-{:02}-{:02}",
-            ride.config.event_date.year(),
-            u8::from(ride.config.event_date.month()),
-            ride.config.event_date.day()
-        );
+        // An unset ride date is the epoch: seeding it would render a fabricated 1/1/70.
+        let date = (ride.config.event_date != time::OffsetDateTime::UNIX_EPOCH.date()).then(|| {
+            format!(
+                "{:04}-{:02}-{:02}",
+                ride.config.event_date.year(),
+                u8::from(ride.config.event_date.month()),
+                ride.config.event_date.day()
+            )
+        });
         let time = ride.engine.actual_start().map_or_else(
             || "00:00:00".to_owned(),
             |at| format!("{:02}:{:02}:{:02}", at.hour(), at.minute(), at.second()),
         );
         let _ = self.dialogs.open("set_start_dlg", None);
-        let _ = self.dialogs.set_field("start_date_picker", date);
+        if let Some(date) = date {
+            let _ = self.dialogs.set_field("start_date_picker", date);
+        }
         let _ = self.dialogs.set_field("start_time_picker", time);
     }
 
@@ -2420,9 +2631,14 @@ impl AppState {
     /// Return the presenter's refusal.
     pub(crate) fn submit_dnf(&mut self) -> Result<(), String> {
         let plate = self.correction_field("plate_input");
+        let entry = self.correction_entry.clone();
+        let target = self.roster().map_or_else(
+            || plate.trim().to_owned(),
+            |roster| corrections::dnf_target(roster, &plate, &entry),
+        );
         let reason = self.correction_field("reason_input");
         let outcome = match self.ride.as_mut() {
-            Some(ride) => corrections::mark_dnf(&mut ride.engine, &plate, &reason),
+            Some(ride) => corrections::mark_dnf(&mut ride.engine, &target, &reason),
             None => Err(NO_RIDE.to_owned()),
         };
         self.finish_correction(outcome)
@@ -2781,6 +2997,16 @@ fn format_date(date: Date) -> String {
         u8::from(date.month()),
         date.day()
     )
+}
+
+/// Return *time* as the setup form's `HH:MM` text.
+fn format_time(time: Time) -> String {
+    format!("{:02}:{:02}", time.hour(), time.minute())
+}
+
+/// Return the stored word of a form flag.
+fn bool_word(on: bool) -> &'static str {
+    if on { "true" } else { "false" }
 }
 
 /// Return a new ride's seed: the low 63 bits of a version-4 UUID.

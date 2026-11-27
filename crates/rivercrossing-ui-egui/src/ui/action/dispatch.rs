@@ -31,7 +31,9 @@ const fn effect(target: Target) -> Effect {
         Target::Window(window) => Effect::OpenWindow(window),
         Target::Command(command) => Effect::RunCommand(command),
         Target::Check(check) => Effect::ToggleCheck(check),
-        Target::Zoom(zoom) => Effect::SetZoom(zoom),
+        Target::Density(spelling) => Effect::SetDensity(spelling),
+        Target::TextSize(spelling) => Effect::SetTextSize(spelling),
+        Target::EditRide => Effect::OpenEditRide,
         Target::Native { dialog, then } => Effect::OpenNative { dialog, then },
     }
 }

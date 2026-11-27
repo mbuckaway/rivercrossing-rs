@@ -99,6 +99,7 @@ fn issue_rows(state: &AppState) -> TableData {
             label: row.name.clone(),
             // The row's label carries the name into its column; a NAME cell would show it twice.
             cells: vec![(PLATE, row.plate.clone()), (ISSUE, row.detail.clone())],
+            ..TableRow::default()
         })
         .collect();
     TableData {

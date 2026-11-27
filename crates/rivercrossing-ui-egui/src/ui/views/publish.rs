@@ -3,9 +3,10 @@
 //! The `WordPress` publish form and its progress window.
 
 use craft::egui::Ui;
+use craft::theme::TypeRole;
 use craft::theme::variant::Tone;
 use craft::ui::contract::{Props as _, Show as _, ShowContainer as _};
-use craft::ui::display::{Progress, Text};
+use craft::ui::display::{Progress, Shade, Text};
 use craft::ui::sections::Section;
 
 use super::dialogs::{field_caption, notice, select_value, stack_secret_field, stack_text_field};
@@ -13,6 +14,12 @@ use crate::ui::presenters::publish_wordpress::{
     PUBLISH_KIND_CHOICES, STATUS_CHOICES, resolved_kind, status_value,
 };
 use crate::ui::state::AppState;
+
+#[cfg(test)]
+mod tests;
+
+/// The fixed help line under the page fields (`design/mockups/index.html`, `#s-publish`).
+pub(crate) const HELP: &str = "The Application Password is kept in this machine's settings file for now. A blank parent page publishes at the top level.";
 
 /// Show the publish form.
 pub(crate) fn form_body(ui: &mut Ui, state: &mut AppState) {
@@ -27,6 +34,12 @@ pub(crate) fn form_body(ui: &mut Ui, state: &mut AppState) {
         stack_text_field(ui, state, "wp_slug_input", "Slug");
         stack_text_field(ui, state, "wp_parent_input", "Parent page id");
         status(ui, state);
+    });
+    ui.push_id("publish_help", |ui| {
+        let _ = Text::new(HELP)
+            .role(TypeRole::Caption)
+            .shade(Shade::Muted)
+            .show(ui);
     });
     if let Some(errors) = state.publish_errors.clone() {
         notice(ui, "publish_infobar", Tone::Bad, errors.join("; "));

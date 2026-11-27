@@ -7,6 +7,7 @@ pub mod app;
 pub(crate) mod appearance;
 pub mod automation;
 pub(crate) mod dialogs;
+pub(crate) mod help;
 pub(crate) mod ids;
 pub(crate) mod logging;
 pub(crate) mod logo;

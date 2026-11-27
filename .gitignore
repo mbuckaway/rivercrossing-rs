@@ -48,3 +48,6 @@ coverage.json
 
 # Isolated local tooling (mermaid-cli, chromium cache)
 /.tools/
+
+# Test artifacts
+.tmp

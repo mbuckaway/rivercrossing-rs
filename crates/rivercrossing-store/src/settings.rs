@@ -3,7 +3,7 @@
 //! The persisted app settings: the Python `settings.json` schema.
 //!
 //! The module reads and writes the same file the Python app uses, with the
-//! same 29 Python fields and the same per-field coercers, plus four additive
+//! same 28 Python fields and the same per-field coercers, plus four additive
 //! `ArtCraft` appearance fields. A load never fails: a missing, unreadable,
 //! corrupt or non-object file returns the defaults and records one warning. A
 //! save creates the parent directory, writes a sibling temporary file and
@@ -17,9 +17,6 @@ use crate::error::StoreError;
 
 #[cfg(test)]
 mod tests;
-
-/// The zoom rungs the View menu's radios carry.
-const ZOOM_LADDER: [u16; 7] = [90, 100, 110, 120, 130, 140, 150];
 
 /// The appearance spellings the settings dialog carries.
 const APPEARANCES: [&str; 3] = ["system", "light", "dark"];
@@ -53,9 +50,6 @@ const WP_STATUSES: [&str; 4] = ["draft", "publish", "pending", "private"];
 /// The publish kinds the publish feature can reach.
 const WP_KINDS: [&str; 2] = ["full", "podium"];
 
-/// The documented default zoom.
-const DEFAULT_ZOOM_PERCENT: u16 = 100;
-
 /// The stored average-speed default.
 const DEFAULT_AVG_SPEED_KMH: f64 = 12.0;
 
@@ -88,8 +82,6 @@ pub struct AppSettings {
     pub show_total_times: bool,
     /// Whether the console shows the lap-time column.
     pub show_lap_time: bool,
-    /// The text zoom percentage, one of the zoom ladder rungs.
-    pub zoom_percent: u16,
     /// The saved splitter position, when one is saved.
     pub splitter_sash: Option<i32>,
     /// The saved window rectangle `[x, y, width, height]`, when one is saved.
@@ -152,13 +144,12 @@ pub fn default_settings() -> AppSettings {
     AppSettings {
         appearance: "system".to_owned(),
         contrast: "system".to_owned(),
-        density: "compact".to_owned(),
-        text_size: "medium".to_owned(),
+        density: "comfortable".to_owned(),
+        text_size: "small".to_owned(),
         theme: "craft.artcraft".to_owned(),
         sound_on: true,
         show_total_times: false,
         show_lap_time: true,
-        zoom_percent: DEFAULT_ZOOM_PERCENT,
         splitter_sash: None,
         window_geometry: None,
         verbose_logging: true,
@@ -256,7 +247,6 @@ fn payload(settings: &AppSettings) -> Value {
         "sound_on": settings.sound_on,
         "show_total_times": settings.show_total_times,
         "show_lap_time": settings.show_lap_time,
-        "zoom_percent": settings.zoom_percent,
         "splitter_sash": settings.splitter_sash,
         "window_geometry": settings.window_geometry,
         "verbose_logging": settings.verbose_logging,
@@ -303,11 +293,6 @@ fn from_mapping(raw: &Map<String, Value>) -> AppSettings {
         sound_on: bool_or(raw.get("sound_on"), defaults.sound_on),
         show_total_times: bool_or(raw.get("show_total_times"), defaults.show_total_times),
         show_lap_time: bool_or(raw.get("show_lap_time"), defaults.show_lap_time),
-        zoom_percent: clamp_zoom(
-            raw.get("zoom_percent")
-                .and_then(Value::as_i64)
-                .unwrap_or(i64::from(DEFAULT_ZOOM_PERCENT)),
-        ),
         splitter_sash: optional_i32(raw.get("splitter_sash")),
         window_geometry: geometry_or(raw.get("window_geometry")),
         verbose_logging: bool_or(raw.get("verbose_logging"), defaults.verbose_logging),
@@ -395,20 +380,4 @@ fn geometry_or(value: Option<&Value>) -> Option<[i32; 4]> {
         int_item(width)?,
         int_item(height)?,
     ])
-}
-
-/// Return `zoom` moved onto the nearest zoom rung, ties to the lower rung.
-fn clamp_zoom(zoom: i64) -> u16 {
-    if let Some(rung) = ZOOM_LADDER
-        .iter()
-        .copied()
-        .find(|rung| i64::from(*rung) == zoom)
-    {
-        return rung;
-    }
-    ZOOM_LADDER
-        .iter()
-        .copied()
-        .min_by_key(|rung| (i64::from(*rung).abs_diff(zoom), *rung))
-        .unwrap_or(DEFAULT_ZOOM_PERCENT)
 }

@@ -296,6 +296,8 @@ impl AppState {
         }
         self.mark_exported();
         self.note(format!("Exported {}", path.display()));
+        // The console's success notice names the file and offers to open it.
+        self.exported_file = Some(path.to_path_buf());
     }
 
     /// Return the last file that a preview row opens.

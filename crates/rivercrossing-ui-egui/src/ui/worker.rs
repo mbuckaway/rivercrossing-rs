@@ -33,6 +33,13 @@ pub(crate) enum StoreCommand {
         /// The seed that builds the shoe, when the UI minted one.
         seed: Option<u64>,
     },
+    /// Replace one ride's persisted setup, leaving its shoe, roster and event log alone.
+    UpdateRide {
+        /// The ride whose setup to replace.
+        id: i64,
+        /// The validated setup to write.
+        config: RideConfig,
+    },
     /// Rebuild one ride's engine and roster.
     LoadRide {
         /// The ride to load.
@@ -103,7 +110,14 @@ pub(crate) enum StoreReply {
     Rides(Vec<RideRow>),
     /// The new ride's id.
     RideCreated(i64),
-    /// One loaded ride: its id, setup, roster and rebuilt engine.
+    /// One ride's setup was rewritten; carries the id and the written setup.
+    RideUpdated {
+        /// The edited ride's id.
+        id: i64,
+        /// The setup that was written.
+        config: RideConfig,
+    },
+    /// One loaded ride: its id, setup, roster, rebuilt engine and audit row count.
     Ride {
         /// The ride's id.
         id: i64,
@@ -113,6 +127,8 @@ pub(crate) enum StoreReply {
         roster: Box<Roster>,
         /// The engine rebuilt from the audit log.
         engine: Box<RideEngine<Roster, SystemClock>>,
+        /// The number of rows in the ride's audit trail.
+        audit_row_count: usize,
     },
     /// One ride's roster.
     Roster(Box<Roster>),
@@ -166,6 +182,10 @@ pub(crate) fn apply(store: &mut Store, command: StoreCommand) -> Result<StoreRep
         StoreCommand::Rides => Ok(StoreReply::Rides(store.rides()?)),
         StoreCommand::CreateRide { config, seed } => {
             Ok(StoreReply::RideCreated(store.create_ride(&config, seed)?))
+        }
+        StoreCommand::UpdateRide { id, config } => {
+            store.update_ride_config(id, &config)?;
+            Ok(StoreReply::RideUpdated { id, config })
         }
         StoreCommand::LoadRide { id } => load_reply(store, id),
         StoreCommand::RosterFor { id } => Ok(StoreReply::Roster(Box::new(store.roster_for(id)?))),
@@ -239,16 +259,18 @@ fn pdf_options(job: &ExportJob) -> PdfOptions {
     }
 }
 
-/// Rebuild *id*'s engine and roster for the load reply.
+/// Rebuild *id*'s engine and roster for the load reply, with its audit row count.
 fn load_reply(store: &Store, id: i64) -> Result<StoreReply, StoreError> {
     let engine = store.load_engine(id)?;
     let roster = store.roster_for(id)?;
+    let audit_row_count = store.audit_rows(id)?.len();
     let config = engine.config().clone();
     Ok(StoreReply::Ride {
         id,
         config,
         roster: Box::new(roster),
         engine: Box::new(engine),
+        audit_row_count,
     })
 }
 

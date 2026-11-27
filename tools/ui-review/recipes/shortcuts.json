@@ -1,0 +1,14 @@
+{
+  "screen": "shortcuts",
+  "steps": [
+    {
+      "command": "mi_shortcuts"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "shot": "shortcuts.png"
+    }
+  ]
+}

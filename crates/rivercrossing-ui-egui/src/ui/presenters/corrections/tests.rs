@@ -16,7 +16,7 @@ use time::{Date, Month, OffsetDateTime, Time};
 
 use super::{
     CorrectionActions, add_crossing_at, assign_plate_to_miss, can_edit, card_text,
-    crossing_detail_fields, deal_manual, edit_crossing, mark_dnf, set_start, void_card,
+    crossing_detail_fields, deal_manual, dnf_target, edit_crossing, mark_dnf, set_start, void_card,
 };
 
 /// The ride name every fixture uses.
@@ -1298,4 +1298,103 @@ fn solo_entry_id(roster: &Roster) -> Result<EntryId, String> {
         .resolve_plate(SOLO_PLATE)
         .map(rivercrossing_roster::types::Entry::id)
         .ok_or_else(|| "the fixture roster holds no solo entry".to_owned())
+}
+
+#[rstest]
+#[case::blank_entry_is_the_plate("101", "", "101")]
+#[case::sole_entry_plate_marks_it("101", "", "101")]
+#[case::team_name_resolves_to_its_plate("", "Trail Blazers", "T1")]
+#[case::rider_name_resolves_to_the_rider_plate("", "Sam Ellis", "201")]
+#[case::typed_plate_wins_when_unresolved("", "999", "999")]
+fn test_dnf_target_resolves_the_entry_the_operator_typed(
+    #[case] plate: &str,
+    #[case] entry: &str,
+    #[case] expected: &str,
+) -> Result<(), String> {
+    // Arrange: a solo entry and a pooled team with a team plate.
+    let roster = dnf_roster()?;
+
+    // Act
+    let target = dnf_target(&roster, plate, entry);
+
+    // Assert
+    assert_eq!(target, expected);
+    Ok(())
+}
+
+/// Return a roster with a solo entry and a team whose plate is `T1`.
+fn dnf_roster() -> Result<Roster, String> {
+    let mut roster = Roster::new(EntryMode::Mixed, 4, PlateModel::RiderPooled, Some(SEED))
+        .map_err(|error| error.to_string())?;
+    roster.load_entries(vec![
+        Entry::restored(
+            "k-ada",
+            SOLO_PLATE,
+            "Ada Lovelace",
+            rivercrossing_roster::enums::EntryType::Solo,
+            vec![Rider {
+                first_name: "Ada".to_owned(),
+                last_name: "Lovelace".to_owned(),
+                plate: Some(SOLO_PLATE.to_owned()),
+                ..Rider::default()
+            }],
+        ),
+        Entry::restored(
+            "k-trail",
+            "T1",
+            "Trail Blazers",
+            rivercrossing_roster::enums::EntryType::Team,
+            vec![Rider {
+                first_name: "Sam".to_owned(),
+                last_name: "Ellis".to_owned(),
+                plate: Some(TEAM_PLATE.to_owned()),
+                ..Rider::default()
+            }],
+        ),
+    ]);
+    Ok(roster)
+}
+
+#[rstest]
+#[case::entry_plate_names_it("T1", "T1")]
+#[case::entry_key_names_it("k-trail", "T1")]
+#[case::entry_name_names_it("Trail Blazers", "T1")]
+fn test_dnf_target_resolves_a_team_by_any_of_its_names(
+    #[case] typed: &str,
+    #[case] expected: &str,
+) -> Result<(), String> {
+    // Arrange
+    let roster = dnf_roster()?;
+
+    // Act
+    let target = dnf_target(&roster, "", typed);
+
+    // Assert
+    assert_eq!(target, expected);
+    Ok(())
+}
+
+#[test]
+fn test_dnf_target_given_a_relay_rider_without_a_plate_names_the_entry() -> Result<(), String> {
+    // Arrange: a relay team's members carry no plates of their own.
+    let mut roster = Roster::new(EntryMode::Mixed, 4, PlateModel::TeamRelay, Some(SEED))
+        .map_err(|error| error.to_string())?;
+    roster.load_entries(vec![Entry::restored(
+        "k-relay",
+        "T2",
+        "Moss Ridge Riders",
+        rivercrossing_roster::enums::EntryType::Team,
+        vec![Rider {
+            first_name: "Sam".to_owned(),
+            last_name: "Ellis".to_owned(),
+            ..Rider::default()
+        }],
+    )]);
+
+    // Act
+    let target = dnf_target(&roster, "", "Sam Ellis");
+
+    // Assert
+    assert_eq!(target, "T2");
+    Ok(())
 }

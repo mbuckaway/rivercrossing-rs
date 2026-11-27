@@ -138,20 +138,20 @@ harness it lands.
 
 ### EPIC-12 — egui UI + Action registry (`rivercrossing-ui-egui`)
 - **Scope:** reproduce the Python *screens and behaviour* (30 windows) from `ui-contract.md`; the
-  `Action`/command registry (§15 menu map + §15b frozen ids, 53 unique actions); presenters' decision
+  `Action`/command registry (§15 menu map + §15b frozen ids, 52 unique actions); presenters' decision
   logic; console, riders/teams editors, results, audit, settings, dialogs; sound (rodio). The wx visual
   layer (`design/screenshots/`, the XRC canvas prose) is retired; the ArtCraft look is defined by
   `visual-style.md` and the approved mockups in `design/mockups/`. **EPIC-15 executes the redesign.**
 - **Delivery — five PRs:** **12a** foundation (`gui-windows.md`, settings in `rivercrossing-store`,
   registry + ids-drift, `DialogStack`, app state + `StoreWorker`, ride setup + `main_frame` console,
-  sound, NDJSON logging, theme/zoom, automation completion); **12b** riders/teams editors, add
+  sound, NDJSON logging, theme/appearance, automation completion); **12b** riders/teams editors, add
   dialogs, rider issues, CSV; **12c** ride library, launch/resume/exit/quit, set start, corrections,
   audit, self-test, settings/about/shortcuts, native-dialog mapping, session/backups; **12d**
   results/standings, exports + previews, WordPress publish (R-86), simulator; **12e** close-out.
 - **Delivered:** PRs #20 (12a), #21 (12b), #22 (12c), #23 (12d) and the close-out branch (12e). All
-  30 windows render with one golden each, the 53-action registry drives menus and buttons, and the
+  30 windows render with one golden each, the 52-action registry drives menus and buttons, and the
   gate holds at Tier A unit + Tier A-snapshot + the two Tier B smokes. 12e adds the R-73 route×state
-  sweep (53 actions × six ride states), the R-76 per-dialog Esc/Enter/focus/opener assertions, the
+  sweep (52 actions × six ride states), the R-76 per-dialog Esc/Enter/focus/opener assertions, the
   window→`DialogSpec` drift check and 13 more goldens. The sweep exposed a command-id collision: the
   riders CSV row shared the standings export command; it now has `ExportRosterCsv`, and the reviewed
   machine block in `gui-windows.md` was corrected.

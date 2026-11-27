@@ -115,7 +115,6 @@ Comfortable density adds about 1pt. Text-size steps (Tiny/Small/Medium/Large) sc
 The app frame is the ArtCraft **docked shell** (`craft_ui::shell::AppShell`):
 
 - **Title bar** (`shell::{TitleBar, Title, CaptionButton}`).
-- **Options bar** (`bars::{Bar, BarKind::Options}`) for mode/density/contrast/theme and view toggles.
 - **Tool rail = navigation** (`rails::ToolRail`): it dispatches the same Action ids as the menu.
 - **Docked panels = content** (`docking::{SplitArea, DockGroup, DockPanels}`): live standings, Needs
   Review, ride info.
@@ -162,8 +161,9 @@ The app exposes the full model in Settings but keeps **System/Light/Dark** as th
 The net-new contrast/density/text-size/theme controls are **non-frozen** settings controls (own ids,
 outside the 67 §15b fields). `System` follows the host (`craft::platform::appearance`).
 
-Do **not** call `ctx.set_style`, `ctx.set_visuals`, or `ctx.set_zoom_factor` for appearance. The seven
-frozen `mi_zoom_90…mi_zoom_150` actions remain a separate zoom axis and keep `ctx.set_zoom_factor`.
+Do **not** call `ctx.set_style`, `ctx.set_visuals`, or `ctx.set_zoom_factor` for appearance. The frozen
+View-menu density and text-size rows drive the craft library's `Size` and `TextSize` presets through
+`RootEnv`, the same path as mode, contrast and theme.
 
 ## 8. Interaction states
 

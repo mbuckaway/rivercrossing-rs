@@ -1,0 +1,14 @@
+{
+  "screen": "simulation",
+  "steps": [
+    {
+      "command": "mi_simulation"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "shot": "simulation.png"
+    }
+  ]
+}

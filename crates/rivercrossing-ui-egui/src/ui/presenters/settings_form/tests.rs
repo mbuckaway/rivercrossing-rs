@@ -7,11 +7,15 @@
     reason = "the asserted speeds are exact literals that the form copies unchanged or floors to 1.0"
 )]
 
+use craft::theme::Variants;
 use pretty_assertions::assert_eq;
 use rivercrossing_store::settings::{AppSettings, default_settings};
 use rstest::rstest;
 
-use super::{FormValues, appearance_for_radio, apply, from_settings};
+use super::{
+    FormValues, appearance_choice, appearance_entries, appearance_for_radio, apply, from_settings,
+    set_appearance,
+};
 
 // ------------------------------------------------------------- fixtures
 
@@ -34,7 +38,6 @@ fn valid_form() -> FormValues {
 /// Return settings carrying a non-default value in every dialogless field.
 fn decorated_settings() -> AppSettings {
     AppSettings {
-        zoom_percent: 130,
         splitter_sash: Some(320),
         window_geometry: Some([10, 20, 304, 404]),
         sim_riders: 150,
@@ -126,8 +129,8 @@ fn test_settings_form_from_settings_given_the_defaults_reads_every_axis() {
         (
             "system",
             "system",
-            "compact",
-            "medium",
+            "comfortable",
+            "small",
             "craft.artcraft",
             true,
             false,
@@ -178,7 +181,6 @@ fn test_settings_form_apply_given_a_valid_form_leaves_the_dialogless_fields_alon
 
     // Assert
     assert_eq!(messages, Vec::<String>::new());
-    assert_eq!(settings.zoom_percent, before.zoom_percent);
     assert_eq!(settings.splitter_sash, before.splitter_sash);
     assert_eq!(settings.window_geometry, before.window_geometry);
     assert_eq!(settings.sim_riders, before.sim_riders);
@@ -491,4 +493,208 @@ fn test_settings_form_appearance_for_radio_given_both_returns_light() {
 
     // Assert
     assert_eq!(appearance, "light");
+}
+
+// ------------------------------------------------------- appearance_entries
+
+#[test]
+fn test_settings_form_appearance_entries_offer_one_variant_per_theme_variant() {
+    // Arrange: the expected count follows each built-in's own Variants.
+    let entries = appearance_entries();
+
+    // Act
+    let offered: Vec<(&str, usize)> = craft::theme::builtins()
+        .iter()
+        .map(|theme| {
+            let id = theme.id.as_str();
+            let prefix = format!("{id}|");
+            let count = entries
+                .iter()
+                .filter(|(_, value)| value.starts_with(&prefix))
+                .count();
+            (theme.name.as_str(), count)
+        })
+        .collect();
+    let expected: Vec<(&str, usize)> = craft::theme::builtins()
+        .iter()
+        .map(|theme| {
+            let count = match theme.variants {
+                Variants::Both => 3,
+                Variants::LightOnly | Variants::DarkOnly => 1,
+            };
+            (theme.name.as_str(), count)
+        })
+        .collect();
+
+    // Assert
+    assert_eq!(offered, expected);
+    assert_eq!(entries.len(), 24);
+}
+
+#[test]
+fn test_settings_form_appearance_entries_follow_the_builtins_order() {
+    // Arrange
+    let entries = appearance_entries();
+
+    // Act: the first appearance of each theme id names the order.
+    let mut order: Vec<&str> = entries
+        .iter()
+        .filter_map(|(_, value)| value.split_once('|').map(|(theme, _)| theme))
+        .collect();
+    order.dedup();
+    let builtins: Vec<&str> = craft::theme::builtins()
+        .iter()
+        .map(|theme| theme.id.as_str())
+        .collect();
+
+    // Assert
+    assert_eq!(order, builtins);
+}
+
+#[test]
+fn test_settings_form_appearance_entries_label_a_both_theme_with_light_dark_and_system() {
+    // Arrange
+    let entries = appearance_entries();
+
+    // Act
+    let artcraft: Vec<(String, String)> = entries
+        .into_iter()
+        .filter(|(_, value)| value.starts_with("craft.artcraft|"))
+        .collect();
+
+    // Assert
+    assert_eq!(
+        artcraft,
+        vec![
+            (
+                "ArtCraft — Light".to_owned(),
+                "craft.artcraft|light".to_owned()
+            ),
+            (
+                "ArtCraft — Dark".to_owned(),
+                "craft.artcraft|dark".to_owned()
+            ),
+            (
+                "ArtCraft — System".to_owned(),
+                "craft.artcraft|system".to_owned()
+            ),
+        ]
+    );
+}
+
+#[test]
+fn test_settings_form_appearance_entries_label_a_light_only_theme_with_its_name() {
+    // Arrange
+    let entries = appearance_entries();
+
+    // Act
+    let classic: Vec<(String, String)> = entries
+        .into_iter()
+        .filter(|(_, value)| value.starts_with("craft.classic|"))
+        .collect();
+
+    // Assert
+    assert_eq!(
+        classic,
+        vec![("Classic".to_owned(), "craft.classic|light".to_owned())]
+    );
+}
+
+#[test]
+fn test_settings_form_appearance_entries_label_a_dark_only_theme_with_its_name() {
+    // Arrange
+    let entries = appearance_entries();
+
+    // Act
+    let solarized: Vec<(String, String)> = entries
+        .into_iter()
+        .filter(|(_, value)| value.starts_with("craft.solarized-dark|"))
+        .collect();
+
+    // Assert
+    assert_eq!(
+        solarized,
+        vec![(
+            "Solarized Dark".to_owned(),
+            "craft.solarized-dark|dark".to_owned()
+        )]
+    );
+}
+
+// -------------------------------------------------------- appearance_choice
+
+#[test]
+fn test_settings_form_appearance_choice_given_a_listed_pair_returns_its_value() {
+    // Arrange
+    let entries = appearance_entries();
+
+    // Act
+    let choice = appearance_choice(&entries, "craft.graphite", "dark");
+
+    // Assert
+    assert_eq!(choice, Some("craft.graphite|dark".to_owned()));
+}
+
+#[test]
+fn test_settings_form_appearance_choice_given_an_unsupported_variant_returns_the_themes_first_entry()
+ {
+    // Arrange: Classic offers no System variant, so its light entry stands in.
+    let entries = appearance_entries();
+
+    // Act
+    let choice = appearance_choice(&entries, "craft.classic", "system");
+
+    // Assert
+    assert_eq!(choice, Some("craft.classic|light".to_owned()));
+}
+
+#[test]
+fn test_settings_form_appearance_choice_given_an_unknown_theme_returns_the_first_entry() {
+    // Arrange
+    let entries = appearance_entries();
+
+    // Act
+    let choice = appearance_choice(&entries, "craft.nope", "dark");
+
+    // Assert
+    assert_eq!(choice, Some("craft.artcraft|light".to_owned()));
+}
+
+#[test]
+fn test_settings_form_appearance_choice_given_no_entries_returns_none() {
+    // Arrange, Act
+    let choice = appearance_choice(&[], "craft.artcraft", "system");
+
+    // Assert
+    assert_eq!(choice, None);
+}
+
+// ----------------------------------------------------------- set_appearance
+
+#[test]
+fn test_settings_form_set_appearance_given_a_combined_value_writes_the_theme_and_the_appearance() {
+    // Arrange
+    let mut form = valid_form();
+
+    // Act
+    set_appearance(&mut form, "craft.graphite|dark");
+
+    // Assert
+    assert_eq!(
+        (form.theme.as_str(), form.appearance.as_str()),
+        ("craft.graphite", "dark")
+    );
+}
+
+#[test]
+fn test_settings_form_set_appearance_given_a_value_without_a_separator_leaves_the_form_alone() {
+    // Arrange
+    let mut form = valid_form();
+    let before = valid_form();
+
+    // Act
+    set_appearance(&mut form, "craft.graphite");
+
+    // Assert
+    assert_eq!(form, before);
 }

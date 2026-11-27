@@ -37,11 +37,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--chrome); border-bottom: 1px solid var(--divider); font-size: var(--fs-title); font-weight: 600;
 }
 .app-titlebar .meta { color: var(--muted); font-weight: 400; }
-.app-options {
-  display: flex; align-items: center; gap: var(--space-4); padding: var(--space-2) var(--space-5);
-  background: var(--panel); border-bottom: 1px solid var(--divider);
-}
-.app-options .label { font-size: var(--fs-label); color: var(--muted); }
 .app-body { display: flex; flex: 1; min-height: 0; }
 .app-rail {
   display: flex; flex-direction: column; gap: 2px; width: 58px; padding: var(--space-2);

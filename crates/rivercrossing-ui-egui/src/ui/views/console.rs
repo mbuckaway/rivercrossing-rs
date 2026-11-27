@@ -2,8 +2,8 @@
 
 //! The `main_frame` console on the `ArtCraft` docked shell.
 //!
-//! The shell holds the title bar (with the in-window menu bar where no platform bar is installed), the options
-//! bar (appearance, density and zoom), the tool rail, the workspace and the status bar. The workspace holds the
+//! The shell holds the title bar (with the in-window menu bar where no platform bar is installed), the tool
+//! rail, the workspace and the status bar. The workspace holds the
 //! ride header, the two flattened clocks (`Progress` plus a numeric read-out), the plate-entry row, and the two
 //! docked panels: the crossings feed and the Riders / Needs Review review notebook.
 //!
@@ -16,20 +16,20 @@ use std::borrow::Cow;
 use craft::behavior::{
     Axis, ColumnKey, ColumnWidth, DisplayOrder, IconId, ItemSource, Selection, SelectionChange,
 };
-use craft::egui::{Align, Color32, Layout, Sense, Ui, UiBuilder, vec2};
+use craft::egui::{Align, Color32, Id, Layout, Sense, Ui, UiBuilder, vec2};
 use craft::theme::variant::{Emphasis, Tone};
 use craft::theme::{Srgba, TypeRole, Variant};
 use craft::ui::bars::{Bar, BarKind};
 use craft::ui::buttons::Button;
 use craft::ui::choice::Checkbox;
-use craft::ui::choice::Segmented;
 use craft::ui::contract::{
-    Bind, CollectionEvent, ColumnSpec, Entry, Props as _, Show as _, ShowCollection as _,
+    Bind, CollectionEvent, ColumnSpec, Props as _, Show as _, ShowCollection as _,
     ShowContainer as _, Sizing,
 };
 use craft::ui::display::{Badge, Divider, Progress, Shade, Text};
 use craft::ui::docking::Splitter;
 use craft::ui::list::ListRow;
+use craft::ui::notices::{Notice, NoticeAction};
 use craft::ui::primitives::IconSpec;
 use craft::ui::runtime::env::{Env, WindowKey};
 use craft::ui::shell::{AppShell, Title, TitleBar};
@@ -40,7 +40,7 @@ use craft::ui::text::TextField;
 use rivercrossing_ride::{RideStatus, RosterView};
 
 use super::menu;
-use crate::ui::action::enable::{GateState, RidePhase, enabled};
+use crate::ui::action::enable::{GateState, RidePhase, enabled, ride_open};
 use crate::ui::action::id::{
     ActionId, MI_AUDIT_TRAIL, MI_CHECK_RIDER_ISSUES, MI_OPEN_LIBRARY, MI_RIDER_EDITOR,
     MI_STANDINGS, MI_START_RIDE, MI_STOP_RIDE, MI_TEAM_EDITOR, MI_UNDO_CROSSING, WX_ID_PREFERENCES,
@@ -52,14 +52,14 @@ use crate::ui::presenters::data_source::{
 use crate::ui::state::{AppState, ConsoleTab};
 use crate::ui::window::APP_NAME;
 
-/// The appearance strip's label, which names the control for assistive technology.
-const APPEARANCE_LABEL: &str = "Appearance";
-
-/// The density strip's label.
-const DENSITY_LABEL: &str = "Density";
+#[cfg(test)]
+mod tests;
 
 /// The status label's text when no ride is open.
 const NO_RIDE: &str = "NO RIDE";
+
+/// The read-out of a statistic with no value yet: the mockup's em dash.
+const NO_VALUE: &str = "—";
 
 /// The plate field's hint while the entry is closed.
 const ENTRY_CLOSED_HINT: &str = "start the ride to record";
@@ -81,18 +81,6 @@ const FEED_ROWS: u16 = 8;
 
 /// The review tables' visible rows before they scroll inside their panel.
 const REVIEW_ROWS: u16 = 8;
-
-/// The System appearance choice.
-const APPEARANCE_SYSTEM: u8 = 0;
-/// The Light appearance choice.
-const APPEARANCE_LIGHT: u8 = 1;
-/// The Dark appearance choice.
-const APPEARANCE_DARK: u8 = 2;
-
-/// The Compact density choice.
-const DENSITY_COMPACT: u8 = 0;
-/// The Comfortable density choice.
-const DENSITY_COMFORTABLE: u8 = 1;
 
 /// The Start and Stop ride buttons, gated by and dispatching their §15 actions.
 const RUN_BUTTONS: [(ActionId, &str, Variant); 2] = [
@@ -140,7 +128,6 @@ pub(crate) fn show(ui: &mut Ui, state: &mut AppState, menu_bar: bool) {
         .title_bar(move |ui, _, state: &mut AppState| {
             title_bar(ui, state, menu_bar);
         })
-        .options_bar(true, |ui, _, state| options_bar(ui, state))
         .status(true, |ui, _, state| status_bar(ui, state))
         .body_label("Console")
         .body(|ui, _, state| body(ui, state))
@@ -176,95 +163,6 @@ fn ride_title(state: &AppState) -> String {
     }
 }
 
-// ---------------------------------------------------------------- options bar
-
-/// Show the options bar: the appearance and density choices and the zoom read-out.
-fn options_bar(ui: &mut Ui, state: &mut AppState) {
-    let _ = Bar::new("Options", BarKind::Options).show(ui, |ui, _| {
-        appearance_choice(ui, state);
-        density_choice(ui, state);
-        let _ = Divider::vertical().show(ui);
-        let _ = Text::new(format!("Zoom {}%", state.settings.zoom_percent)).show(ui);
-    });
-}
-
-/// Show the appearance choice and persist a new mode.
-fn appearance_choice(ui: &mut Ui, state: &mut AppState) {
-    let entries = [
-        Entry::new(APPEARANCE_SYSTEM, "System"),
-        Entry::new(APPEARANCE_LIGHT, "Light"),
-        Entry::new(APPEARANCE_DARK, "Dark"),
-    ];
-    let current = appearance_index(&state.settings.appearance);
-    let mut picked = current;
-    // The design shows the three modes as a labelled segmented strip, not a dropdown
-    // (`design/mockups/index.html`, the options bar).
-    let _ = Text::new(APPEARANCE_LABEL)
-        .role(TypeRole::Caption)
-        .shade(Shade::Muted)
-        .show(ui);
-    let _ = Segmented::new(APPEARANCE_LABEL, Bind::bound(&mut picked), &entries).show(ui);
-    if picked != current {
-        appearance_spelling(picked).clone_into(&mut state.settings.appearance);
-        let _ = state.save_settings();
-    }
-}
-
-/// Show the density choice and persist a new preset.
-fn density_choice(ui: &mut Ui, state: &mut AppState) {
-    let entries = [
-        Entry::new(DENSITY_COMPACT, "Compact"),
-        Entry::new(DENSITY_COMFORTABLE, "Comfortable"),
-    ];
-    let current = density_index(&state.settings.density);
-    let mut picked = current;
-    let _ = Text::new(DENSITY_LABEL)
-        .role(TypeRole::Caption)
-        .shade(Shade::Muted)
-        .show(ui);
-    let _ = Segmented::new(DENSITY_LABEL, Bind::bound(&mut picked), &entries).show(ui);
-    if picked != current {
-        density_spelling(picked).clone_into(&mut state.settings.density);
-        let _ = state.save_settings();
-    }
-}
-
-/// Return the appearance choice for a stored spelling; an unknown spelling is System.
-fn appearance_index(spelling: &str) -> u8 {
-    match spelling {
-        "light" => APPEARANCE_LIGHT,
-        "dark" => APPEARANCE_DARK,
-        _ => APPEARANCE_SYSTEM,
-    }
-}
-
-/// Return the stored spelling for an appearance choice.
-fn appearance_spelling(choice: u8) -> &'static str {
-    match choice {
-        APPEARANCE_LIGHT => "light",
-        APPEARANCE_DARK => "dark",
-        _ => "system",
-    }
-}
-
-/// Return the density choice for a stored spelling; an unknown spelling is Compact.
-fn density_index(spelling: &str) -> u8 {
-    if spelling == "comfortable" {
-        DENSITY_COMFORTABLE
-    } else {
-        DENSITY_COMPACT
-    }
-}
-
-/// Return the stored spelling for a density choice.
-fn density_spelling(choice: u8) -> &'static str {
-    if choice == DENSITY_COMFORTABLE {
-        "comfortable"
-    } else {
-        "compact"
-    }
-}
-
 // -------------------------------------------------------------------- the rail
 
 /// The height of the feed's heading row: the title, the count and the search field.
@@ -282,10 +180,24 @@ const CLOCK_CARD_HEIGHT: f32 = 64.0;
 /// The plate-entry card's height: one row of controls.
 const ENTRY_CARD_HEIGHT: f32 = 56.0;
 
-/// The rail's width: the approved mockup's 96-point labelled column (`design/mockups/index.html`,
-/// `.app-rail`). The `ArtCraft` rail token is narrower because it is an icon-only rail; this app's
-/// rail carries the design's words, so it sets its own width and lets the slot follow its content.
+/// The rail's width: 118 points, spent deliberately on the rail's words.
+///
+/// The approved mockup's rail column is 58 px (`design/mockups/chrome.css`, `.app-rail`), with each
+/// word set at 9.5 px under its glyph. This app shows the same words at its own caption size, so its
+/// rail is wider than the mockup's and the slot follows the content.
 const RAIL_WIDTH: f32 = 118.0;
+
+/// The rail hint for a ride-gated entry while no ride is open.
+const NEEDS_RIDE: &str = "Open a ride first";
+
+/// The rail hint for the Teams entry on a solo-only ride.
+const MIXED_RIDES_ONLY: &str = "Mixed rides only";
+
+/// The rail hint for the Audit entry before the ride has an audit row.
+const NO_AUDIT_ROWS: &str = "No audit rows yet";
+
+/// The rail hint for a muted entry that no other sentence explains.
+const NOT_AVAILABLE_NOW: &str = "Not available now";
 
 /// Show the tool rail: one navigation button per entry, each gated and dispatching its §15 action.
 fn rail(ui: &mut Ui, state: &mut AppState) {
@@ -294,8 +206,9 @@ fn rail(ui: &mut Ui, state: &mut AppState) {
     ui.allocate_ui_with_layout(column, Layout::top_down(Align::Center), |ui| {
         for (id, label, icon) in RAIL {
             let on = state.implemented(id) && enabled(id, &gate);
+            let hint = rail_hint(id, gate);
             ui.push_id(id.as_str(), |ui| {
-                if rail_entry(ui, label, icon, on) {
+                if rail_entry(ui, label, icon, on, hint) {
                     let _ = state.act(id);
                 }
             });
@@ -303,13 +216,46 @@ fn rail(ui: &mut Ui, state: &mut AppState) {
     });
 }
 
+/// Return why a rail entry is muted, or `None` when it can run.
+///
+/// The rail already asks [`enabled`] for the entry's state; this names the gate input that a muted
+/// entry waits on, so the cell explains itself instead of reading as broken
+/// (`CODINGSTANDARDS-UX.md` §7: a greyed-out control with no explanation is worse than no gating).
+/// With no ride open, every muted entry waits on the ride; with one open, the two gate inputs that
+/// mute a rail entry name themselves, and an entry the rail mutes for another reason carries the
+/// generic sentence rather than a wrong one.
+fn rail_hint(action: ActionId, gate: GateState) -> Option<&'static str> {
+    if enabled(action, &gate) {
+        return None;
+    }
+    if !ride_open(gate.phase) {
+        return Some(NEEDS_RIDE);
+    }
+    let hint = match action {
+        MI_TEAM_EDITOR => MIXED_RIDES_ONLY,
+        MI_AUDIT_TRAIL => NO_AUDIT_ROWS,
+        _ => NOT_AVAILABLE_NOW,
+    };
+    Some(hint)
+}
+
 /// Show one rail entry: the icon over its word, in a cell of its own.
 ///
 /// The design stacks them (`design/mockups/index.html`, `.app-rail`), which a craft `Button` cannot
 /// do — it puts the icon beside the label. The cell keeps the button's contract by hand: it senses
 /// a click, fills under the pointer, and reports itself to assistive technology as a button named
-/// by its word.
-fn rail_entry(ui: &mut Ui, label: &'static str, icon: &'static str, enabled: bool) -> bool {
+/// by its word. A muted cell carries *hint* as its tooltip and its accessible description, so the
+/// reason it is muted is never hover-only for the pointer and never silent for a screen reader.
+///
+/// Each cell's id comes from the [`Ui::push_id`] scope that [`rail`] opens, so the hover belongs to
+/// one entry and the fill never lights a neighbour.
+fn rail_entry(
+    ui: &mut Ui,
+    label: &'static str,
+    icon: &'static str,
+    enabled: bool,
+    hint: Option<&'static str>,
+) -> bool {
     let env = Env::of(ui);
     let pad = env.tokens.space.pad.regular;
     let sense = if enabled {
@@ -349,6 +295,10 @@ fn rail_entry(ui: &mut Ui, label: &'static str, icon: &'static str, enabled: boo
     response.widget_info(|| {
         craft::egui::WidgetInfo::labeled(craft::egui::Role::Button, enabled, label)
     });
+    let response = match hint {
+        Some(hint) => response.on_hover_text(hint),
+        None => response,
+    };
     enabled && response.clicked()
 }
 
@@ -357,10 +307,11 @@ const RAIL_ENTRY_HEIGHT: f32 = 54.0;
 
 // ----------------------------------------------------------------- status bar
 
-/// Show the status bar: the six count chips and the ride or notice read-out.
-fn status_bar(ui: &mut Ui, state: &AppState) {
+/// Show the status bar: the six count chips and the ride, export or notice read-out.
+fn status_bar(ui: &mut Ui, state: &mut AppState) {
     let counters = counters(state);
     let readout = status_readout(state);
+    let exported = state.exported_file.clone();
     ui.push_id("main_statusbar", |ui| {
         let _ = Bar::new("Status", BarKind::Status).show(ui, |ui, _| {
             chip(
@@ -371,7 +322,7 @@ fn status_bar(ui: &mut Ui, state: &AppState) {
             chip(
                 ui,
                 "cards_count_lbl",
-                format!("Cards {}", counters.cards_dealt),
+                format!("Cards dealt {}", counters.cards_dealt),
             );
             chip(
                 ui,
@@ -390,9 +341,34 @@ fn status_bar(ui: &mut Ui, state: &AppState) {
             );
             chip(ui, "teams_count_lbl", format!("Teams {}", counters.teams));
             let _ = Divider::vertical().show(ui);
-            let _ = Text::new(readout.clone()).show(ui);
+            if let Some(path) = &exported {
+                if export_notice(ui, path) {
+                    state.open_export = Some(path.clone());
+                    state.exported_file = None;
+                }
+            } else {
+                let _ = Text::new(readout.clone()).show(ui);
+            }
         });
     });
+}
+
+/// Show the finished export's success notice; return whether the operator chose Open.
+///
+/// The notice names the file, not its directory, and offers the one next step the operator wants.
+fn export_notice(ui: &mut Ui, path: &std::path::Path) -> bool {
+    let file = path.file_name().map_or_else(
+        || path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    ui.push_id("export_notice", |ui| {
+        Notice::new(Tone::Good, format!("Exported {file}"))
+            .action(NoticeAction::new("Open"))
+            .show(ui)
+            .action
+            == Some(0)
+    })
+    .inner
 }
 
 /// Show one count chip under its frozen id.
@@ -469,7 +445,7 @@ fn body(ui: &mut Ui, state: &mut AppState) {
     });
 }
 
-/// Show the header strip: the status badge and word, the ride identity and the current lap.
+/// Show the header strip: the status badge, the logo tile, the ride identity and the current lap.
 fn header(ui: &mut Ui, state: &mut AppState, width: f32) {
     let (light, word, lap) = ride_identity(state);
     card(ui, width, HEADER_CARD_HEIGHT, |ui, rect| {
@@ -494,11 +470,12 @@ fn header(ui: &mut Ui, state: &mut AppState, width: f32) {
         ui.scope_builder(bounded(left), |ui| {
             ui.push_id("ride_status_panel", |ui| {
                 ui.horizontal(|ui| {
+                    // The design draws one badge; the lamp's id and the label's id both name it, so
+                    // the state word reads once and neither frozen control leaves the contract.
                     ui.push_id("ride_status_light", |ui| {
-                        ride_badge(ui, light, word.clone());
-                    });
-                    ui.push_id("ride_status_lbl", |ui| {
-                        let _ = Text::new(word.clone()).role(TypeRole::BodyStrong).show(ui);
+                        ui.push_id("ride_status_lbl", |ui| {
+                            ride_badge(ui, light, word);
+                        });
                     });
                     ui.add_space(Env::of(ui).tokens.space.pad.regular);
                     logo_tile(ui, state);
@@ -512,23 +489,22 @@ fn header(ui: &mut Ui, state: &mut AppState, width: f32) {
                 .max_rect(lap_rect)
                 .layout(Layout::right_to_left(Align::Min)),
             |ui| {
-                ui.push_id("current_lap_lbl", |ui| {
-                    stat(ui, "Current lap", lap.to_string());
-                });
+                let reading = lap.map_or_else(|| NO_VALUE.to_owned(), |lap| lap.to_string());
+                stat(ui, "current_lap_lbl", "Current lap", reading);
             },
         );
     });
 }
 
-/// Return the stop-light mode, the state word and the current lap.
-fn ride_identity(state: &AppState) -> (StopLight, String, u32) {
+/// Return the stop-light mode, the state word and the current lap, when a ride is open.
+fn ride_identity(state: &AppState) -> (StopLight, String, Option<u32>) {
     let (status, stopped, lap) = match &state.ride {
         Some(ride) => (
             Some(ride.engine.state()),
             ride.engine.stopped(),
-            data_source::current_lap(ride.engine.crossings()),
+            Some(data_source::current_lap(ride.engine.crossings())),
         ),
-        None => (None, false, 0),
+        None => (None, false, None),
     };
     let light = data_source::stop_light_mode(status, stopped);
     let word = status.map_or_else(
@@ -558,8 +534,9 @@ fn logo_tile(ui: &mut Ui, state: &AppState) {
     crate::ui::logo::tile(ui, state, path);
 }
 
-/// Show the six ride identity read-outs.
+/// Show the six ride identity read-outs, every one an em dash until a ride is open.
 fn ride_values(ui: &mut Ui, state: &AppState) {
+    let blank = || NO_VALUE.to_owned();
     let (name, date, venue, organizer, scorer, lap_km) = match &state.ride {
         Some(ride) => (
             ride.config.name.clone(),
@@ -569,44 +546,27 @@ fn ride_values(ui: &mut Ui, state: &AppState) {
             ride.config.scorer.clone(),
             format!("{:.1}", ride.config.lap_km),
         ),
-        None => (
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-            String::new(),
-        ),
+        None => (blank(), blank(), blank(), blank(), blank(), blank()),
     };
-    value(ui, "ride_name_value", "Ride", name);
-    value(ui, "ride_date_value", "Date", date);
-    value(ui, "ride_venue_value", "Venue", venue);
-    value(ui, "ride_organizer_value", "Organizer", organizer);
-    value(ui, "ride_scorer_value", "Scorer", scorer);
-    value(ui, "ride_lap_km_value", "Lap km", lap_km);
+    stat(ui, "ride_name_value", "Ride", name);
+    stat(ui, "ride_date_value", "Date", date);
+    stat(ui, "ride_venue_value", "Venue", venue);
+    stat(ui, "ride_organizer_value", "Organizer", organizer);
+    stat(ui, "ride_scorer_value", "Scorer", scorer);
+    stat(ui, "ride_lap_km_value", "Lap km", lap_km);
 }
 
-/// Show one label-over-value statistic, the design's header unit.
-fn stat(ui: &mut Ui, caption: &'static str, value: String) {
+/// Show one label-over-value statistic, the design's header unit; the value carries its frozen id.
+fn stat(ui: &mut Ui, id: &'static str, caption: &'static str, value: String) {
     ui.vertical(|ui| {
         let _ = Text::new(caption)
             .role(TypeRole::Caption)
             .shade(Shade::Muted)
             .show(ui);
-        let _ = Text::new(value).role(TypeRole::Label).show(ui);
-    });
-}
-
-/// Show one header value as its caption beside the value.
-fn value(ui: &mut Ui, id: &'static str, caption: &'static str, value: String) {
-    ui.push_id(id, |ui| {
-        ui.vertical(|ui| {
-            let _ = Text::new(caption)
-                .role(TypeRole::Caption)
-                .shade(Shade::Muted)
-                .show(ui);
-            let _ = Text::new(value).role(TypeRole::Label).show(ui);
-        });
+        let _ = Text::new(value)
+            .id(Id::unique(id))
+            .role(TypeRole::Label)
+            .show(ui);
     });
 }
 

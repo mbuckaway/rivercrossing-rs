@@ -49,6 +49,7 @@ pub(crate) fn body(ui: &mut Ui, state: &mut AppState) {
                     (ENTRY, row.entry.clone()),
                     (REASON, row.reason.clone()),
                 ],
+                ..TableRow::default()
             })
             .collect(),
     };

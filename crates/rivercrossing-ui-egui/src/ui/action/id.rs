@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The frozen action ids: 50 `mi_*` names and the 3 stock ids from `design/docs-md/spec.md` §15b.
+//! The frozen action ids: 49 `mi_*` names and the 3 stock ids from `design/docs-md/spec.md` §15b.
 
 /// A frozen action id. The same value is the menu id, the automation selector and the registry key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -117,20 +117,18 @@ pub(crate) const MI_SHOW_DNS_RIDERS: ActionId = ActionId("mi_show_dns_riders");
 pub(crate) const MI_SHOW_TOTAL_TIMES: ActionId = ActionId("mi_show_total_times");
 /// View ▸ Show Lap Time on Crossings Panel.
 pub(crate) const MI_SHOW_LAP_TIME: ActionId = ActionId("mi_show_lap_time");
-/// View ▸ Zoom 90%.
-pub(crate) const MI_ZOOM_90: ActionId = ActionId("mi_zoom_90");
-/// View ▸ Zoom 100%.
-pub(crate) const MI_ZOOM_100: ActionId = ActionId("mi_zoom_100");
-/// View ▸ Zoom 110%.
-pub(crate) const MI_ZOOM_110: ActionId = ActionId("mi_zoom_110");
-/// View ▸ Zoom 120%.
-pub(crate) const MI_ZOOM_120: ActionId = ActionId("mi_zoom_120");
-/// View ▸ Zoom 130%.
-pub(crate) const MI_ZOOM_130: ActionId = ActionId("mi_zoom_130");
-/// View ▸ Zoom 140%.
-pub(crate) const MI_ZOOM_140: ActionId = ActionId("mi_zoom_140");
-/// View ▸ Zoom 150%.
-pub(crate) const MI_ZOOM_150: ActionId = ActionId("mi_zoom_150");
+/// View ▸ Compact.
+pub(crate) const MI_DENSITY_COMPACT: ActionId = ActionId("mi_density_compact");
+/// View ▸ Comfortable.
+pub(crate) const MI_DENSITY_COMFORTABLE: ActionId = ActionId("mi_density_comfortable");
+/// View ▸ Tiny.
+pub(crate) const MI_TEXT_SIZE_TINY: ActionId = ActionId("mi_text_size_tiny");
+/// View ▸ Small.
+pub(crate) const MI_TEXT_SIZE_SMALL: ActionId = ActionId("mi_text_size_small");
+/// View ▸ Medium.
+pub(crate) const MI_TEXT_SIZE_MEDIUM: ActionId = ActionId("mi_text_size_medium");
+/// View ▸ Large.
+pub(crate) const MI_TEXT_SIZE_LARGE: ActionId = ActionId("mi_text_size_large");
 
 /// Help ▸ User Guide.
 pub(crate) const MI_USER_GUIDE: ActionId = ActionId("mi_user_guide");

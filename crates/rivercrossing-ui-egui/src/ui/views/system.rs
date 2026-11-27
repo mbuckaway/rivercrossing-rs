@@ -7,8 +7,11 @@ use craft::ui::buttons::Link;
 use craft::ui::contract::Show as _;
 use craft::ui::display::Text;
 
-use super::dialogs::{NAME, SHORTCUT, TableData, TableRow, columns, table};
-use crate::ui::action::spec::{ACTIONS, Shortcut};
+use super::dialogs::{NAME, SHORTCUT, TableData, TableRow, columns, field_caption, table, value};
+use crate::ui::action::spec::ACTIONS;
+
+#[cfg(test)]
+mod tests;
 
 /// The product version the About box names.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -33,39 +36,28 @@ const VISIBLE_ROWS: u16 = 20;
 
 /// Show the About box.
 pub(crate) fn about(ui: &mut Ui) {
-    line(ui, "version_lbl", format!("RiverCrossing {VERSION}"));
+    // The design's `.stat` rows (`design/mockups/index.html`, `#s-about`): a caption over its value.
+    value(ui, "version_lbl", "Version", VERSION);
     let _ = Text::new(DESCRIPTION).show(ui);
-    line(ui, "author_lbl", AUTHOR.to_owned());
-    line(ui, "copyright_lbl", COPYRIGHT.to_owned());
-    line(ui, "license_lbl", LICENSE.to_owned());
-    ui.push_id("gorba_link", |ui| {
-        let _ = Link::new(GORBA_URL).url(GORBA_URL).show(ui);
-    });
+    value(ui, "author_lbl", "Author", AUTHOR);
+    value(ui, "copyright_lbl", "Copyright", COPYRIGHT);
+    value(ui, "license_lbl", "License", LICENSE);
+    url_row(ui);
 }
 
-/// Show one About line under its frozen id.
-fn line(ui: &mut Ui, id: &'static str, text: String) {
-    ui.push_id(id, |ui| {
-        let _ = Text::new(text).show(ui);
+/// Show the organizer link as a stat row.
+fn url_row(ui: &mut Ui) {
+    ui.push_id("gorba_link", |ui| {
+        ui.vertical(|ui| {
+            field_caption(ui, "URL");
+            let _ = Link::new(GORBA_URL).url(GORBA_URL).show(ui);
+        });
     });
 }
 
 /// Show the shortcut table, generated from the registry.
 pub(crate) fn shortcuts(ui: &mut Ui) {
-    let data = TableData {
-        columns: columns(&[(NAME, "Command"), (SHORTCUT, "Shortcut")]),
-        rows: ACTIONS
-            .iter()
-            .map(|row| TableRow {
-                label: row.label.to_owned(),
-                // The label carries the command name into its column; a NAME cell would repeat it.
-                cells: vec![(
-                    SHORTCUT,
-                    row.shortcut.map_or_else(String::new, Shortcut::text),
-                )],
-            })
-            .collect(),
-    };
+    let data = shortcut_table();
     let _ = table(
         ui,
         "shortcuts_list",
@@ -74,4 +66,24 @@ pub(crate) fn shortcuts(ui: &mut Ui) {
         "No shortcuts",
         None,
     );
+}
+
+/// Return the two-column shortcut table: one row per action the registry documents a shortcut for.
+fn shortcut_table() -> TableData {
+    TableData {
+        columns: columns(&[(NAME, "Command"), (SHORTCUT, "Shortcut")]),
+        rows: ACTIONS
+            .iter()
+            .filter_map(|row| {
+                let shortcut = row.shortcut?;
+                Some(TableRow {
+                    label: row.label.to_owned(),
+                    // The label carries the command name into its column; a NAME cell would repeat
+                    // it.
+                    cells: vec![(SHORTCUT, shortcut.text())],
+                    ..TableRow::default()
+                })
+            })
+            .collect(),
+    }
 }

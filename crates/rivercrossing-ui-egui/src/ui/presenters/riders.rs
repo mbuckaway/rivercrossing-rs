@@ -76,13 +76,22 @@ pub(crate) struct RiderRow {
     pub(crate) team: String,
 }
 
+/// One blocking conflict in the CSV preview: the file row and its problem.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CsvConflict {
+    /// The one-based file row, or zero for a whole-file problem.
+    pub(crate) row: usize,
+    /// The operator-facing sentence.
+    pub(crate) message: String,
+}
+
 /// The CSV preview dialog's view model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CsvPreviewModel {
     /// The one-line summary of the previewed file.
     pub(crate) summary: String,
     /// The blocking conflicts, in file order.
-    pub(crate) conflicts: Vec<String>,
+    pub(crate) conflicts: Vec<CsvConflict>,
     /// Whether the Import button is enabled.
     pub(crate) can_import: bool,
 }
@@ -330,10 +339,13 @@ pub(crate) fn csv_preview(
 ) -> Result<(csvio::ImportPreview, CsvPreviewModel), String> {
     let preview = csvio::preview(path, roster, options)
         .map_err(|error| format!("Could not read {}: {error}", file_label(path)))?;
-    let conflicts: Vec<String> = preview
+    let conflicts: Vec<CsvConflict> = preview
         .conflicts
         .iter()
-        .map(|problem| problem.message.clone())
+        .map(|problem| CsvConflict {
+            row: problem.row,
+            message: problem.message.clone(),
+        })
         .collect();
     let summary = preview_summary(path, &preview, conflicts.len());
     let model = CsvPreviewModel {

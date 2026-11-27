@@ -73,6 +73,24 @@ fn test_the_simulation_dialog_lists_the_new_ride_button() {
 }
 
 #[test]
+fn test_the_settings_dialog_retires_the_mode_radios() {
+    // Act
+    let settings = controls("settings_dlg").expect("the frozen window");
+
+    // Assert: the combined Theme picker owns the appearance, so the three radios leave the registry.
+    assert_eq!(
+        settings.to_vec(),
+        vec![
+            "sound_chk",
+            "show_total_times_chk",
+            "show_lap_time_chk",
+            "verbose_log_chk",
+            "avg_speed_spin",
+        ]
+    );
+}
+
+#[test]
 fn test_controls_given_an_unknown_window_returns_none() {
     // Act
     let found = controls("no_such_window");

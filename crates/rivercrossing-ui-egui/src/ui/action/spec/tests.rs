@@ -12,12 +12,12 @@ use super::{
     target_json,
 };
 use crate::ui::action::id::{
-    MI_CLEAR_RIDE, MI_DUPLICATE_RIDE, MI_FINISH_RIDE, MI_REOPEN_RIDE, MI_STOP_RIDE,
+    MI_CLEAR_RIDE, MI_DUPLICATE_RIDE, MI_EDIT_RIDE, MI_FINISH_RIDE, MI_REOPEN_RIDE, MI_STOP_RIDE,
     MI_UNDO_CROSSING, WX_ID_EXIT,
 };
 
-/// The 50 `mi_*` names `spec.md` §15b lists, in menu order.
-const SECTION_15B_MI_IDS: [&str; 50] = [
+/// The 49 `mi_*` names `spec.md` §15b lists, in menu order.
+const SECTION_15B_MI_IDS: [&str; 49] = [
     // File
     "mi_open_library",
     "mi_duplicate_ride",
@@ -64,13 +64,12 @@ const SECTION_15B_MI_IDS: [&str; 50] = [
     // View
     "mi_show_total_times",
     "mi_show_lap_time",
-    "mi_zoom_90",
-    "mi_zoom_100",
-    "mi_zoom_110",
-    "mi_zoom_120",
-    "mi_zoom_130",
-    "mi_zoom_140",
-    "mi_zoom_150",
+    "mi_density_compact",
+    "mi_density_comfortable",
+    "mi_text_size_tiny",
+    "mi_text_size_small",
+    "mi_text_size_medium",
+    "mi_text_size_large",
     // Help
     "mi_user_guide",
     "mi_shortcuts",
@@ -81,12 +80,12 @@ const SECTION_15B_MI_IDS: [&str; 50] = [
 const SECTION_15B_STOCK_IDS: [&str; 3] = ["wxID_PREFERENCES", "wxID_EXIT", "wxID_ABOUT"];
 
 #[test]
-fn test_the_action_table_has_53_unique_ids() {
+fn test_the_action_table_has_52_unique_ids() {
     // Act
     let unique: BTreeSet<&'static str> = ACTIONS.iter().map(|row| row.id.as_str()).collect();
 
     // Assert
-    assert_eq!(ACTIONS.len(), 53);
+    assert_eq!(ACTIONS.len(), 52);
     assert_eq!(unique.len(), ACTIONS.len());
 }
 
@@ -155,7 +154,12 @@ fn test_every_window_target_is_a_frozen_window() {
         .iter()
         .filter_map(|row| match row.target {
             Target::Window(window) => Some(window),
-            Target::Command(_) | Target::Check(_) | Target::Zoom(_) | Target::Native { .. } => None,
+            Target::Command(_)
+            | Target::Check(_)
+            | Target::Density(_)
+            | Target::TextSize(_)
+            | Target::EditRide
+            | Target::Native { .. } => None,
         })
         .filter(|window| crate::ui::ids::controls(window).is_none())
         .collect();
@@ -318,12 +322,24 @@ fn test_target_json_renders_a_check_target() {
 }
 
 #[test]
-fn test_target_json_renders_a_zoom_target() {
+fn test_target_json_renders_a_density_target() {
     // Act
-    let rendered = target_json(Target::Zoom(110));
+    let rendered = target_json(Target::Density("compact"));
 
     // Assert
-    assert_eq!(rendered, json!({ "kind": "zoom", "percent": 110 }));
+    assert_eq!(rendered, json!({ "kind": "density", "density": "compact" }));
+}
+
+#[test]
+fn test_target_json_renders_a_text_size_target() {
+    // Act
+    let rendered = target_json(Target::TextSize("small"));
+
+    // Assert
+    assert_eq!(
+        rendered,
+        json!({ "kind": "text_size", "text_size": "small" })
+    );
 }
 
 #[test]
@@ -341,6 +357,33 @@ fn test_target_json_renders_a_native_target() {
     );
 }
 
+#[test]
+fn test_target_json_renders_an_edit_ride_target() {
+    // Act
+    let rendered = target_json(Target::EditRide);
+
+    // Assert
+    assert_eq!(rendered, json!({ "kind": "edit_ride" }));
+}
+
+#[test]
+fn test_the_edit_ride_row_targets_the_edit_effect() {
+    // Act
+    let target = spec(MI_EDIT_RIDE).map(|row| row.target);
+
+    // Assert
+    assert_eq!(target, Some(Target::EditRide));
+}
+
+#[test]
+fn test_the_new_ride_row_still_targets_the_setup_window() {
+    // Act
+    let target = spec(crate::ui::action::id::MI_NEW_RIDE).map(|row| row.target);
+
+    // Assert
+    assert_eq!(target, Some(Target::Window("ride_setup_dlg")));
+}
+
 // ------------------------------------------------------- menu sections
 
 #[rstest]
@@ -349,7 +392,7 @@ fn test_target_json_renders_a_native_target() {
 #[case(MenuSection::Riders, 4)]
 #[case(MenuSection::Cards, 3)]
 #[case(MenuSection::Results, 16)]
-#[case(MenuSection::View, 9)]
+#[case(MenuSection::View, 8)]
 #[case(MenuSection::Help, 4)]
 fn test_menu_sections_hold_the_section_15_rows(
     #[case] section: MenuSection,
@@ -371,13 +414,13 @@ fn test_every_action_maps_to_one_of_the_seven_sections() {
     let sections: Vec<MenuSection> = ACTIONS.iter().map(|row| super::section(row.id)).collect();
 
     // Assert
-    assert_eq!(sections.len(), 53);
+    assert_eq!(sections.len(), 52);
     assert_eq!(
         MenuSection::ALL
             .iter()
             .map(|section| sections.iter().filter(|found| *found == section).count())
             .sum::<usize>(),
-        53
+        52
     );
 }
 

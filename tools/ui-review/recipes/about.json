@@ -1,0 +1,14 @@
+{
+  "screen": "about",
+  "steps": [
+    {
+      "command": "wxID_ABOUT"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "shot": "about.png"
+    }
+  ]
+}

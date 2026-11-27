@@ -33,7 +33,7 @@ pub(crate) struct MenuRow {
     pub(crate) enabled: bool,
     /// The check mark's state, for a checkable row.
     pub(crate) checked: Option<bool>,
-    /// The radio mark's state, for a zoom row.
+    /// The radio mark's state, for a density or text-size row.
     pub(crate) radio: Option<bool>,
     /// Whether a separator stands above the row.
     pub(crate) separator_before: bool,
@@ -57,7 +57,8 @@ pub(crate) fn rows(state: &AppState) -> Vec<MenuRow> {
         .map(|row| {
             let (checked, radio) = match row.target {
                 Target::Check(check) => (Some(check_value(state, check)), None),
-                Target::Zoom(percent) => (None, Some(state.settings.zoom_percent == percent)),
+                Target::Density(spelling) => (None, Some(state.settings.density == spelling)),
+                Target::TextSize(spelling) => (None, Some(state.settings.text_size == spelling)),
                 _ => (None, None),
             };
             MenuRow {
@@ -135,8 +136,8 @@ fn check_value(state: &AppState, check: CheckKind) -> bool {
 
 /// Return whether a separator stands above the row.
 ///
-/// The six publish options sit after a separator, and so does the View menu's zoom block.
+/// The six publish options sit after a separator, and so does the View menu's size block.
 fn starts_a_group(id: ActionId) -> bool {
-    use crate::ui::action::id::{MI_SHOW_TIMES, MI_ZOOM_90};
-    id == MI_SHOW_TIMES || id == MI_ZOOM_90
+    use crate::ui::action::id::{MI_DENSITY_COMPACT, MI_SHOW_TIMES};
+    id == MI_SHOW_TIMES || id == MI_DENSITY_COMPACT
 }

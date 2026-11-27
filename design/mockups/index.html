@@ -64,14 +64,6 @@
       <p class="screen-caption">Console — <code>main_frame</code><small>Docked shell: tool rail, header, clocks, plate entry, crossings feed, review panel, status bar. Shown RUNNING.</small></p>
       <div class="app-shell">
         <div class="app-titlebar">RiverCrossing <span class="meta">— GORBA EPIC &amp; MTB Festival 2026</span></div>
-        <div class="app-options">
-          <span class="label">Appearance</span>
-          <div class="seg"><button class="active">System</button><button>Light</button><button>Dark</button></div>
-          <span class="label">Density</span>
-          <div class="seg"><button class="active">Compact</button><button>Comfortable</button></div>
-          <span style="flex:1"></span>
-          <span class="label">Zoom 100%</span>
-        </div>
         <div class="app-body">
           <aside class="app-rail">
             <button class="rail-btn"><span class="glyph">▤</span>Library</button>
@@ -563,17 +555,16 @@
 
     <!-- SETTINGS -->
     <section class="screen" id="s-settings">
-      <p class="screen-caption">Settings — <code>settings_dlg</code><small>System/Light/Dark is the primary mode; contrast/density/text size/theme are the ArtCraft axes.</small></p>
+      <p class="screen-caption">Settings — <code>settings_dlg</code><small>The Theme picker carries each built-in theme and its Light/Dark/System variant; contrast/density/text size are the ArtCraft axes.</small></p>
       <div class="backdrop"><div class="dialog">
         <div class="dialog-titlebar">Settings <span class="x">×</span></div>
         <div class="dialog-body">
           <div class="section-label">Appearance</div>
-          <div class="field"><label>Mode</label><div class="row"><label class="radio"><input type="radio" name="mode" checked> System</label><label class="radio"><input type="radio" name="mode"> Light</label><label class="radio"><input type="radio" name="mode"> Dark</label></div></div>
+          <div class="field"><label>Theme</label><select class="select"><option>ArtCraft — Light</option><option>ArtCraft — Dark</option><option selected>ArtCraft — System</option><option>Pro — Light</option><option>Pro — Dark</option><option>Pro — System</option><option>Graphite — Light</option><option>Graphite — Dark</option><option>Graphite — System</option></select></div>
           <div class="grid2">
             <div class="field"><label>Contrast</label><select class="select"><option>System</option><option>Standard</option><option>High</option></select></div>
             <div class="field"><label>Density</label><select class="select"><option>Compact</option><option>Comfortable</option></select></div>
             <div class="field"><label>Text size</label><select class="select"><option>Tiny</option><option selected>Medium</option><option>Small</option><option>Large</option></select></div>
-            <div class="field"><label>Theme</label><select class="select"><option>ArtCraft</option><option>Pro</option><option>Graphite</option></select></div>
           </div>
           <div class="section-label">Console</div>
           <label class="check"><input type="checkbox" checked> Sound cues</label>

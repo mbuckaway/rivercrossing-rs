@@ -14,8 +14,12 @@ pub(crate) enum Effect {
     RunCommand(CommandId),
     /// Toggle the named check.
     ToggleCheck(CheckKind),
-    /// Set the text zoom to this percentage.
-    SetZoom(u16),
+    /// Set the density preset to this stored spelling.
+    SetDensity(&'static str),
+    /// Set the text size to this stored spelling.
+    SetTextSize(&'static str),
+    /// Open the ride-setup window in edit mode, preloaded with the live ride.
+    OpenEditRide,
     /// Raise a native dialog; on confirm the app runs `then`.
     OpenNative {
         /// The native dialog kind to raise.

@@ -20,9 +20,9 @@ use rivercrossing_store::Store;
 use rstest::rstest;
 
 use super::{
-    CsvPreviewModel, RiderFormValues, RiderRow, TeamChoice, add_rider, commit_live_move,
-    csv_export, csv_import, csv_preview, delete_message, delete_rider, edit_rider, filter_rows,
-    is_live_move, row_matches, rows,
+    CsvConflict, CsvPreviewModel, RiderFormValues, RiderRow, TeamChoice, add_rider,
+    commit_live_move, csv_export, csv_import, csv_preview, delete_message, delete_rider,
+    edit_rider, filter_rows, is_live_move, row_matches, rows,
 };
 
 /// The seat seed every fixture ride stores.
@@ -1192,7 +1192,13 @@ fn test_csv_preview_given_a_conflict_disables_import() -> Result<(), String> {
         model.summary,
         "entries.csv → 2 riders · 0 teams · 1 conflicts".to_owned()
     );
-    assert_eq!(model.conflicts, vec!["duplicate plate 101".to_owned()]);
+    assert_eq!(
+        model.conflicts,
+        vec![CsvConflict {
+            row: 3,
+            message: "duplicate plate 101".to_owned(),
+        }]
+    );
     assert!(!model.can_import);
     Ok(())
 }

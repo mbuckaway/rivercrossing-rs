@@ -1,0 +1,14 @@
+{
+  "screen": "standings-no-ride",
+  "steps": [
+    {
+      "command": "mi_standings"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "shot": "standings-no-ride.png"
+    }
+  ]
+}

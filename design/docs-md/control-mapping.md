@@ -21,7 +21,7 @@ Rules:
 
 | Window | Container |
 |---|---|
-| `main_frame` | `shell::AppShell` (title bar + options bar + tool rail + docked panels + feed canvas + status bar) |
+| `main_frame` | `shell::AppShell` (title bar + tool rail + docked panels + feed canvas + status bar) |
 | `sim_running_dlg`, `publish_running_dlg`, `about_dlg` | fixed-size `dialog::Dialog` (status/progress + Cancel; About + Close) |
 | all other dialogs | `dialog::Dialog` (modal; `DialogStack` host) |
 
@@ -98,16 +98,17 @@ them in the console, but the redesign's status bar is the readout surface).
 | `ride_library_dlg` | `rides_list`→`table::Table`; `duplicate_btn`→`buttons::Button`; stock Open/Delete/Close→footer |
 | `delete_ride_dlg` | `message_lbl`→`display::Text`; `confirm_name_input`→`text::TextField`; stock Delete/Cancel→footer |
 | `audit_dlg` | `audit_search`→`text::TextField`; `action_choice`→`pickers::Select`; `audit_list`→`table::Table` |
-| `settings_dlg` | `appearance_system_radio`/`appearance_light_radio`/`appearance_dark_radio`→`choice::RadioGroup`; `sound_chk`/`show_total_times_chk`/`show_lap_time_chk`/`verbose_log_chk`→`choice::Checkbox`; `avg_speed_spin`→`text::NumberField` (decimal) |
+| `settings_dlg` | `sound_chk`/`show_total_times_chk`/`show_lap_time_chk`/`verbose_log_chk`→`choice::Checkbox`; `avg_speed_spin`→`text::NumberField` (decimal); the non-frozen Appearance controls `appearance_theme_choice` (the combined theme + mode picker, added 2026-11-27)/`appearance_contrast_choice`/`appearance_density_choice`/`appearance_text_size_choice`→`pickers::Select` |
 | `about_dlg` | `version_lbl`/`author_lbl`/`copyright_lbl`/`license_lbl`→`display::Text`; `gorba_link`→`buttons::Link` |
 | `shortcuts_dlg` | `shortcuts_list`→`table::Table` (generated from the Action registry) |
 | `selftest_dlg` | `selftest_output`→`display::Text` (mono); `rerun_btn`→`buttons::Button` |
 
-**Net-new Settings appearance controls (non-frozen).** The redesign adds Contrast, Density, Text size and
-Theme controls (the full ArtCraft appearance model). They are **not** part of the 67 §15b frozen fields
-and are not in the drift-checked registry; they carry their own stable ids and accessible names and are
-driven by the `RootEnv` theming hook. The 67-field count is unchanged. (Mode stays the three frozen
-`appearance_*_radio` ids.)
+**Net-new Settings appearance controls (non-frozen).** The redesign adds the full ArtCraft appearance
+model: one combined Theme picker (`appearance_theme_choice`, added 2026-11-27) that replaces the old
+Mode radios and writes the theme id and the appearance together, plus Contrast, Density and Text size.
+They are **not** part of the 67 §15b frozen fields and are not in the drift-checked registry; they
+carry their own stable ids and accessible names and are driven by the `RootEnv` theming hook. The
+67-field count is unchanged. (The three `appearance_*_radio` ids are retired.)
 
 ## 7. Simulator / publish
 
@@ -120,8 +121,8 @@ driven by the `RootEnv` theming hook. The 67-field count is unchanged. (Mode sta
 
 ## 8. Menus and actions
 
-All 53 actions map to a `menu::MenuItem` in their §15 section (native macOS bar, in-window elsewhere).
-Check rows use `menu::MenuItem`'s own check mark (`Mark::Check`) and zoom rows its radio mark
+All 52 actions map to a `menu::MenuItem` in their §15 section (native macOS bar, in-window elsewhere).
+Check rows use `menu::MenuItem`'s own check mark (`Mark::Check`) and density and text-size rows its radio mark
 (`Mark::Radio`) — **not** `choice`/`pickers` widgets inside a menu. On-screen buttons for
 `mi_start_ride`/`mi_stop_ride`/`mi_undo_crossing` dispatch the same `ActionId`. The `mi_*` ids and
 labels are the frozen registry — do not rename them.

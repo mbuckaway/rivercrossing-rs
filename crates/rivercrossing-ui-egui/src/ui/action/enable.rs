@@ -111,13 +111,12 @@ fn always_enabled(action: ActionId) -> bool {
             | id::MI_SHOW_DNS_RIDERS
             | id::MI_SHOW_TOTAL_TIMES
             | id::MI_SHOW_LAP_TIME
-            | id::MI_ZOOM_90
-            | id::MI_ZOOM_100
-            | id::MI_ZOOM_110
-            | id::MI_ZOOM_120
-            | id::MI_ZOOM_130
-            | id::MI_ZOOM_140
-            | id::MI_ZOOM_150
+            | id::MI_DENSITY_COMPACT
+            | id::MI_DENSITY_COMFORTABLE
+            | id::MI_TEXT_SIZE_TINY
+            | id::MI_TEXT_SIZE_SMALL
+            | id::MI_TEXT_SIZE_MEDIUM
+            | id::MI_TEXT_SIZE_LARGE
             | id::MI_USER_GUIDE
             | id::MI_SHORTCUTS
             | id::MI_SELFTEST
@@ -126,7 +125,8 @@ fn always_enabled(action: ActionId) -> bool {
 }
 
 /// Return whether a ride is loaded in the phase.
-const fn ride_open(phase: RidePhase) -> bool {
+#[must_use]
+pub(crate) const fn ride_open(phase: RidePhase) -> bool {
     !matches!(phase, RidePhase::None)
 }
 

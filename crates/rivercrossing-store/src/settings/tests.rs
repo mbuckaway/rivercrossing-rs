@@ -37,7 +37,6 @@ fn non_default_settings() -> AppSettings {
         sound_on: false,
         show_total_times: true,
         show_lap_time: false,
-        zoom_percent: 130,
         splitter_sash: Some(420),
         window_geometry: Some([10, 20, 800, 600]),
         verbose_logging: false,
@@ -169,14 +168,6 @@ fn avg_speed(value: f64) -> AppSettings {
     }
 }
 
-/// Build the defaults with one zoom percentage.
-fn zoom(value: u16) -> AppSettings {
-    AppSettings {
-        zoom_percent: value,
-        ..default_settings()
-    }
-}
-
 /// Build the defaults with one saved window rectangle.
 fn geometry(value: Option<[i32; 4]>) -> AppSettings {
     AppSettings {
@@ -190,13 +181,12 @@ fn test_settings_defaults_match_the_python_table() {
     let expected = AppSettings {
         appearance: "system".to_owned(),
         contrast: "system".to_owned(),
-        density: "compact".to_owned(),
-        text_size: "medium".to_owned(),
+        density: "comfortable".to_owned(),
+        text_size: "small".to_owned(),
         theme: "craft.artcraft".to_owned(),
         sound_on: true,
         show_total_times: false,
         show_lap_time: true,
-        zoom_percent: 100,
         splitter_sash: None,
         window_geometry: None,
         verbose_logging: true,
@@ -282,9 +272,9 @@ fn test_settings_round_trip_persists_the_appearance_axes() -> Result<(), Box<dyn
 }
 
 #[test]
-fn test_load_settings_given_json_without_the_appearance_axes_reads_the_defaults()
+fn test_load_settings_given_an_old_zoom_percent_key_ignores_it_and_reads_the_defaults()
 -> Result<(), Box<dyn std::error::Error>> {
-    // Arrange
+    // Arrange: the retired zoom axis still sits in an old settings file.
     let directory = TempDir::new()?;
     let path = directory.path().join("settings.json");
     std::fs::write(
@@ -295,11 +285,10 @@ fn test_load_settings_given_json_without_the_appearance_axes_reads_the_defaults(
     // Act
     let (settings, warnings) = load_settings(&path);
 
-    // Assert
+    // Assert: the unknown key is ignored and the missing axes take their defaults.
     assert_eq!(
         (
             settings.appearance,
-            settings.zoom_percent,
             settings.contrast,
             settings.density,
             settings.text_size,
@@ -308,13 +297,31 @@ fn test_load_settings_given_json_without_the_appearance_axes_reads_the_defaults(
         ),
         (
             "light".to_owned(),
-            120,
             "system".to_owned(),
-            "compact".to_owned(),
-            "medium".to_owned(),
+            "comfortable".to_owned(),
+            "small".to_owned(),
             "craft.soft".to_owned(),
             Vec::new(),
         )
+    );
+    Ok(())
+}
+
+#[test]
+fn test_load_settings_given_the_default_file_yields_comfortable_and_small()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = TempDir::new()?;
+    let path = directory.path().join("settings.json");
+    save_settings(&default_settings(), &path)?;
+
+    // Act
+    let (settings, warnings) = load_settings(&path);
+
+    // Assert
+    assert_eq!(
+        (settings.density, settings.text_size, warnings),
+        ("comfortable".to_owned(), "small".to_owned(), Vec::new())
     );
     Ok(())
 }
@@ -405,12 +412,12 @@ fn test_load_settings_given_a_non_object_returns_defaults_with_warning()
 #[case::contrast_unknown_is_system(r#"{"contrast": "max"}"#, contrast("system"))]
 #[case::contrast_not_a_string_is_system(r#"{"contrast": 2}"#, default_settings())]
 #[case::density_comfortable_is_kept(r#"{"density": "comfortable"}"#, density("comfortable"))]
-#[case::density_unknown_is_compact(r#"{"density": "wide"}"#, density("compact"))]
-#[case::density_not_a_string_is_compact(r#"{"density": true}"#, default_settings())]
+#[case::density_unknown_is_comfortable(r#"{"density": "wide"}"#, density("comfortable"))]
+#[case::density_not_a_string_is_comfortable(r#"{"density": true}"#, default_settings())]
 #[case::text_size_tiny_is_kept(r#"{"text_size": "tiny"}"#, text_size("tiny"))]
 #[case::text_size_large_is_kept(r#"{"text_size": "large"}"#, text_size("large"))]
-#[case::text_size_unknown_is_medium(r#"{"text_size": "huge"}"#, text_size("medium"))]
-#[case::text_size_not_a_string_is_medium(r#"{"text_size": 14}"#, default_settings())]
+#[case::text_size_unknown_is_small(r#"{"text_size": "huge"}"#, text_size("small"))]
+#[case::text_size_not_a_string_is_small(r#"{"text_size": 14}"#, default_settings())]
 #[case::theme_studio_is_kept(r#"{"theme": "craft.studio"}"#, theme("craft.studio"))]
 #[case::theme_unknown_is_artcraft(r#"{"theme": "craft.neon"}"#, theme("craft.artcraft"))]
 #[case::theme_not_a_string_is_artcraft(r#"{"theme": 5}"#, default_settings())]
@@ -443,16 +450,6 @@ fn test_load_settings_given_a_non_object_returns_defaults_with_warning()
 #[case::avg_speed_at_the_floor_is_kept(r#"{"avg_speed_kmh": 1.0}"#, avg_speed(1.0))]
 #[case::avg_speed_a_string_is_the_default(r#"{"avg_speed_kmh": "fast"}"#, default_settings())]
 #[case::avg_speed_a_bool_is_the_default(r#"{"avg_speed_kmh": true}"#, default_settings())]
-#[case::zoom_on_the_ladder_is_kept(r#"{"zoom_percent": 90}"#, zoom(90))]
-#[case::zoom_95_ties_to_the_lower_rung(r#"{"zoom_percent": 95}"#, zoom(90))]
-#[case::zoom_125_ties_to_the_lower_rung(r#"{"zoom_percent": 125}"#, zoom(120))]
-#[case::zoom_96_rounds_up(r#"{"zoom_percent": 96}"#, zoom(100))]
-#[case::zoom_85_rounds_up_to_90(r#"{"zoom_percent": 85}"#, zoom(90))]
-#[case::zoom_160_rounds_down_to_150(r#"{"zoom_percent": 160}"#, zoom(150))]
-#[case::zoom_not_an_int_is_the_default(r#"{"zoom_percent": 100.5}"#, zoom(100))]
-#[case::zoom_a_bool_is_the_default(r#"{"zoom_percent": true}"#, zoom(100))]
-#[case::zoom_above_the_ladder_is_150(r#"{"zoom_percent": 100000}"#, zoom(150))]
-#[case::zoom_below_the_ladder_is_90(r#"{"zoom_percent": -100000}"#, zoom(90))]
 #[case::geometry_four_ints_are_kept(
     r#"{"window_geometry": [10, 20, 800, 600]}"#,
     geometry(Some([10, 20, 800, 600]))
@@ -537,7 +534,7 @@ fn test_save_settings_writes_atomically_and_creates_parents()
             text.ends_with("\n}\n"),
             temp_path.exists(),
         ),
-        (Some(33), true, true, false)
+        (Some(32), true, true, false)
     );
     Ok(())
 }

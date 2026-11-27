@@ -9,8 +9,9 @@ use rivercrossing_store::AppSettings;
 
 use super::{NativeBar, action_for, bar, chord, take_keys};
 use crate::ui::action::id::{
-    ActionId, MI_LAPS_BOARD, MI_NEW_RIDE, MI_SHOW_TIMES, MI_STANDINGS, MI_START_RIDE,
-    MI_UNDO_CROSSING, MI_ZOOM_100, MI_ZOOM_110, WX_ID_ABOUT, WX_ID_EXIT, WX_ID_PREFERENCES,
+    ActionId, MI_DENSITY_COMFORTABLE, MI_DENSITY_COMPACT, MI_LAPS_BOARD, MI_NEW_RIDE,
+    MI_SHOW_TIMES, MI_STANDINGS, MI_START_RIDE, MI_TEXT_SIZE_LARGE, MI_UNDO_CROSSING, WX_ID_ABOUT,
+    WX_ID_EXIT, WX_ID_PREFERENCES,
 };
 use crate::ui::action::spec::{CommandId, Key, Shortcut};
 use crate::ui::state::AppState;
@@ -142,17 +143,22 @@ fn test_bar_marks_the_check_items_from_the_settings() {
 }
 
 #[test]
-fn test_bar_marks_the_saved_zoom_radio() {
+fn test_bar_marks_the_saved_density_and_text_size_radios() {
     // Arrange
     let mut settings = rivercrossing_store::default_settings();
-    settings.zoom_percent = 110;
+    settings.density = "comfortable".to_owned();
+    settings.text_size = "large".to_owned();
 
     // Act
     let bar = bar_with(settings);
 
     // Assert
-    assert_eq!(item(&bar, MI_ZOOM_110).kind, ItemKind::Radio(true));
-    assert_eq!(item(&bar, MI_ZOOM_100).kind, ItemKind::Radio(false));
+    assert_eq!(
+        item(&bar, MI_DENSITY_COMFORTABLE).kind,
+        ItemKind::Radio(true)
+    );
+    assert_eq!(item(&bar, MI_DENSITY_COMPACT).kind, ItemKind::Radio(false));
+    assert_eq!(item(&bar, MI_TEXT_SIZE_LARGE).kind, ItemKind::Radio(true));
 }
 
 #[test]

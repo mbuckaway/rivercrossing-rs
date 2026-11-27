@@ -3,16 +3,47 @@
 //! The correction forms and the Crossing Detail dialog.
 
 use craft::egui::Ui;
-use craft::ui::contract::Show as _;
+use craft::theme::Variant;
+use craft::ui::buttons::Button;
+use craft::ui::contract::{Bind, Props as _, Show as _};
+use craft::ui::text::TextField;
 
-use super::dialogs::{stack_date_field, stack_text_field, value};
+use super::dialogs::{CONTROL_SIZING, field_caption, stack_date_field, stack_text_field, value};
 use crate::ui::state::AppState;
 
+#[cfg(test)]
+mod tests;
+
 /// Show the edit-crossing form (edit and add modes share it).
+///
+/// Edit mode also carries the contract's `void_btn`, which opens the void-card flow for the
+/// crossing the operator selected (`design/docs-md/control-mapping.md`, `edit_crossing_dlg`).
 pub(crate) fn edit_crossing(ui: &mut Ui, state: &mut AppState) {
     stack_text_field(ui, state, "plate_input", "Plate");
     stack_text_field(ui, state, "time_picker", "Time (H:MM:SS)");
     stack_text_field(ui, state, "reason_input", "Reason");
+    void_action(ui, state);
+}
+
+/// Show the dialog's "Void card…" action when a selected crossing holds a credited card.
+fn void_action(ui: &mut Ui, state: &mut AppState) {
+    let can_void = !state.correction.add
+        && state
+            .crossing_detail
+            .as_ref()
+            .is_some_and(|detail| detail.card.is_some());
+    if !can_void {
+        return;
+    }
+    ui.push_id("void_btn", |ui| {
+        let clicked = Button::new("Void card…")
+            .variant(Variant::DANGER)
+            .show(ui)
+            .clicked();
+        if clicked {
+            state.open_void_card();
+        }
+    });
 }
 
 /// Show the manual-deal form.
@@ -21,15 +52,22 @@ pub(crate) fn manual_deal(ui: &mut Ui, state: &mut AppState) {
     stack_text_field(ui, state, "reason_input", "Reason");
 }
 
-/// Show the DNF form.
+/// Show the DNF form: the plate or the entry the operator types names the target.
 pub(crate) fn dnf(ui: &mut Ui, state: &mut AppState) {
     stack_text_field(ui, state, "plate_input", "Plate");
-    ui.push_id("entry_lbl", |ui| {
-        let _ =
-            craft::ui::display::Text::new("The plate names the rider or entry that becomes DNF.")
-                .show(ui);
-    });
+    entry_field(ui, state);
     stack_text_field(ui, state, "reason_input", "Reason");
+}
+
+/// Show the Entry field: a rider or team name, a plate, or a team key.
+fn entry_field(ui: &mut Ui, state: &mut AppState) {
+    ui.push_id("entry_lbl", |ui| {
+        field_caption(ui, "Entry");
+        let _ = TextField::new("Entry", Bind::bound(&mut state.correction_entry))
+            .placeholder("Plate or entry")
+            .sizing(CONTROL_SIZING)
+            .show(ui);
+    });
 }
 
 /// Show the void-card form.
@@ -75,9 +113,12 @@ pub(crate) fn detail(ui: &mut Ui, state: &mut AppState) {
         ("crossing_held_lbl", "Status", &detail.model.held),
     ];
     for chunk in cells.chunks(2) {
-        ui.horizontal(|ui| {
-            for (id, caption, text) in chunk {
-                value(ui, id, caption, (*text).clone());
+        // The design's `.grid2`: two equal columns, so every value starts on its column's edge
+        // however wide its neighbour is.
+        ui.columns(2, |columns| {
+            for (column, cell) in columns.iter_mut().zip(chunk) {
+                let (id, caption, text) = *cell;
+                value(column, id, caption, text.clone());
             }
         });
     }

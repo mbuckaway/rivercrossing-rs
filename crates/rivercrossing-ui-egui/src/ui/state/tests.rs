@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use pretty_assertions::assert_eq;
 use rivercrossing_ride::{
-    EntryId, EntryMode, PlateModel, RideConfig, RideConfigParams, RideEngine, SystemClock,
+    EntryId, EntryMode, PlateModel, RideConfig, RideConfigParams, RideEngine, SystemClock, TieBreak,
 };
 use rivercrossing_roster::enums::EntryType;
 use rivercrossing_roster::roster::{Roster, TeamFields};
@@ -17,27 +17,33 @@ use rstest::rstest;
 
 use super::exports::ExportKind;
 use super::{
-    AppState, ExportPresence, LoadedRide, NativeTask, PendingNative, RiderSelection, new_ride_seed,
+    AppState, ExportPresence, LoadedRide, NativeTask, PendingNative, RiderSelection, SetupRadios,
+    new_ride_seed,
 };
 use crate::ui::action::effect::{DispatchError, Effect};
 use crate::ui::action::enable::{GateState, RidePhase};
 use crate::ui::action::id::{
-    ActionId, MI_ALL_CARDS, MI_BACKUP_NOW, MI_CHECK_RIDER_ISSUES, MI_FINISH_RIDE, MI_FULL_FIELD,
-    MI_LAPS_BOARD, MI_NEW_RIDE, MI_PUBLISH_WORDPRESS, MI_RIDER_EDITOR, MI_SHORTCUTS,
-    MI_SHOW_DNS_RIDERS, MI_SHOW_LAP_TIME, MI_SHOW_TIMES, MI_SHOW_TOTAL_TIMES, MI_STANDINGS,
-    MI_TEAM_EDITOR, MI_TIME_BOARD, MI_UNDO_CROSSING, MI_ZOOM_90, MI_ZOOM_100, MI_ZOOM_110,
-    MI_ZOOM_120, MI_ZOOM_130, MI_ZOOM_140, MI_ZOOM_150, WX_ID_ABOUT, WX_ID_EXIT,
+    ActionId, MI_ALL_CARDS, MI_BACKUP_NOW, MI_CHECK_RIDER_ISSUES, MI_DENSITY_COMFORTABLE,
+    MI_DENSITY_COMPACT, MI_EDIT_RIDE, MI_FINISH_RIDE, MI_FULL_FIELD, MI_IMPORT_CSV, MI_LAPS_BOARD,
+    MI_NEW_RIDE, MI_PUBLISH_WORDPRESS, MI_RIDER_EDITOR, MI_SHORTCUTS, MI_SHOW_DNS_RIDERS,
+    MI_SHOW_LAP_TIME, MI_SHOW_TIMES, MI_SHOW_TOTAL_TIMES, MI_STANDINGS, MI_TEAM_EDITOR,
+    MI_TEXT_SIZE_LARGE, MI_TEXT_SIZE_MEDIUM, MI_TEXT_SIZE_SMALL, MI_TEXT_SIZE_TINY, MI_TIME_BOARD,
+    MI_UNDO_CROSSING, WX_ID_ABOUT, WX_ID_EXIT,
 };
 use crate::ui::action::spec::{CheckKind, CommandId, NativeDialog};
 use crate::ui::dialogs::stack::Focus;
 use crate::ui::presenters::console::RIDE_STARTED;
 use crate::ui::presenters::rider_issues;
+use crate::ui::presenters::riders::CsvConflict;
 use crate::ui::presenters::simulator;
 use crate::ui::sound::Cue;
 use crate::ui::worker::StoreCommand;
 
 /// The ride name every fixture uses.
 const RIDE_NAME: &str = "GORBA EPIC 2026";
+
+/// The name the edit fixture stores, distinct from the New Ride defaults.
+const LIVE_RIDE_NAME: &str = "LIVE RIDE";
 
 /// The plate that the fixture's solo entry carries.
 const PLATE: &str = "101";
@@ -330,6 +336,54 @@ fn test_act_refuses_an_action_the_gate_disables() {
     assert_eq!(state.dialogs.top(), None);
 }
 
+#[test]
+fn test_open_window_opens_a_dialog_that_has_only_a_spec() {
+    // Arrange: About and Keyboard Shortcuts are declared by the dialog spec, not by an opener.
+    let mut state = empty_state();
+
+    // Act
+    let result = state.open_window("about_dlg");
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("about_dlg")
+    );
+}
+
+#[test]
+fn test_the_import_riders_csv_row_asks_for_the_picker() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+
+    // Act
+    let result = state.act(MI_IMPORT_CSV);
+
+    // Assert
+    assert_eq!(result, Ok(Effect::OpenWindow("csv_preview_dlg")));
+    assert!(state.choose_csv);
+    assert_eq!(state.notice, None);
+    assert_eq!(state.dialogs.top(), None);
+    Ok(())
+}
+
+#[test]
+fn test_open_window_refuses_a_window_outside_the_dialogs() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    let result = state.open_window("not_a_window_dlg");
+
+    // Assert
+    assert_eq!(
+        result,
+        Err(DispatchError::NotImplemented("not_a_window_dlg"))
+    );
+    assert_eq!(state.dialogs.top(), None);
+}
+
 #[rstest]
 #[case(CheckKind::PublishShowTimes, MI_SHOW_TIMES)]
 #[case(CheckKind::LapsBoard, MI_LAPS_BOARD)]
@@ -362,14 +416,12 @@ fn test_act_toggles_each_check_and_saves(
 }
 
 #[rstest]
-#[case(MI_ZOOM_90, 90)]
-#[case(MI_ZOOM_100, 100)]
-#[case(MI_ZOOM_110, 110)]
-#[case(MI_ZOOM_120, 120)]
-#[case(MI_ZOOM_130, 130)]
-#[case(MI_ZOOM_140, 140)]
-#[case(MI_ZOOM_150, 150)]
-fn test_act_sets_each_zoom_rung(#[case] id: ActionId, #[case] percent: u16) -> Result<(), String> {
+#[case(MI_DENSITY_COMPACT, "compact")]
+#[case(MI_DENSITY_COMFORTABLE, "comfortable")]
+fn test_act_sets_each_density(
+    #[case] id: ActionId,
+    #[case] spelling: &'static str,
+) -> Result<(), String> {
     // Arrange
     let (_directory, mut state) = state_with_temp_settings()?;
 
@@ -377,10 +429,34 @@ fn test_act_sets_each_zoom_rung(#[case] id: ActionId, #[case] percent: u16) -> R
     let result = state.act(id);
 
     // Assert
-    assert_eq!(result, Ok(Effect::SetZoom(percent)));
-    assert_eq!(state.settings.zoom_percent, percent);
+    assert_eq!(result, Ok(Effect::SetDensity(spelling)));
+    assert_eq!(state.settings.density, spelling);
     let (stored, warnings) = rivercrossing_store::load_settings(&state.settings_path);
-    assert_eq!(stored.zoom_percent, percent);
+    assert_eq!(stored.density, spelling);
+    assert_eq!(warnings.len(), 0);
+    Ok(())
+}
+
+#[rstest]
+#[case(MI_TEXT_SIZE_TINY, "tiny")]
+#[case(MI_TEXT_SIZE_SMALL, "small")]
+#[case(MI_TEXT_SIZE_MEDIUM, "medium")]
+#[case(MI_TEXT_SIZE_LARGE, "large")]
+fn test_act_sets_each_text_size(
+    #[case] id: ActionId,
+    #[case] spelling: &'static str,
+) -> Result<(), String> {
+    // Arrange
+    let (_directory, mut state) = state_with_temp_settings()?;
+
+    // Act
+    let result = state.act(id);
+
+    // Assert
+    assert_eq!(result, Ok(Effect::SetTextSize(spelling)));
+    assert_eq!(state.settings.text_size, spelling);
+    let (stored, warnings) = rivercrossing_store::load_settings(&state.settings_path);
+    assert_eq!(stored.text_size, spelling);
     assert_eq!(warnings.len(), 0);
     Ok(())
 }
@@ -452,7 +528,7 @@ fn test_act_opens_the_results_window_in_any_state() -> Result<(), String> {
 #[case(WX_ID_ABOUT, true)]
 #[case(MI_BACKUP_NOW, true)]
 #[case(MI_SHOW_TIMES, true)]
-#[case(MI_ZOOM_100, true)]
+#[case(MI_DENSITY_COMPACT, true)]
 #[case(WX_ID_EXIT, true)]
 #[case(MI_RIDER_EDITOR, true)]
 #[case(MI_TEAM_EDITOR, true)]
@@ -529,6 +605,240 @@ fn complete_setup_fields() -> Vec<(&'static str, &'static str)> {
         ("duration_input", "6:00"),
         ("min_lap_input", "20:00"),
     ]
+}
+
+/// Return a state with a draft ride whose stored setup differs from every New Ride default.
+fn edit_setup_state() -> Result<AppState, String> {
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Draft)?;
+    let Some(ride) = state.ride.as_mut() else {
+        return Err("the fixture ride did not load".to_owned());
+    };
+    let date = time::Date::from_calendar_date(2026, time::Month::March, 14)
+        .map_err(|error| error.to_string())?;
+    let start = time::Time::from_hms(9, 15, 0).map_err(|error| error.to_string())?;
+    ride.config.name = LIVE_RIDE_NAME.to_owned();
+    ride.config.event_date = date;
+    ride.config.planned_start = time::OffsetDateTime::new_utc(date, start);
+    ride.config.venue = "Live Venue".to_owned();
+    ride.config.organizer = "Live Organiser".to_owned();
+    ride.config.scorer = "Live Scorer".to_owned();
+    ride.config.lap_km = 12.5;
+    ride.config.planned_duration_s = 7_200;
+    ride.config.min_lap_s = 900;
+    ride.config.max_cards = Some(12);
+    ride.config.max_team_size = 6;
+    ride.config.deck_count = 6;
+    ride.config.jokers_per_deck = 2;
+    ride.config.plate_model = PlateModel::RiderPooled;
+    ride.config.jokers_mode = rivercrossing_cards::JokersMode::PerDeck;
+    ride.config.tiebreak_order = [TieBreak::TotalTime, TieBreak::Laps, TieBreak::HighCard];
+    ride.config.hold_short_laps = true;
+    ride.config.logo_path = Some(PathBuf::from("/tmp/live-logo.png"));
+    Ok(state)
+}
+
+#[test]
+fn test_act_opens_the_edit_setup_for_the_live_ride() -> Result<(), String> {
+    // Arrange
+    let mut state = edit_setup_state()?;
+
+    // Act
+    let result = state.act(MI_EDIT_RIDE);
+
+    // Assert
+    assert_eq!(result, Ok(Effect::OpenEditRide));
+    assert_eq!(state.setup_edit, Some(1));
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("ride_setup_dlg")
+    );
+    Ok(())
+}
+
+#[test]
+fn test_the_edit_setup_is_preloaded_with_the_live_config() -> Result<(), String> {
+    // Arrange
+    let mut state = edit_setup_state()?;
+
+    // Act
+    assert_eq!(state.act(MI_EDIT_RIDE), Ok(Effect::OpenEditRide));
+
+    // Assert
+    let seeded = [
+        ("name_input", LIVE_RIDE_NAME),
+        ("date_picker", "2026-03-14"),
+        ("start_time_picker", "09:15"),
+        ("venue_input", "Live Venue"),
+        ("organizer_input", "Live Organiser"),
+        ("scorer_input", "Live Scorer"),
+        ("lap_km_spin", "12.5"),
+        ("duration_input", "2:00"),
+        ("min_lap_input", "15:00"),
+        ("cap_choice", "12"),
+        ("team_size_spin", "6"),
+        ("decks_spin", "6"),
+        ("jokers_spin", "2"),
+    ];
+    for (field, want) in seeded {
+        assert_eq!(state.dialogs.field(field), Some(want), "{field}");
+    }
+    assert_eq!(state.setup_tiebreak, ["total_time", "laps", "high_card"]);
+    assert_eq!(state.setup_logo, "/tmp/live-logo.png");
+    Ok(())
+}
+
+#[test]
+fn test_opening_the_edit_setup_without_a_hand_cap_seeds_disabled() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    state.ride = loaded_ride(RidePhase::Draft)?;
+
+    // Act
+    state.open_edit_setup_dialog();
+
+    // Assert
+    assert_eq!(state.dialogs.field("cap_choice"), Some("Disabled"));
+    assert_eq!(state.setup_logo, "");
+    Ok(())
+}
+
+#[test]
+fn test_opening_the_edit_setup_without_a_ride_opens_no_dialog() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.open_edit_setup_dialog();
+
+    // Assert
+    assert_eq!(state.dialogs.top(), None);
+    assert_eq!(state.setup_edit, None);
+}
+
+#[test]
+fn test_submit_edit_setup_queues_an_update_not_a_create() -> Result<(), String> {
+    // Arrange
+    let mut state = edit_setup_state()?;
+    state.open_edit_setup_dialog();
+
+    // Act
+    let result = state.submit_setup();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert_eq!(state.pending_create, None);
+    assert_eq!(state.pending_store.len(), 1);
+    let queued = state
+        .pending_store
+        .first()
+        .ok_or("the update was not queued")?;
+    let StoreCommand::UpdateRide { id, config } = queued else {
+        return Err(format!("expected UpdateRide, got {queued:?}"));
+    };
+    assert_eq!(*id, 1);
+    assert_eq!(config.name, LIVE_RIDE_NAME);
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("ride_setup_dlg"),
+        "the edit dialog stays open until the store answers"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_edit_setup_shows_the_live_radio_choices() -> Result<(), String> {
+    // Arrange: the live ride is Mixed, pooled plates, jokers per deck, holding short laps.
+    let mut state = edit_setup_state()?;
+
+    // Act
+    state.open_edit_setup_dialog();
+
+    // Assert: these are the four values the setup view renders its radios from.
+    assert_eq!(
+        state.setup_radios,
+        SetupRadios {
+            entry_mode: EntryMode::Mixed,
+            plate_model: PlateModel::RiderPooled,
+            jokers_mode: rivercrossing_cards::JokersMode::PerDeck,
+            hold_short_laps: true,
+        }
+    );
+    Ok(())
+}
+
+#[test]
+fn test_submit_edit_setup_saves_the_live_radio_choices() -> Result<(), String> {
+    // Arrange: the seeded radios are the live ride's, not the parser's Solo/total defaults.
+    let mut state = edit_setup_state()?;
+    state.open_edit_setup_dialog();
+
+    // Act
+    let result = state.submit_setup();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    let queued = state
+        .pending_store
+        .first()
+        .ok_or("the update was not queued")?;
+    let StoreCommand::UpdateRide { config, .. } = queued else {
+        return Err(format!("expected UpdateRide, got {queued:?}"));
+    };
+    assert_eq!(config.entry_mode, EntryMode::Mixed);
+    assert_eq!(config.plate_model, PlateModel::RiderPooled);
+    assert_eq!(config.jokers_mode, rivercrossing_cards::JokersMode::PerDeck);
+    assert!(config.hold_short_laps);
+    Ok(())
+}
+
+#[test]
+fn test_submit_edit_setup_refuses_a_malformed_field_and_queues_nothing() -> Result<(), String> {
+    // Arrange
+    let mut state = edit_setup_state()?;
+    state.open_edit_setup_dialog();
+    state
+        .dialogs
+        .set_field("date_picker", "not a date")
+        .map_err(|_| "the date field refuses".to_owned())?;
+
+    // Act
+    let result = state.submit_setup();
+
+    // Assert
+    assert_eq!(
+        result,
+        Err(vec!["Date must be YYYY-MM-DD, got 'not a date'".to_owned()])
+    );
+    assert_eq!(
+        state.setup_errors,
+        Some(vec!["Date must be YYYY-MM-DD, got 'not a date'".to_owned()])
+    );
+    assert_eq!(state.pending_create, None);
+    assert_eq!(state.pending_store.len(), 0);
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("ride_setup_dlg")
+    );
+    Ok(())
+}
+
+#[test]
+fn test_opening_a_new_setup_after_an_edit_returns_to_the_defaults() -> Result<(), String> {
+    // Arrange
+    let mut state = edit_setup_state()?;
+    state.open_edit_setup_dialog();
+    let today = time::Date::from_calendar_date(2026, time::Month::November, 25)
+        .map_err(|error| error.to_string())?;
+
+    // Act
+    state.open_setup_dialog(today);
+
+    // Assert
+    assert_eq!(state.setup_edit, None);
+    assert_eq!(state.dialogs.field("date_picker"), Some("2026-11-25"));
+    assert_eq!(state.dialogs.field("name_input"), None);
+    Ok(())
 }
 
 #[test]
@@ -1671,7 +1981,7 @@ fn test_preview_csv_opens_the_dialog_and_enables_import() -> Result<(), String> 
         .as_ref()
         .ok_or_else(|| "the preview model".to_owned())?;
     assert!(model.can_import);
-    assert_eq!(model.conflicts, Vec::<String>::new());
+    assert_eq!(model.conflicts, Vec::<CsvConflict>::new());
     assert_eq!(state.csv_preview.path.as_deref(), Some(path.as_path()));
     Ok(())
 }
@@ -1698,7 +2008,13 @@ fn test_preview_csv_given_a_conflict_disables_import() -> Result<(), String> {
         .as_ref()
         .ok_or_else(|| "the preview model".to_owned())?;
     assert!(!model.can_import);
-    assert_eq!(model.conflicts, vec!["duplicate plate 111".to_owned()]);
+    assert_eq!(
+        model.conflicts,
+        vec![CsvConflict {
+            row: 3,
+            message: "duplicate plate 111".to_owned(),
+        }]
+    );
     Ok(())
 }
 
@@ -2405,6 +2721,59 @@ fn test_run_native_task_deletes_a_crossing() -> Result<(), String> {
 }
 
 #[test]
+fn test_run_native_task_ignores_the_csv_choose() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.run_native_task(NativeTask::ChooseCsv);
+
+    // Assert
+    assert_eq!(state.pending_command, None);
+    assert_eq!(state.pending_store.len(), 0);
+}
+
+#[test]
+fn test_run_native_task_ignores_the_roster_export() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.run_native_task(NativeTask::ExportRosterCsv);
+
+    // Assert
+    assert_eq!(state.pending_command, None);
+    assert_eq!(state.pending_store.len(), 0);
+}
+
+#[test]
+fn test_native_copy_names_the_csv_pickers() {
+    // Arrange
+    let state = empty_state();
+    let choose = PendingNative {
+        dialog: NativeDialog::Confirm,
+        then: NativeTask::ChooseCsv,
+    };
+    let export = PendingNative {
+        dialog: NativeDialog::Confirm,
+        then: NativeTask::ExportRosterCsv,
+    };
+
+    // Act
+    let choose_message = state.native_message(&choose);
+    let export_message = state.native_message(&export);
+
+    // Assert
+    assert_eq!(choose_message, "Choose the riders CSV.");
+    assert_eq!(export_message, "Choose where to save the roster CSV.");
+    assert_eq!(AppState::native_confirm_label(&choose), "Open");
+    assert_eq!(AppState::native_confirm_label(&export), "Save");
+    assert_eq!(AppState::native_title(NativeDialog::Confirm), "Confirm");
+    assert_eq!(NativeTask::ChooseCsv.as_str(), "choose_csv");
+    assert_eq!(NativeTask::ExportRosterCsv.as_str(), "export_roster_csv");
+}
+
+#[test]
 fn test_native_copy_names_each_task() {
     // Arrange
     let mut state = empty_state();
@@ -2526,6 +2895,44 @@ fn test_duplicate_library_selected_asks_first() {
             then: NativeTask::DuplicateRide { id: 7 },
         })
     );
+}
+
+#[test]
+fn test_duplicate_open_ride_asks_first() -> Result<(), String> {
+    // Arrange
+    let mut state = state_with_roster(RidePhase::Draft, &editor_roster()?)?;
+    let id = state
+        .ride
+        .as_ref()
+        .map(|ride| ride.ride_id)
+        .ok_or_else(|| "the fixture ride".to_owned())?;
+
+    // Act
+    state.duplicate_open_ride();
+
+    // Assert
+    assert_eq!(
+        state.pending_native,
+        Some(PendingNative {
+            dialog: NativeDialog::Prompt,
+            then: NativeTask::DuplicateRide { id },
+        })
+    );
+    assert!(!state.native_in_app);
+    Ok(())
+}
+
+#[test]
+fn test_duplicate_open_ride_without_a_ride_posts_the_notice() {
+    // Arrange
+    let mut state = empty_state();
+
+    // Act
+    state.duplicate_open_ride();
+
+    // Assert
+    assert_eq!(state.pending_native, None);
+    assert_eq!(state.notice, Some("Open a ride first".to_owned()));
 }
 
 #[test]
@@ -3808,5 +4215,144 @@ fn test_persist_sim_settings_saves_the_fields_without_a_run() -> Result<(), Stri
     let stored = rivercrossing_store::load_settings(&state.settings_path).0;
     assert_eq!((stored.sim_riders, stored.sim_laps), (77, 4));
     assert!(state.pending_sim.is_none());
+    Ok(())
+}
+
+#[test]
+fn test_submit_dnf_given_an_entry_name_marks_that_entry() -> Result<(), String> {
+    // Arrange: a numeric team plate, as a real ride stores.
+    let mut roster = Roster::new(EntryMode::Mixed, 4, PlateModel::RiderPooled, Some(SEED))
+        .map_err(|error| error.to_string())?;
+    roster.load_entries(vec![
+        solo_entry("k-ada", "101", "Ada", "Lovelace"),
+        team_entry(
+            "k-trail",
+            "300",
+            "Trail Blazers",
+            vec![
+                rider("Alan", "Turing", Some("201")),
+                rider("Barbara", "Liskov", Some("202")),
+            ],
+        ),
+    ]);
+    let mut state = state_with_roster(RidePhase::Running, &roster)?;
+    state.open_dnf();
+    state.correction_entry = "Trail Blazers".to_owned();
+    state
+        .dialogs
+        .set_field("reason_input", "mechanical")
+        .map_err(|_| "the reason field".to_owned())?;
+
+    // Act
+    let result = state.submit_dnf();
+
+    // Assert: the command carries the entry, naming the team in its notice.
+    assert_eq!(result, Ok(()));
+    assert!(
+        state
+            .notice
+            .as_deref()
+            .is_some_and(|notice| notice.contains("Trail Blazers")),
+        "{:?}",
+        state.notice
+    );
+    Ok(())
+}
+
+#[test]
+fn test_submit_dnf_given_a_rider_name_marks_that_rider() -> Result<(), String> {
+    // Arrange
+    let mut roster = Roster::new(EntryMode::Mixed, 4, PlateModel::RiderPooled, Some(SEED))
+        .map_err(|error| error.to_string())?;
+    roster.load_entries(vec![team_entry(
+        "k-trail",
+        "300",
+        "Trail Blazers",
+        vec![
+            rider("Alan", "Turing", Some("201")),
+            rider("Barbara", "Liskov", Some("202")),
+        ],
+    )]);
+    let mut state = state_with_roster(RidePhase::Running, &roster)?;
+    state.open_dnf();
+    state.correction_entry = "Alan Turing".to_owned();
+    state
+        .dialogs
+        .set_field("reason_input", "injury")
+        .map_err(|_| "the reason field".to_owned())?;
+
+    // Act
+    let result = state.submit_dnf();
+
+    // Assert
+    assert_eq!(result, Ok(()));
+    assert!(
+        state
+            .notice
+            .as_deref()
+            .is_some_and(|notice| notice.contains("Alan Turing")),
+        "{:?}",
+        state.notice
+    );
+    Ok(())
+}
+
+#[test]
+fn test_record_export_names_the_file_for_the_open_action() {
+    // Arrange
+    let mut state = empty_state();
+    let path = PathBuf::from("/tmp/results.html");
+
+    // Act
+    state.record_export(ExportKind::Html, &path);
+
+    // Assert
+    assert_eq!(state.exported_file, Some(path));
+}
+
+#[test]
+fn test_take_open_export_returns_the_file_once() {
+    // Arrange
+    let mut state = empty_state();
+    let path = PathBuf::from("/tmp/results.html");
+    state.open_export = Some(path.clone());
+
+    // Act
+    let first = state.take_open_export();
+    let second = state.take_open_export();
+
+    // Assert
+    assert_eq!(first, Some(path));
+    assert_eq!(second, None);
+}
+
+#[test]
+fn test_open_set_start_given_an_unset_event_date_leaves_it_empty() -> Result<(), String> {
+    // Arrange: the fixture config's default date is the Unix epoch.
+    let mut state = running_with_crossing()?;
+
+    // Act
+    state.open_set_start();
+
+    // Assert: no fabricated 1970-01-01 reaches the picker.
+    assert_eq!(state.dialogs.field("start_date_picker"), None);
+    Ok(())
+}
+
+#[test]
+fn test_open_set_start_given_an_event_date_seeds_the_picker() -> Result<(), String> {
+    // Arrange
+    let mut state = running_with_crossing()?;
+    let date = time::Date::from_calendar_date(2026, time::Month::September, 20)
+        .map_err(|error| error.to_string())?;
+    if let Some(ride) = state.ride.as_mut() {
+        ride.config.event_date = date;
+    }
+
+    // Act
+    state.open_set_start();
+
+    // Assert
+    assert_eq!(state.dialogs.field("start_date_picker"), Some("2026-09-20"));
     Ok(())
 }

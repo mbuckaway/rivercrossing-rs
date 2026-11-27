@@ -1,0 +1,14 @@
+{
+  "screen": "settings",
+  "steps": [
+    {
+      "command": "wxID_PREFERENCES"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "shot": "settings.png"
+    }
+  ]
+}

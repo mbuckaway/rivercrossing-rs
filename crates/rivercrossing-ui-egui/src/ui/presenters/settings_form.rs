@@ -3,11 +3,11 @@
 //! The settings dialog's form values, their validation and the appearance radios.
 //!
 //! The rules follow the Python oracle's `ui/presenters/settings.py` and
-//! `ui/views/settings.py`: the three appearance radios spell the stored
-//! appearance, Light winning over Dark, and the average rider speed keeps its
-//! decimal and its 1 km/h floor. The `ArtCraft` contrast, density, text-size and
-//! theme axes are additive controls outside the frozen fields. Every field the
-//! dialog has no control for carries through unchanged.
+//! `ui/views/settings.py`: the combined appearance picker writes the theme id and
+//! the appearance together, and the average rider speed keeps its decimal and
+//! its 1 km/h floor. The `ArtCraft` contrast, density and text-size axes are
+//! additive controls outside the frozen fields. Every field the dialog has no
+//! control for carries through unchanged.
 
 #![cfg_attr(
     not(test),
@@ -17,6 +17,7 @@
     )
 )]
 
+use craft::theme::Variants;
 use rivercrossing_store::settings::AppSettings;
 
 #[cfg(test)]
@@ -178,6 +179,64 @@ fn is_builtin_theme(id: &str) -> bool {
     craft::theme::builtins()
         .iter()
         .any(|theme| theme.id.as_str() == id)
+}
+
+/// Return the appearance picker's entries in builtins order.
+///
+/// Each entry pairs its label with a value that encodes the theme id and the appearance. A theme
+/// that has both modes offers Light, Dark and System; a single-variant theme offers its name alone.
+#[must_use]
+pub(crate) fn appearance_entries() -> Vec<(String, String)> {
+    craft::theme::builtins()
+        .iter()
+        .flat_map(|theme| {
+            let id = theme.id.as_str();
+            let name = theme.name.as_str();
+            match theme.variants {
+                Variants::Both => vec![
+                    (format!("{name} — Light"), format!("{id}|light")),
+                    (format!("{name} — Dark"), format!("{id}|dark")),
+                    (format!("{name} — System"), format!("{id}|system")),
+                ],
+                Variants::LightOnly => vec![(name.to_owned(), format!("{id}|light"))],
+                Variants::DarkOnly => vec![(name.to_owned(), format!("{id}|dark"))],
+            }
+        })
+        .collect()
+}
+
+/// Return the entry that shows for a stored theme and appearance.
+///
+/// The pair's own entry wins when the list holds it. A pair that names no entry (an unknown theme,
+/// or a variant the theme does not offer) falls back to the theme's first entry, or to the list's
+/// first entry when even the theme is unknown.
+#[must_use]
+pub(crate) fn appearance_choice(
+    entries: &[(String, String)],
+    theme: &str,
+    appearance: &str,
+) -> Option<String> {
+    let wanted = format!("{theme}|{appearance}");
+    if entries.iter().any(|(_, value)| *value == wanted) {
+        return Some(wanted);
+    }
+    let prefix = format!("{theme}|");
+    entries
+        .iter()
+        .find(|(_, value)| value.starts_with(&prefix))
+        .or_else(|| entries.first())
+        .map(|(_, value)| value.clone())
+}
+
+/// Write a picked appearance value into *form*: the theme id and the appearance.
+///
+/// A value with no `|` separator names no theme, so the form keeps its stored pair.
+pub(crate) fn set_appearance(form: &mut FormValues, value: &str) {
+    let Some((theme, appearance)) = value.split_once('|') else {
+        return;
+    };
+    theme.clone_into(&mut form.theme);
+    appearance.clone_into(&mut form.appearance);
 }
 
 /// Return the checked appearance radio's spelling.

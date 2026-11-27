@@ -3,7 +3,7 @@
 //! The `ArtCraft` `RootEnv` that the persisted appearance settings describe.
 //!
 //! The mode, contrast, density, text size and theme are the persisted settings; the frozen
-//! `mi_zoom_*` actions stay a separate zoom axis on `ctx.set_zoom_factor`.
+//! View-menu rows select the craft library's density and text-size presets.
 
 use craft::theme::{ContrastChoice, ModeChoice, Size, TextSize, ThemeId};
 use craft::ui::runtime::env::RootEnv;
@@ -44,23 +44,23 @@ pub(crate) fn contrast(spelling: &str) -> ContrastChoice {
     }
 }
 
-/// Return the density preset for a stored spelling; an unknown spelling is compact.
+/// Return the density preset for a stored spelling; an unknown spelling is comfortable.
 #[must_use]
 pub(crate) fn density(spelling: &str) -> Size {
     match spelling {
-        "comfortable" => Size::Comfortable,
-        _ => Size::Compact,
+        "compact" => Size::Compact,
+        _ => Size::Comfortable,
     }
 }
 
-/// Return the text-size step for a stored spelling; an unknown spelling is medium.
+/// Return the text-size step for a stored spelling; an unknown spelling is small.
 #[must_use]
 pub(crate) fn text_size(spelling: &str) -> TextSize {
     match spelling {
         "tiny" => TextSize::Tiny,
-        "small" => TextSize::Small,
+        "medium" => TextSize::Medium,
         "large" => TextSize::Large,
-        _ => TextSize::Medium,
+        _ => TextSize::Small,
     }
 }
 

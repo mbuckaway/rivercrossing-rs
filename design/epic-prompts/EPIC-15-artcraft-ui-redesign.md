@@ -39,15 +39,16 @@ task into a `tdd-rust-writer` agent (sequential, Red→Green); the main session 
    Keep the Exit row tagged `ItemRole::Quit` (do not route `wxID_EXIT` through `craft_quit::on_menu_event`).
    Parameterise the two existing close tests with `rstest`.
 4. **ArtCraft theming hook.** Return the real `RootEnv` (mode/contrast/density/text size/theme) from
-   `frame_input`; keep the seven frozen `Target::Zoom` ids on `ctx.set_zoom_factor`; migrate
-   `settings.appearance` to the mode model; add the net-new contrast/density/text-size/theme controls.
+   `frame_input`; drive the density and text-size axes from the View menu's frozen rows, not
+   `ctx.set_zoom_factor`; migrate `settings.appearance` to the mode model; add the net-new
+   contrast/density/text-size/theme controls.
 5. **Docked-shell view layer.** Rebuild the console and dialogs on `craft_ui` per `control-mapping.md`
    and `screen-specs.md`: `AppShell` + rail + docked panels + feed `Table`; dialogs via `craft_ui::dialog`;
    flattened gauges (`Progress` + readout; state `Badge` with the word).
 6. **Parity gaps.** Implement `new_ride_btn` (enabled only with no ride; creates the test ride and
    closes); render `go_btn` as a real `Button::Custom("go_btn")` labelled "GO" and the dialog default;
    add the spec-vs-registry consistency test; single-source the console button labels.
-7. **Preserve the frozen contract.** All 53 action ids, 30 window ids, 67 fields, and the accessible
+7. **Preserve the frozen contract.** All 52 action ids, 30 window ids, 67 fields, and the accessible
    names `Start Ride`/`Stop Ride`/`Undo`/`Record`/`Plate`.
 
 ## Done when

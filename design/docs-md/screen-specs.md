@@ -7,8 +7,9 @@ no blank panels, no happy-path-only screens.
 
 ## Global shell
 
-`shell::AppShell`: title bar → options bar → tool rail + docked panels → crossings feed canvas → status
-bar. Dialogs are `dialog::Dialog` modals over the shell, hosted by `DialogStack`. Every window inherits
+`shell::AppShell`: title bar → tool rail + docked panels → crossings feed canvas → status bar. Dialogs
+are `dialog::Dialog` modals over the shell, hosted by `DialogStack`. Appearance (theme, mode, contrast,
+density, text size) lives in Settings; the title bar carries no controls. Every window inherits
 the tokens (light/dark, compact/comfortable, contrast, text size, theme) and the focus rules (Esc
 cancels, Enter activates the default, focus locked in a modal, opener focus restored).
 
@@ -97,7 +98,7 @@ the dialog open.
 
 | Window | Layout | States / interactions |
 |---|---|---|
-| `settings_dlg` | Appearance (System/Light/Dark + **non-frozen** contrast/density/text-size/theme) + sound + columns + verbose + avg speed | OK persists; Cancel discards. The four extra appearance axes are non-frozen controls (§control-mapping note) |
+| `settings_dlg` | Appearance (one combined **Theme** picker listing each built-in theme's Light/Dark/System variants, plus **non-frozen** Contrast/Density/Text-size — added 2026-11-27, retiring the Mode radios) + sound + columns + verbose + avg speed | OK persists; Cancel discards. The appearance picker and its three axes are non-frozen controls (§control-mapping note) |
 | `about_dlg` | Version / author / copyright / license / link | Fixed size; Close |
 | `shortcuts_dlg` | Shortcut table generated from the Action registry | Read-only |
 | `selftest_dlg` | Mono PASS/FAIL output + Rerun | Rerun disabled mid-run |

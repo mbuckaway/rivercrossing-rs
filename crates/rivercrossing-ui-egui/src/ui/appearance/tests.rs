@@ -105,12 +105,12 @@ fn test_appearance_density_given_comfortable_returns_comfortable() {
 }
 
 #[test]
-fn test_appearance_density_given_an_unknown_spelling_returns_compact() {
+fn test_appearance_density_given_an_unknown_spelling_returns_comfortable() {
     // Arrange, Act
     let choice = density("wide");
 
     // Assert
-    assert_eq!(choice, Size::Compact);
+    assert_eq!(choice, Size::Comfortable);
 }
 
 // ------------------------------------------------------------ text size
@@ -152,12 +152,12 @@ fn test_appearance_text_size_given_large_returns_large() {
 }
 
 #[test]
-fn test_appearance_text_size_given_an_unknown_spelling_returns_medium() {
+fn test_appearance_text_size_given_an_unknown_spelling_returns_small() {
     // Arrange, Act
     let choice = text_size("huge");
 
     // Assert
-    assert_eq!(choice, TextSize::Medium);
+    assert_eq!(choice, TextSize::Small);
 }
 
 // ---------------------------------------------------------------- theme
@@ -220,7 +220,7 @@ fn test_appearance_root_env_reads_every_axis_from_the_settings() {
 }
 
 #[test]
-fn test_appearance_root_env_given_the_defaults_uses_system_compact_medium_artcraft() {
+fn test_appearance_root_env_given_the_defaults_uses_system_comfortable_small_artcraft() {
     // Arrange
     let settings = default_settings();
 
@@ -233,9 +233,28 @@ fn test_appearance_root_env_given_the_defaults_uses_system_compact_medium_artcra
         (
             ModeChoice::System,
             ContrastChoice::System,
-            Size::Compact,
-            TextSize::Medium,
+            Size::Comfortable,
+            TextSize::Small,
         )
     );
     assert_eq!(root.theme_id().as_str(), "craft.artcraft");
+}
+
+#[test]
+fn test_appearance_root_env_maps_comfortable_and_small_to_the_craft_presets() {
+    // Arrange
+    let settings = AppSettings {
+        density: "comfortable".to_owned(),
+        text_size: "small".to_owned(),
+        ..default_settings()
+    };
+
+    // Act
+    let root = root_env(&settings);
+
+    // Assert
+    assert_eq!(
+        (root.density, root.text_size),
+        (Size::Comfortable, TextSize::Small)
+    );
 }

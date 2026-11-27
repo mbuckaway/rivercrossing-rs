@@ -12,20 +12,22 @@
 use std::borrow::Cow;
 
 use craft::behavior::ColumnKey;
-use craft::behavior::{ColumnWidth, DisplayOrder, ItemSource, Selection};
-use craft::egui::Ui;
+use craft::behavior::{ColumnWidth, DisplayOrder, ItemSource, NavShape, Selection};
+use craft::egui::{Align, Layout, Rect, Sense, Ui, UiBuilder, pos2, vec2};
 use craft::theme::TypeRole;
-use craft::theme::variant::Tone;
+use craft::theme::Variant;
+use craft::theme::variant::{Emphasis, Tone};
 use craft::ui::choice::{Checkbox, Radio, RadioGroup};
 use craft::ui::contract::{
     Bind, ColumnSpec, Entry, LeastWidth, Props as _, Show as _, ShowCollection as _,
     ShowContainer as _, Sizing,
 };
 use craft::ui::dialog::Dialog;
-use craft::ui::display::{Shade, Text};
+use craft::ui::display::{Badge, Shade, Text};
 use craft::ui::list::{List, ListRow};
 use craft::ui::notices::Notice;
 use craft::ui::pickers::{DatePicker, PickedDate, Select};
+use craft::ui::primitives::Span;
 use craft::ui::runtime::overlay::CloseReason;
 use craft::ui::sections::{DialogRole, FooterButton};
 use craft::ui::table::Table;
@@ -42,8 +44,8 @@ use crate::ui::state::{AppState, NativeTask};
 #[cfg(test)]
 mod tests;
 
-/// The dialogs whose tables need a wide window.
-const WIDE: [&str; 9] = [
+/// The dialogs whose tables or two-column rows need a wide window.
+const WIDE: [&str; 10] = [
     "ride_setup_dlg",
     "shortcuts_dlg",
     "rider_editor_dlg",
@@ -53,6 +55,7 @@ const WIDE: [&str; 9] = [
     "ride_library_dlg",
     "audit_dlg",
     "results_dlg",
+    "settings_dlg",
 ];
 
 /// The name column, shared by the dialogs whose first column names a row.
@@ -61,6 +64,8 @@ pub(crate) const NAME: ColumnKey = ColumnKey::new("name");
 pub(crate) const PLATE: ColumnKey = ColumnKey::new("plate");
 /// The team column.
 pub(crate) const TEAM: ColumnKey = ColumnKey::new("team");
+/// The sex column.
+pub(crate) const SEX: ColumnKey = ColumnKey::new("sex");
 /// The lap column.
 pub(crate) const LAP: ColumnKey = ColumnKey::new("lap");
 /// The time column.
@@ -89,6 +94,8 @@ pub(crate) const PLACE: ColumnKey = ColumnKey::new("place");
 pub(crate) const HAND: ColumnKey = ColumnKey::new("hand");
 /// The total-time column.
 pub(crate) const TOTAL: ColumnKey = ColumnKey::new("total");
+/// The draw column.
+pub(crate) const DRAW: ColumnKey = ColumnKey::new("draw");
 
 /// What closed the dialog this pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -266,8 +273,14 @@ fn report_body(ui: &mut Ui, state: &mut AppState, id: &str) {
 fn notice_body(ui: &mut Ui, state: &mut AppState, id: &str) {
     match id {
         "delete_ride_dlg" => library::delete_body(ui, state),
-        "resume_dlg" => message_body(ui, state.launch_message.clone()),
-        "exit_running_dlg" => message_body(ui, state.quit_message.clone()),
+        "resume_dlg" => {
+            let (message, name) = (state.launch_message.clone(), state.launch_ride_name.clone());
+            message_body(ui, message, name.as_deref());
+        }
+        "exit_running_dlg" => {
+            let (message, name) = (state.quit_message.clone(), state.quit_ride_name.clone());
+            message_body(ui, message, name.as_deref());
+        }
         "start_blocked_dlg" => blocked_body(ui, state),
         "settings_dlg" => settings::body(ui, state),
         "about_dlg" => system::about(ui),
@@ -277,12 +290,33 @@ fn notice_body(ui: &mut Ui, state: &mut AppState, id: &str) {
     }
 }
 
-/// Show a dialog's message line.
-fn message_body(ui: &mut Ui, message: Option<String>) {
+/// Show a dialog's message line, with the ride name emphasised.
+fn message_body(ui: &mut Ui, message: Option<String>, name: Option<&str>) {
     let shown = message.unwrap_or_default();
     ui.push_id("message_lbl", |ui| {
-        let _ = Text::new(shown).show(ui);
+        let _ = Text::styled(message_spans(&shown, name)).show(ui);
     });
+}
+
+/// Return the message's styled spans: the ride name is the strong value the mockup emphasises.
+fn message_spans(message: &str, name: Option<&str>) -> Vec<Span<'static>> {
+    let Some(name) = name.filter(|name| !name.is_empty()) else {
+        return vec![Span::new(message.to_owned())];
+    };
+    let Some(at) = message.find(name) else {
+        return vec![Span::new(message.to_owned())];
+    };
+    let mut spans = Vec::with_capacity(3);
+    let before = message.get(..at).unwrap_or_default();
+    if !before.is_empty() {
+        spans.push(Span::new(before.to_owned()));
+    }
+    spans.push(Span::new(name.to_owned()).strong());
+    let after = message.get(at + name.len()..).unwrap_or_default();
+    if !after.is_empty() {
+        spans.push(Span::new(after.to_owned()));
+    }
+    spans
 }
 
 /// Show why the ride cannot start: the notice over the frozen reason list.
@@ -407,9 +441,10 @@ fn is_close(button: Button) -> bool {
     button == Button::Close
 }
 
-/// Return the dialog's displayed title; the Add windows retitle in edit mode.
+/// Return the dialog's displayed title; the Add and Setup windows retitle in edit mode.
 fn dialog_title(state: &AppState, spec: &DialogSpec) -> &'static str {
     match spec.id {
+        "ride_setup_dlg" if state.setup_edit.is_some() => "Edit Ride",
         "add_rider_dlg" if state.rider_editor.editing.is_some() => "Edit Rider",
         "add_team_dlg" if state.team_editor.editing.is_some() => "Edit Team",
         "edit_crossing_dlg" if state.correction.add => "Add Crossing at Time",
@@ -420,7 +455,7 @@ fn dialog_title(state: &AppState, spec: &DialogSpec) -> &'static str {
 /// Return the human label of a dialog button.
 fn button_label(state: &AppState, id: &str, button: Button) -> &'static str {
     match (id, button) {
-        ("add_rider_dlg" | "settings_dlg" | "ride_setup_dlg", Button::Ok) => "Save",
+        ("add_rider_dlg" | "ride_setup_dlg", Button::Ok) => "Save",
         ("add_team_dlg", Button::Ok) if state.team_editor.editing.is_some() => "Save",
         ("add_team_dlg", Button::Ok) => "Add",
         ("csv_preview_dlg", Button::Ok) => "Import",
@@ -488,11 +523,51 @@ pub(crate) fn stack_text_field(
     id: &'static str,
     label: &'static str,
 ) {
+    stack_text_field_lines(ui, state, id, label, 1);
+}
+
+/// Show one text field of *lines* rows bound to a dialog's frozen field id.
+///
+/// Above one row the field wraps and takes the design's textarea height
+/// (`design/mockups/index.html`, `#s-add-team` `textarea rows="2"`).
+pub(crate) fn stack_text_field_lines(
+    ui: &mut Ui,
+    state: &mut AppState,
+    id: &'static str,
+    label: &'static str,
+    lines: usize,
+) {
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
     let mut value = stored.clone();
     ui.push_id(id, |ui| {
         field_caption(ui, label);
-        let _ = TextField::new(label, Bind::bound(&mut value)).show(ui);
+        let _ = TextField::new(label, Bind::bound(&mut value))
+            .lines(lines)
+            .sizing(CONTROL_SIZING)
+            .show(ui);
+    });
+    if value != stored {
+        let _ = state.dialogs.set_field(id, value);
+    }
+}
+
+/// Show one full-row text field bound to a dialog's frozen field id.
+///
+/// A field that owns the whole row fills it: craft's fill-width leaf would overrun a two-column
+/// cell, so only a full-row field uses it.
+pub(crate) fn stack_text_field_wide(
+    ui: &mut Ui,
+    state: &mut AppState,
+    id: &'static str,
+    label: &'static str,
+) {
+    let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
+    let mut value = stored.clone();
+    ui.push_id(id, |ui| {
+        field_caption(ui, label);
+        let _ = TextField::new(label, Bind::bound(&mut value))
+            .sizing(Sizing::FillWidth)
+            .show(ui);
     });
     if value != stored {
         let _ = state.dialogs.set_field(id, value);
@@ -501,6 +576,11 @@ pub(crate) fn stack_text_field(
 
 /// The width a number field takes: the design's narrow numeric input, not the full column.
 const NUMBER_FIELD_WIDTH: f32 = 120.0;
+
+/// The sizing of a form control: content width. Craft's fill-width leaf measures against the form
+/// column rather than the row cell, which pushes a `pair`'s right-hand control off the row; content
+/// sizing keeps each control in its own column.
+pub(crate) const CONTROL_SIZING: Sizing = Sizing::Content;
 
 /// Show a field's caption above its control.
 ///
@@ -512,6 +592,70 @@ pub(crate) fn field_caption(ui: &mut Ui, caption: &'static str) {
         .role(TypeRole::Caption)
         .shade(Shade::Muted)
         .show(ui);
+}
+
+/// Show two fields side by side: the design's two-column form (`design/mockups/index.html`,
+/// `.grid2`).
+pub(crate) fn pair(ui: &mut Ui, content: impl FnOnce(&mut Ui, &mut Ui)) {
+    ui.columns(2, |columns| {
+        let (left, right) = columns.split_at_mut(1);
+        if let (Some(left), Some(right)) = (left.first_mut(), right.first_mut()) {
+            content(left, right);
+        }
+    });
+}
+
+/// Show three fields side by side: the design's three-column form (`design/mockups/index.html`,
+/// `.grid3`).
+pub(crate) fn triple(ui: &mut Ui, content: impl FnOnce(&mut Ui, &mut Ui, &mut Ui)) {
+    ui.columns(3, |columns| {
+        let (head, tail) = columns.split_at_mut(1);
+        let (middle, last) = tail.split_at_mut(1);
+        if let (Some(first), Some(second), Some(third)) =
+            (head.first_mut(), middle.first_mut(), last.first_mut())
+        {
+            content(first, second, third);
+        }
+    });
+}
+
+/// Show the design's two-pane split (`design/mockups/index.html`, `.split`): a filling left pane
+/// and a `right_width` wide right pane, both at least `min_height` tall.
+///
+/// The panes are separate child rooms, so one closure draws both from one borrow of the app state.
+pub(crate) fn split(
+    ui: &mut Ui,
+    right_width: f32,
+    min_height: f32,
+    content: impl FnOnce(&mut Ui, &mut Ui),
+) {
+    let gap = craft::ui::runtime::env::Env::of(ui)
+        .tokens
+        .space
+        .pad
+        .regular;
+    let total = ui.available_width();
+    // A room narrower than the record pane gives the pane the whole width, never an inverted rect.
+    let right_width = right_width.min(total);
+    let left_width = (total - right_width - gap).max(0.0);
+    let (row, _) = ui.allocate_exact_size(vec2(total, min_height), Sense::hover());
+    let left = Rect::from_min_size(row.min, vec2(left_width, row.height()));
+    let right = Rect::from_min_size(
+        pos2(row.max.x - right_width, row.min.y),
+        vec2(right_width, row.height()),
+    );
+    let seam = ui.next_auto_id();
+    let pane = |ui: &mut Ui, salt: &'static str, room: Rect| {
+        ui.new_child(
+            UiBuilder::new()
+                .id_salt(seam.with(salt))
+                .max_rect(room)
+                .layout(Layout::top_down(Align::Min)),
+        )
+    };
+    let mut left_ui = pane(ui, "left", left);
+    let mut right_ui = pane(ui, "right", right);
+    content(&mut left_ui, &mut right_ui);
 }
 
 /// Show one masked text field bound to a dialog's frozen field id.
@@ -534,6 +678,9 @@ pub(crate) fn stack_secret_field(
     }
 }
 
+/// The date field's placeholder while it holds no date.
+pub(crate) const DATE_PLACEHOLDER: &str = "YYYY-MM-DD";
+
 /// Show one date picker bound to a dialog's ISO-date field.
 pub(crate) fn stack_date_field(
     ui: &mut Ui,
@@ -545,6 +692,13 @@ pub(crate) fn stack_date_field(
     let mut picked = PickedDate::parse(&stored);
     ui.push_id(id, |ui| {
         field_caption(ui, label);
+        if picked.is_none() {
+            // An unset date is not the epoch: the format hint stands in for the empty field.
+            let _ = Text::new(DATE_PLACEHOLDER)
+                .role(TypeRole::Caption)
+                .shade(Shade::Muted)
+                .show(ui);
+        }
         let _ = DatePicker::new(label, Bind::bound(&mut picked)).show(ui);
     });
     let text = picked.map_or_else(String::new, |date| date.iso());
@@ -617,20 +771,32 @@ pub(crate) fn stack_decimal_field(
     }
 }
 
-/// Show one decimal field over a value the caller holds, written back with one decimal.
+/// Show one decimal field over a value the caller holds, in a cell *width* points wide and written
+/// back with one decimal.
 pub(crate) fn decimal_value(
     ui: &mut Ui,
     id: &'static str,
     label: &'static str,
     value: &mut f64,
+    width: f32,
     range: std::ops::RangeInclusive<f64>,
 ) {
     let mut number = Some(*value);
     ui.push_id(id, |ui| {
-        let _ = NumberField::new(label, Bind::bound(&mut number))
-            .range(range)
-            .step(0.1)
-            .show(ui);
+        // A row gives the fill-width field exactly the cell's room; in a stacked column it would
+        // take the whole form column instead.
+        let cell = craft::egui::vec2(width, ui.spacing().interact_size.y);
+        let _ = ui.allocate_ui_with_layout(
+            cell,
+            craft::egui::Layout::left_to_right(craft::egui::Align::Center),
+            |ui| {
+                let _ = NumberField::new(label, Bind::bound(&mut number))
+                    .range(range)
+                    .step(0.1)
+                    .sizing(CONTROL_SIZING)
+                    .show(ui);
+            },
+        );
     });
     if let Some(number) = number {
         *value = number;
@@ -710,7 +876,7 @@ fn pick(
         .collect();
     ui.push_id(id, |ui| {
         let _ = Select::new(label, Bind::bound(&mut picked), &entries)
-            .sizing(Sizing::Content)
+            .sizing(CONTROL_SIZING)
             .show(ui);
     });
     picked
@@ -734,6 +900,10 @@ pub(crate) fn stack_flag(
 
 /// Show a radio group over its frozen `_radio` controls; *options* pairs each value with its frozen
 /// id and its label. Return the value picked this pass.
+///
+/// The group's visible caption stands above its members, as the design's `.field label` does, and
+/// the members sit in one horizontal row. The row takes `Spatial` navigation, so Up and Down move
+/// between rows while Left and Right move between members.
 pub(crate) fn radio_group(
     ui: &mut Ui,
     group: &'static str,
@@ -742,13 +912,18 @@ pub(crate) fn radio_group(
 ) -> u8 {
     let mut chosen = picked;
     ui.push_id(group, |ui| {
-        let _ = RadioGroup::new(group, Bind::bound(&mut chosen)).show(ui, |ui, _| {
-            for (value, name, label) in options {
-                ui.push_id(*name, |ui| {
-                    let _ = Radio::new(*value).label(*label).show(ui);
+        field_caption(ui, group);
+        let _ = RadioGroup::new(group, Bind::bound(&mut chosen))
+            .nav(NavShape::Spatial)
+            .show(ui, |ui, _| {
+                ui.horizontal(|ui| {
+                    for (value, name, label) in options {
+                        ui.push_id(*name, |ui| {
+                            let _ = Radio::new(*value).label(*label).show(ui);
+                        });
+                    }
                 });
-            }
-        });
+            });
     });
     chosen
 }
@@ -782,11 +957,22 @@ pub(crate) fn value(
 // --------------------------------------------------------------------- tables
 
 /// One row of a dialog table: its accessible label and its cells.
+#[derive(Default)]
 pub(crate) struct TableRow {
     /// The row's label, which also names it to assistive technology.
     pub(crate) label: String,
     /// The row's cells, by column.
     pub(crate) cells: Vec<(ColumnKey, String)>,
+    /// The row's cells drawn as a badge, by column.
+    pub(crate) badges: Vec<(ColumnKey, BadgeCell)>,
+}
+
+/// One cell drawn as a badge in a tone, over its column's text.
+pub(crate) struct BadgeCell {
+    /// The badge's text.
+    pub(crate) text: String,
+    /// The badge's tone.
+    pub(crate) tone: Tone,
 }
 
 /// A dialog table's columns and rows.
@@ -879,6 +1065,9 @@ pub(crate) fn table(
                     for (column, text) in &entry.cells {
                         row = row.cell(column.clone(), text.clone());
                     }
+                    for (column, badge) in &entry.badges {
+                        row = row.cell_field(column.clone(), badge_of(badge), |_| {});
+                    }
                 }
                 row
             });
@@ -888,6 +1077,11 @@ pub(crate) fn table(
     } else {
         selection.lead
     }
+}
+
+/// Return the badge a row's badge cell draws.
+fn badge_of(cell: &BadgeCell) -> Badge {
+    Badge::new(cell.text.clone()).variant(Variant::look(Emphasis::Soft, cell.tone))
 }
 
 /// Return the columns of a table whose cells hold plain content widths.

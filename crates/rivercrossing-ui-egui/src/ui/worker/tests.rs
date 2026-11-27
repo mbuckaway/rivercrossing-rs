@@ -121,6 +121,8 @@ struct LoadedParts {
     roster: Box<Roster>,
     /// The engine rebuilt from the audit log.
     engine: Box<RideEngine<Roster, SystemClock>>,
+    /// The number of rows in the ride's audit trail.
+    audit_row_count: usize,
 }
 
 /// Return a loaded ride's parts.
@@ -131,11 +133,13 @@ fn loaded_ride(reply: Reply) -> Result<LoadedParts, String> {
             config,
             roster,
             engine,
+            audit_row_count,
         }) => Ok(LoadedParts {
             id,
             config,
             roster,
             engine,
+            audit_row_count,
         }),
         Ok(other) => Err(format!("expected Ride, got {other:?}")),
         Err(message) => Err(message),
@@ -223,6 +227,15 @@ fn expect_session_closed(reply: Reply) -> Result<(), String> {
     }
 }
 
+/// Return the edited ride's id and setup that a reply carries.
+fn updated_config(reply: Reply) -> Result<(i64, RideConfig), String> {
+    match reply {
+        Ok(StoreReply::RideUpdated { id, config }) => Ok((id, config)),
+        Ok(other) => Err(format!("expected RideUpdated, got {other:?}")),
+        Err(message) => Err(message),
+    }
+}
+
 /// Return the one reply that a drain produced.
 fn only_reply(mut replies: Vec<Reply>) -> Result<StoreReply, String> {
     let count = replies.len();
@@ -273,6 +286,144 @@ fn test_apply_creates_and_loads_a_ride() -> Result<(), String> {
     assert_eq!(loaded.config, config);
     assert_eq!(loaded.roster.entries().len(), 0);
     assert_eq!(loaded.engine.state(), RideStatus::Draft);
+    Ok(())
+}
+
+#[test]
+fn test_apply_load_ride_carries_the_audit_row_count() -> Result<(), String> {
+    // Arrange: a ride whose audit trail holds two roster events.
+    let (_directory, mut store) = open_store()?;
+    let id = created_id(applied(
+        &mut store,
+        StoreCommand::CreateRide {
+            config: fixture_config()?,
+            seed: Some(SEED),
+        },
+    ))?;
+    expect_roster_event_appended(applied(
+        &mut store,
+        StoreCommand::AppendRosterEvent {
+            id,
+            event: Box::new(AuditEvent {
+                action: "create_solo_entry".to_owned(),
+                payload: json!({ "plate": PLATE }),
+            }),
+        },
+    ))?;
+    expect_roster_event_appended(applied(
+        &mut store,
+        StoreCommand::AppendRosterEvent {
+            id,
+            event: Box::new(AuditEvent {
+                action: "edit_rider".to_owned(),
+                payload: json!({ "plate": PLATE }),
+            }),
+        },
+    ))?;
+
+    // Act
+    let loaded = loaded_ride(applied(&mut store, StoreCommand::LoadRide { id }))?;
+
+    // Assert
+    assert_eq!(loaded.audit_row_count, 2);
+    Ok(())
+}
+
+#[test]
+fn test_apply_load_ride_without_audit_rows_carries_zero() -> Result<(), String> {
+    // Arrange
+    let (_directory, mut store) = open_store()?;
+    let id = created_id(applied(
+        &mut store,
+        StoreCommand::CreateRide {
+            config: fixture_config()?,
+            seed: Some(SEED),
+        },
+    ))?;
+
+    // Act
+    let loaded = loaded_ride(applied(&mut store, StoreCommand::LoadRide { id }))?;
+
+    // Assert
+    assert_eq!(loaded.audit_row_count, 0);
+    Ok(())
+}
+
+#[test]
+fn test_apply_load_ride_given_an_unreadable_audit_row_reports_the_store_error() -> Result<(), String>
+{
+    // Arrange: a roster action that the engine skips, whose payload is not a JSON object.
+    let (_directory, mut store) = open_store()?;
+    let id = created_id(applied(
+        &mut store,
+        StoreCommand::CreateRide {
+            config: fixture_config()?,
+            seed: Some(SEED),
+        },
+    ))?;
+    expect_roster_event_appended(applied(
+        &mut store,
+        StoreCommand::AppendRosterEvent {
+            id,
+            event: Box::new(AuditEvent {
+                action: "unmapped".to_owned(),
+                payload: json!("not an object"),
+            }),
+        },
+    ))?;
+
+    // Act
+    let result = apply(&mut store, StoreCommand::LoadRide { id });
+
+    // Assert
+    assert!(matches!(result, Err(StoreError::InvalidPayload { .. })));
+    Ok(())
+}
+
+#[test]
+fn test_apply_updates_the_ride_config_and_reports_it() -> Result<(), String> {
+    // Arrange
+    let (_directory, mut store) = open_store()?;
+    let id = created_id(applied(
+        &mut store,
+        StoreCommand::CreateRide {
+            config: fixture_config()?,
+            seed: Some(SEED),
+        },
+    ))?;
+    let mut config = fixture_config()?;
+    config.name = "RENAMED RIDE".to_owned();
+    config.lap_km = 9.5;
+
+    // Act
+    let edited = updated_config(applied(&mut store, StoreCommand::UpdateRide { id, config }))?;
+    let reloaded = store.load_engine(id).map_err(|error| error.to_string())?;
+
+    // Assert
+    assert_eq!(edited.0, id);
+    assert_eq!(edited.1.name, "RENAMED RIDE");
+    assert_eq!(reloaded.config().name, "RENAMED RIDE");
+    assert!((reloaded.config().lap_km - 9.5).abs() < f64::EPSILON);
+    assert_eq!(reloaded.state(), RideStatus::Draft);
+    Ok(())
+}
+
+#[test]
+fn test_apply_update_ride_given_an_unknown_ride_reports_the_store_error() -> Result<(), String> {
+    // Arrange
+    let (_directory, mut store) = open_store()?;
+
+    // Act
+    let result = applied(
+        &mut store,
+        StoreCommand::UpdateRide {
+            id: UNKNOWN_ID,
+            config: fixture_config()?,
+        },
+    );
+
+    // Assert
+    assert_eq!(result.err(), Some(format!("no ride with id {UNKNOWN_ID}")));
     Ok(())
 }
 

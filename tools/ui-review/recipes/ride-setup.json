@@ -1,0 +1,14 @@
+{
+  "screen": "ride-setup",
+  "steps": [
+    {
+      "command": "mi_new_ride"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "shot": "ride-setup.png"
+    }
+  ]
+}

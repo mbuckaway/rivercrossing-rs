@@ -16,8 +16,12 @@ pub(crate) enum Target {
     Command(CommandId),
     /// Toggle the named check.
     Check(CheckKind),
-    /// Set the text zoom to this percentage.
-    Zoom(u16),
+    /// Set the density preset to this stored spelling.
+    Density(&'static str),
+    /// Set the text size to this stored spelling.
+    TextSize(&'static str),
+    /// Open the ride-setup window in edit mode, preloaded with the live ride.
+    EditRide,
     /// A native confirm, danger or prompt; on confirm the app runs `then`.
     Native {
         /// The native dialog kind to raise.
@@ -200,13 +204,12 @@ pub(crate) fn section(action: ActionId) -> MenuSection {
         | id::MI_SHOW_DNS_RIDERS => MenuSection::Results,
         id::MI_SHOW_TOTAL_TIMES
         | id::MI_SHOW_LAP_TIME
-        | id::MI_ZOOM_90
-        | id::MI_ZOOM_100
-        | id::MI_ZOOM_110
-        | id::MI_ZOOM_120
-        | id::MI_ZOOM_130
-        | id::MI_ZOOM_140
-        | id::MI_ZOOM_150 => MenuSection::View,
+        | id::MI_DENSITY_COMPACT
+        | id::MI_DENSITY_COMFORTABLE
+        | id::MI_TEXT_SIZE_TINY
+        | id::MI_TEXT_SIZE_SMALL
+        | id::MI_TEXT_SIZE_MEDIUM
+        | id::MI_TEXT_SIZE_LARGE => MenuSection::View,
         _ => MenuSection::Help,
     }
 }
@@ -313,7 +316,9 @@ pub(crate) fn target_json(target: Target) -> Value {
         Target::Window(window) => json!({ "kind": "window", "window": window }),
         Target::Command(command) => json!({ "kind": "command", "command": command.as_str() }),
         Target::Check(check) => json!({ "kind": "check", "check": check.as_str() }),
-        Target::Zoom(percent) => json!({ "kind": "zoom", "percent": percent }),
+        Target::Density(spelling) => json!({ "kind": "density", "density": spelling }),
+        Target::TextSize(spelling) => json!({ "kind": "text_size", "text_size": spelling }),
+        Target::EditRide => json!({ "kind": "edit_ride" }),
         Target::Native { dialog, then } => {
             json!({ "kind": "native", "dialog": dialog.as_str(), "then": then.as_str() })
         }
@@ -355,7 +360,7 @@ pub(crate) struct ActionSpec {
     pub(crate) target: Target,
 }
 
-/// The 53 actions, in §15 menu order.
+/// The 52 actions, in §15 menu order.
 pub(crate) const ACTIONS: &[ActionSpec] = &[
     // File
     ActionSpec {
@@ -423,7 +428,7 @@ pub(crate) const ACTIONS: &[ActionSpec] = &[
         id: id::MI_EDIT_RIDE,
         label: "Edit Ride…",
         shortcut: None,
-        target: Target::Window("ride_setup_dlg"),
+        target: Target::EditRide,
     },
     ActionSpec {
         id: id::MI_START_RIDE,
@@ -643,46 +648,40 @@ pub(crate) const ACTIONS: &[ActionSpec] = &[
         target: Target::Check(CheckKind::ShowLapTime),
     },
     ActionSpec {
-        id: id::MI_ZOOM_90,
-        label: "90%",
+        id: id::MI_DENSITY_COMPACT,
+        label: "Compact",
         shortcut: None,
-        target: Target::Zoom(90),
+        target: Target::Density("compact"),
     },
     ActionSpec {
-        id: id::MI_ZOOM_100,
-        label: "100%",
+        id: id::MI_DENSITY_COMFORTABLE,
+        label: "Comfortable",
         shortcut: None,
-        target: Target::Zoom(100),
+        target: Target::Density("comfortable"),
     },
     ActionSpec {
-        id: id::MI_ZOOM_110,
-        label: "110%",
+        id: id::MI_TEXT_SIZE_TINY,
+        label: "Tiny",
         shortcut: None,
-        target: Target::Zoom(110),
+        target: Target::TextSize("tiny"),
     },
     ActionSpec {
-        id: id::MI_ZOOM_120,
-        label: "120%",
+        id: id::MI_TEXT_SIZE_SMALL,
+        label: "Small",
         shortcut: None,
-        target: Target::Zoom(120),
+        target: Target::TextSize("small"),
     },
     ActionSpec {
-        id: id::MI_ZOOM_130,
-        label: "130%",
+        id: id::MI_TEXT_SIZE_MEDIUM,
+        label: "Medium",
         shortcut: None,
-        target: Target::Zoom(130),
+        target: Target::TextSize("medium"),
     },
     ActionSpec {
-        id: id::MI_ZOOM_140,
-        label: "140%",
+        id: id::MI_TEXT_SIZE_LARGE,
+        label: "Large",
         shortcut: None,
-        target: Target::Zoom(140),
-    },
-    ActionSpec {
-        id: id::MI_ZOOM_150,
-        label: "150%",
-        shortcut: None,
-        target: Target::Zoom(150),
+        target: Target::TextSize("large"),
     },
     // Help
     ActionSpec {

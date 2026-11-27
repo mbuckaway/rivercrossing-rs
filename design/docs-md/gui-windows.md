@@ -9,7 +9,7 @@ Rename a control or an action in only one place and the drift test names the fir
 
 **The count is 30 top-level windows.** The §15b file map enumerates them (`design/docs-md/spec.md:392`),
 and `design/README-python.md:30` and `:38` declare the count authoritative at W15. The registry holds
-**53 actions**: the 45 §15 rows with the one View row expanded into its 9 items, which is 50 `mi_*`
+**52 actions**: the 45 §15 rows with the one View row expanded into its 8 items, which is 49 `mi_*`
 items plus the 3 stock ids `wxID_PREFERENCES`, `wxID_EXIT` and `wxID_ABOUT`. The `README-python.md` prose
 count of 43 `mi_*` items is a stale Python figure; the registry is authoritative.
 
@@ -142,8 +142,7 @@ The block below is generated from the Rust registry. `src/ui/action/drift.rs` pa
       "label": "Edit Ride…",
       "shortcut": null,
       "target": {
-        "kind": "window",
-        "window": "ride_setup_dlg"
+        "kind": "edit_ride"
       }
     },
     {
@@ -446,66 +445,57 @@ The block below is generated from the Rust registry. `src/ui/action/drift.rs` pa
       }
     },
     {
-      "id": "mi_zoom_90",
-      "label": "90%",
+      "id": "mi_density_compact",
+      "label": "Compact",
       "shortcut": null,
       "target": {
-        "kind": "zoom",
-        "percent": 90
+        "density": "compact",
+        "kind": "density"
       }
     },
     {
-      "id": "mi_zoom_100",
-      "label": "100%",
+      "id": "mi_density_comfortable",
+      "label": "Comfortable",
       "shortcut": null,
       "target": {
-        "kind": "zoom",
-        "percent": 100
+        "density": "comfortable",
+        "kind": "density"
       }
     },
     {
-      "id": "mi_zoom_110",
-      "label": "110%",
+      "id": "mi_text_size_tiny",
+      "label": "Tiny",
       "shortcut": null,
       "target": {
-        "kind": "zoom",
-        "percent": 110
+        "kind": "text_size",
+        "text_size": "tiny"
       }
     },
     {
-      "id": "mi_zoom_120",
-      "label": "120%",
+      "id": "mi_text_size_small",
+      "label": "Small",
       "shortcut": null,
       "target": {
-        "kind": "zoom",
-        "percent": 120
+        "kind": "text_size",
+        "text_size": "small"
       }
     },
     {
-      "id": "mi_zoom_130",
-      "label": "130%",
+      "id": "mi_text_size_medium",
+      "label": "Medium",
       "shortcut": null,
       "target": {
-        "kind": "zoom",
-        "percent": 130
+        "kind": "text_size",
+        "text_size": "medium"
       }
     },
     {
-      "id": "mi_zoom_140",
-      "label": "140%",
+      "id": "mi_text_size_large",
+      "label": "Large",
       "shortcut": null,
       "target": {
-        "kind": "zoom",
-        "percent": 140
-      }
-    },
-    {
-      "id": "mi_zoom_150",
-      "label": "150%",
-      "shortcut": null,
-      "target": {
-        "kind": "zoom",
-        "percent": 150
+        "kind": "text_size",
+        "text_size": "large"
       }
     },
     {
@@ -1097,9 +1087,6 @@ The block below is generated from the Rust registry. `src/ui/action/drift.rs` pa
       "start_time_picker"
     ],
     "settings_dlg": [
-      "appearance_system_radio",
-      "appearance_light_radio",
-      "appearance_dark_radio",
       "sound_chk",
       "show_total_times_chk",
       "show_lap_time_chk",
@@ -1177,7 +1164,7 @@ The block below is generated from the Rust registry. `src/ui/action/drift.rs` pa
 | `ride_library_dlg` | `rides_list`, `duplicate_btn` | `ride_library_dlg.jpg` |
 | `delete_ride_dlg` | `message_lbl`, `confirm_name_input` | `delete_ride_dlg.jpg` |
 | `audit_dlg` | `audit_search`, `action_choice`, `audit_list` | `audit_dlg.jpg` |
-| `settings_dlg` | `appearance_system_radio`, `appearance_light_radio`, `appearance_dark_radio`, `sound_chk`, `show_total_times_chk`, `show_lap_time_chk`, `verbose_log_chk`, `avg_speed_spin` | `settings_dlg.jpg` |
+| `settings_dlg` | `sound_chk`, `show_total_times_chk`, `show_lap_time_chk`, `verbose_log_chk`, `avg_speed_spin` (the Appearance section's own non-frozen controls: `appearance_theme_choice` — the combined picker added 2026-11-27 — plus `appearance_contrast_choice`, `appearance_density_choice` and `appearance_text_size_choice`) | `settings_dlg.jpg` |
 | `about_dlg` | `version_lbl`, `author_lbl`, `copyright_lbl`, `license_lbl`, `gorba_link` | `about_dlg.jpg` |
 | `shortcuts_dlg` | `shortcuts_list` | `shortcuts_dlg.jpg` |
 | `selftest_dlg` | `selftest_output`, `rerun_btn` | `selftest_dlg.jpg` |
@@ -1234,7 +1221,7 @@ Copied verbatim from `design/docs-md/spec.md:328-372`: all 45 rows with their "E
 | **Results ▸ Full field** | Checkable publish option — the full field in the exports; `AppSettings.publish_full_field` (on by default) | — | always |
 | **Results ▸ All cards drawn** | Checkable publish option — every drawn card in the exports; `AppSettings.publish_all_cards` (on by default) | — | always |
 | **Results ▸ Show DNS Riders** | Checkable — show/hide the DNS (0-lap) rows on a finished ride's results, listed at the bottom of their section with a blank Place and Laps "DNS"; `AppSettings.show_dns_riders` (on by default, no effect while the ride is live) | — | always |
-| **View ▸ Times · Zoom** | Direct commands — the two time-column check items (Show Total Times / Show Lap Time on Crossings Panel, each mirroring its own Settings checkbox) and the seven zoom radios; the Settings window's appearance radios are the single theme surface (W13 removed the View-menu theme trio and the Settings text-zoom choice — the duplicate surfaces testing notes #14/#12 removed; R-37's time columns keep both surfaces) | 1a · 3a | always |
+| **View ▸ Display · Density · Text size** | Direct commands — the two time-column check items (Show Total Times / Show Lap Time on Crossings Panel, each mirroring its own Settings checkbox), then after a separator the two density presets (Compact / Comfortable) and the four text sizes (Tiny / Small / Medium / Large), each a radio marking the stored setting; the Settings window's combined Theme picker is the single theme surface (W13 removed the View-menu theme trio and the Settings text-zoom choice — the duplicate surfaces testing notes #14/#12 removed; R-37's time columns keep both surfaces; the Rust port, 2026-11-27, replaced the three Mode radios with the one picker) | 1a · 3a | always |
 | **Help ▸ User Guide** | Opens bundled docs/user-guide.html in browser — 11 chapters + 2 appendices, section anchors deep-linked from dialog Help buttons; screenshots regenerated by the functional-test harness each release | 6a | always |
 | **Help ▸ Keyboard Shortcuts** | Shortcuts dialog | 3f | always |
 | **Help ▸ Run Evaluator Self-test** | Self-test result dialog (§12) | 3f | always |
@@ -1267,8 +1254,9 @@ Crossing Detail route.
   `fields` array lists the 67 settable controls with their kind: `text`, `choice`, `check` or `spin`.
 - **`ui.dialog.*` addresses the top dialog by its window id**, one of the 30 keys of the `windows` map.
 - **Targets are typed.** `{"kind": "window"}` opens a frozen window, `{"kind": "command"}` runs a
-  command, `{"kind": "check"}` toggles a check, `{"kind": "zoom"}` sets the text zoom and
-  `{"kind": "native"}` raises a native dialog and names the command the app runs on confirm.
+  command, `{"kind": "check"}` toggles a check, `{"kind": "density"}` and `{"kind": "text_size"}`
+  store their preset spelling and `{"kind": "native"}` raises a native dialog and names the command
+  the app runs on confirm.
 - **Field kinds are derived from the frozen suffix.** `_input` and `_picker` map to `text`, `_choice`
   to `choice`, `_chk` to `check` and `_spin` to `spin`. Every other control is not a field. The three
   search boxes (`crossings_search`, `rider_search`, `audit_search`) are view-local filters, so they

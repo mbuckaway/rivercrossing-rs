@@ -16,8 +16,8 @@ publish/simulator, **12e** close-out.
 - **Window inventory: 30** (§15b file map, `spec.md:392`), not 23 (the stale EPIC-1 screenshot set)
   and not the prompt's undefined "27". `design/docs-md/gui-windows.md` is produced first, with one
   fenced JSON machine block (windows/controls/actions/fields) that the ids-drift unit test compares
-  to the Rust registry; the human tables document it. The registry has **53 unique actions** = 50
-  `mi_*` + 3 stock ids (the View row expands to 9 items).
+  to the Rust registry; the human tables document it. The registry has **52 unique actions** = 49
+  `mi_*` + 3 stock ids (the View row expands to 8 items).
 - **Settings:** `rivercrossing-store::settings` reads/writes the Python `settings.json` schema-
   compatibly (29 fields, same path, same coercers, atomic, never-raising); `craft-settings` is TOML
   and is not used. Credentials stay plaintext at parity.

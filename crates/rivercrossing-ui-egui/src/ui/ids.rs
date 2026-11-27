@@ -228,9 +228,6 @@ pub(crate) const WINDOWS: &[WindowControls] = &[
     WindowControls {
         window: "settings_dlg",
         controls: &[
-            "appearance_system_radio",
-            "appearance_light_radio",
-            "appearance_dark_radio",
             "sound_chk",
             "show_total_times_chk",
             "show_lap_time_chk",

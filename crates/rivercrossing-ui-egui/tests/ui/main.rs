@@ -39,7 +39,7 @@ struct GoldenFixture {
     directory: TempDir,
 }
 
-/// A headless app over a fresh temporary directory, with light appearance and 100% zoom.
+/// A headless app over a fresh temporary directory with the light appearance.
 fn golden_app() -> Result<GoldenFixture, Box<dyn Error>> {
     let directory = tempfile::tempdir()?;
     let paths = AppPaths::at(
@@ -49,7 +49,6 @@ fn golden_app() -> Result<GoldenFixture, Box<dyn Error>> {
     );
     let mut settings = rivercrossing_store::default_settings();
     "light".clone_into(&mut settings.appearance);
-    settings.zoom_percent = 100;
     rivercrossing_store::save_settings(&settings, &paths.settings)?;
     let app = RiverCrossingApp::headless(None, None, paths);
     Ok(GoldenFixture {

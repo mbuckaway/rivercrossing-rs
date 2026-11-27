@@ -1,0 +1,14 @@
+{
+  "screen": "ride-library",
+  "steps": [
+    {
+      "command": "mi_open_library"
+    },
+    {
+      "wait": 0.4
+    },
+    {
+      "shot": "ride-library.png"
+    }
+  ]
+}

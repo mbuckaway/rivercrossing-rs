@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RiverCrossing User Guide</title>
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --panel: #ffffff;
+    --ink: #1d1f21;
+    --muted: #5b6066;
+    --rule: #d9dbde;
+    --accent: #1f6f4a;
+    --code: #eceeef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17191b;
+      --panel: #1f2225;
+      --ink: #e8eaec;
+      --muted: #a2a8ae;
+      --rule: #33383d;
+      --accent: #7fd1a4;
+      --code: #2a2e32;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 0.25rem; }
+  h2 { font-size: 1.35rem; margin: 2.5rem 0 0.5rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); }
+  h3 { font-size: 1.05rem; margin: 1.4rem 0 0.35rem; }
+  p, li { color: var(--ink); }
+  .lede, .muted { color: var(--muted); }
+  nav.toc { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 1rem 1.25rem; margin: 1.75rem 0; }
+  nav.toc ol { margin: 0.35rem 0 0; padding-left: 1.4rem; }
+  nav.toc a { color: var(--accent); }
+  a { color: var(--accent); }
+  code, kbd { background: var(--code); border-radius: 4px; padding: 0.05rem 0.3rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
+  table { border-collapse: collapse; width: 100%; margin: 0.75rem 0 1rem; }
+  th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; }
+  ul, ol { padding-left: 1.4rem; }
+  .notice { border-left: 3px solid var(--accent); background: var(--panel); padding: 0.6rem 0.9rem; margin: 0.9rem 0; color: var(--muted); }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<main>
+<h1>RiverCrossing User Guide</h1>
+<p class="lede">RiverCrossing records a poker-run ride: it registers riders and teams, records plate crossings, deals and tracks cards, and produces standings, exports and a published results page.</p>
+
+<nav class="toc" aria-label="Contents">
+  <strong>Contents</strong>
+  <ol>
+    <li><a href="#getting-started">Getting started</a></li>
+    <li><a href="#console">The console</a></li>
+    <li><a href="#ride-setup">Ride setup</a></li>
+    <li><a href="#riders-and-teams">Riders and teams</a></li>
+    <li><a href="#recording-crossings">Recording crossings</a></li>
+    <li><a href="#corrections-and-voids">Corrections and voids</a></li>
+    <li><a href="#cards-and-dnf">Cards and DNF</a></li>
+    <li><a href="#stopping-finishing-reopening">Stopping, finishing and reopening</a></li>
+    <li><a href="#standings-and-results">Standings and results</a></li>
+    <li><a href="#exports-and-publishing">Exports and publishing</a></li>
+    <li><a href="#settings-and-appearance">Settings and appearance</a></li>
+    <li><a href="#appendix-keyboard-shortcuts">Appendix A — Keyboard shortcuts</a></li>
+    <li><a href="#appendix-troubleshooting">Appendix B — Troubleshooting</a></li>
+  </ol>
+</nav>
+
+<section>
+<h2 id="getting-started">1. Getting started</h2>
+<p>RiverCrossing opens on the live timing console. With no ride loaded the console is empty, the clocks read zero and the plate field is locked.</p>
+<p>If a ride was still running when the app last closed, a <strong>Resume Ride</strong> prompt appears at launch. <strong>Continue</strong> reloads that ride; <strong>Ride Library</strong> (or Escape) opens the ride library instead.</p>
+<h3>Create a ride</h3>
+<ol>
+  <li>Choose <strong>File ▸ New Ride…</strong>. New Ride is available only while no ride is loaded.</li>
+  <li>Complete the <a href="#ride-setup">Ride Setup</a> form and confirm with OK. The ride is saved as a draft.</li>
+  <li>Add riders or teams from the <strong>Riders</strong> menu, then choose <strong>Ride ▸ Start Ride</strong>.</li>
+</ol>
+<h3>Everyday housekeeping</h3>
+<ul>
+  <li><strong>File ▸ Back Up Database…</strong> writes a timestamped backup. The app also checks for an hourly backup while it runs.</li>
+  <li><strong>File ▸ Ride Library</strong> lists the saved rides so you can open, duplicate or delete one. Deleting a ride requires typing its exact name.</li>
+  <li><strong>File ▸ Exit</strong> quits. While a ride is running the app first asks whether to keep it running, finish it first, or cancel.</li>
+  <li>On macOS the window's close button hides the console; the app keeps running. Click the Dock icon to restore it, and quit from <strong>File ▸ Exit</strong>.</li>
+</ul>
+<p>This guide is always available from <strong>Help ▸ User Guide</strong>.</p>
+</section>
+
+<section>
+<h2 id="console">2. The console</h2>
+<p>The console is the main window. It shows the ride identity and status, the two race clocks, the entry row, the crossings feed and the review panel.</p>
+<h3>The status and clocks</h3>
+<p>The status word is <strong>DRAFT</strong>, <strong>RUNNING</strong>, <strong>STOPPED</strong>, <strong>FINISHED</strong> or <strong>REOPENED</strong>, matched by a status light. The elapsed and remaining clocks advance only while the ride is live and freeze when it is stopped or finished.</p>
+<h3>The entry row</h3>
+<p>The entry row holds the large <strong>Plate</strong> field, the <strong>Record</strong> and <strong>Undo</strong> buttons, and a line naming the last recorded crossing. The plate field and Record are enabled only while the ride is live; Undo is enabled once there is at least one crossing.</p>
+<h3>The crossings feed and review panel</h3>
+<p>The crossings feed lists every recorded crossing for the whole ride, with the card each rider drew. The search box filters the feed by plate, name or card. Beside the feed, the review panel has two tabs:</p>
+<ul>
+  <li><strong>Riders</strong> — the live roster.</li>
+  <li><strong>Needs Review</strong> — crossings flagged for a second look, with a <em>show held only</em> filter and a review button.</li>
+</ul>
+<p>The status bar carries count chips (crossings, cards, on course, shoe, riders, and teams when the ride has teams).</p>
+<h3>The tool rail</h3>
+<p>The tool rail is a shortcut surface for the same actions as the menus: Ride Library, Rider Editor, Teams Editor, Check for Rider Issues, Standings, Audit Trail and Settings.</p>
+</section>
+
+<section>
+<h2 id="ride-setup">3. Ride setup</h2>
+<p><strong>File ▸ New Ride…</strong> opens a blank form; <strong>Ride ▸ Edit Ride…</strong> opens the same form preloaded with the open ride. OK saves and closes; Cancel discards; invalid input is reported at the top of the form and the dialog stays open.</p>
+<h3>Event identity</h3>
+<p>Name, event date, start time, venue, organizer, scorer, lap length in kilometres, ride duration and minimum lap time. These fields stay editable for the life of the ride.</p>
+<h3>Format</h3>
+<ul>
+  <li>Entry mode: <strong>solo</strong> or <strong>mixed</strong> (solo riders and teams).</li>
+  <li>Team size, from 2 to 10.</li>
+  <li>Plate model: plates pooled across the ride, or relay plates per team.</li>
+  <li>Decks and jokers per deck, and whether jokers count per deck or as a ride total.</li>
+  <li>Optional cap on the cards a rider may draw.</li>
+  <li>Tie-break order, which decides how equal results are ranked.</li>
+</ul>
+<h3>Short-lap policy</h3>
+<p>The ride chooses whether a lap shorter than the minimum holds the rider short or still deals a card. The minimum lap time is set in the event identity fields.</p>
+<h3>Logo</h3>
+<p>The logo column previews the organizer logo and offers a browse button. The chosen logo appears in the export header and on the published page.</p>
+<h3>Locking</h3>
+<p>Once the ride leaves draft, structural fields lock: the entry-mode and plate-model choices lock for relay rides, and decks, jokers, cap and tie-break lock for every ride. The event identity stays editable.</p>
+</section>
+
+<section>
+<h2 id="riders-and-teams">4. Riders and teams</h2>
+<h3>Rider Editor</h3>
+<p><strong>Riders ▸ Rider Editor</strong> lists the roster with a search box and a read-only record panel. Use <strong>Add</strong>, <strong>Edit</strong> and <strong>Delete</strong>; Delete is offered only when the ride's state and data allow it. The team column is hidden on a solo ride.</p>
+<p>The Add/Edit Rider form carries plate, first name, last name, team and sex. The plate is locked once the ride leaves draft.</p>
+<h3>Teams Editor</h3>
+<p><strong>Riders ▸ Teams Editor</strong> is available on a mixed ride. It lists the teams, their relay plate and their members, with Add, Edit and Remove. A team may be restricted to a single member; the relay plate row appears only on a relay ride. Team edits are available while the ride is in draft.</p>
+<h3>Check for Rider Issues</h3>
+<p><strong>Riders ▸ Check for Rider Issues…</strong> reports roster problems such as a team of one, a missing plate or a duplicate plate. Each issue row offers the fix it can apply: open the rider editor, convert to solo, assign a plate, or renumber. Plate fixes are available in draft.</p>
+<h3>Import and export the roster</h3>
+<div class="notice">In this release the <strong>Import Riders CSV…</strong> and <strong>Export Riders CSV…</strong> entries report that a file picker is not available; the CSV preview and commit follow in a later release.</div>
+<p>When the picker is available, Import opens a preview that lists conflicts and refuses to import while any remain. Two options map an unknown sex value and convert teams of one.</p>
+</section>
+
+<section>
+<h2 id="recording-crossings">5. Recording crossings</h2>
+<ol>
+  <li>Start the ride with <strong>Ride ▸ Start Ride</strong>. If the ride cannot start, the <strong>Cannot Start Ride</strong> dialog lists the reasons; fix the setup or roster and start again.</li>
+  <li>Type a plate into the <strong>Plate</strong> field and press Enter, or click <strong>Record</strong>.</li>
+  <li>The crossing joins the feed, the last-crossing line names it, and the count chips update.</li>
+</ol>
+<p>The entry field stays locked unless the ride is live. A rider who is on course or has finished, or a plate that is not on the roster, is reported and the crossing is not recorded.</p>
+<p>The View menu adds the total-time and lap-time columns to the crossings panel. <strong>Cards ▸ Undo Last Crossing</strong> (Ctrl+Z) removes the most recent crossing after a confirmation.</p>
+</section>
+
+<section>
+<h2 id="corrections-and-voids">6. Corrections and voids</h2>
+<h3>Crossing Detail</h3>
+<p>Opening a row in the crossings feed shows the crossing's rider, team, plate, lap, time, lap time, total, card and held status. From there:</p>
+<ul>
+  <li><strong>Edit</strong> retypes the plate.</li>
+  <li><strong>Edit Time…</strong> corrects the crossing time.</li>
+  <li><strong>Void Card…</strong> voids the card a rider drew; a reason is required.</li>
+  <li><strong>Delete…</strong> removes the crossing after a confirmation.</li>
+</ul>
+<h3>Add and deal</h3>
+<p><strong>Cards ▸ Add Crossing at Time…</strong> records a crossing with a time you type. <strong>Cards ▸ Deal Bonus Card…</strong> deals a bonus card to a plate, with a reason.</p>
+<h3>Audit Trail</h3>
+<p><strong>Ride ▸ Audit Trail…</strong> is a read-only record of every action on the ride, with the time, action, entry and reason. It has a search box and an action filter. The entry is available once the ride has at least one audit row.</p>
+<p>Every correction is written to the audit trail, so a voided or deleted crossing leaves a record even after it leaves the feed.</p>
+</section>
+
+<section>
+<h2 id="cards-and-dnf">7. Cards and DNF</h2>
+<p>Cards are dealt from the ride's shoe as crossings are recorded. The ride setup fixes the number of decks, the jokers, the cap and the short-lap policy, and the Views and Results menus decide which card details appear in the feed and in the exports.</p>
+<h3>Held and voided cards</h3>
+<p>A card can be held instead of credited, for example after a short lap. The <strong>Needs Review</strong> tab routes held cards to their decision, and a credited card can be voided from Crossing Detail with a reason.</p>
+<h3>Deal a card by hand</h3>
+<p><strong>Cards ▸ Deal Bonus Card…</strong> asks for a plate and a reason; its confirm button reads <strong>Deal</strong>.</p>
+<h3>Mark DNF</h3>
+<p><strong>Riders ▸ Mark DNF…</strong> asks for a plate and a reason, and records that the rider did not finish. Cancel is the default button, so a stray Enter does not mark anyone. Riders who did not start can be shown or hidden on a finished ride's results with <strong>Results ▸ Show DNS Riders</strong>.</p>
+</section>
+
+<section>
+<h2 id="stopping-finishing-reopening">8. Stopping, finishing and reopening</h2>
+<h3>Stop</h3>
+<p><strong>Ride ▸ Stop Ride…</strong> asks for a confirmation and stops the clocks. A stopped ride is not finished: <strong>Start Ride</strong> continues it, and the setup and roster can still be corrected.</p>
+<h3>Finish</h3>
+<p><strong>Ride ▸ Finish Ride…</strong> asks for a destructive confirmation and locks the ride for results. Exports, previews and publishing become available only on a finished ride. Finishing is the point after which the results are final.</p>
+<h3>Reopen</h3>
+<p><strong>Ride ▸ Reopen Ride</strong> asks for a confirmation and reopens a finished ride for corrections. Reopening returns the ride to the correction state; finish it again when the corrections are done.</p>
+<h3>Clear</h3>
+<p><strong>Ride ▸ Clear Ride…</strong> asks for a destructive confirmation and unloads the ride from the console. Clearing does not delete the ride from the library.</p>
+<h3>Quit while a ride is running</h3>
+<p>Exit while a ride is live opens the <strong>Ride Is Running</strong> dialog: cancel, finish the ride first, or quit and let the ride keep running. A ride left running is offered for resumption at the next launch.</p>
+</section>
+
+<section>
+<h2 id="standings-and-results">9. Standings and results</h2>
+<p><strong>Results ▸ Standings</strong> (F5) opens the standings window. It is available at every ride state: it is empty with no ride, live while the ride runs, and final once the ride is finished. A stale marker appears when the ride changes after the window was built; close and reopen Standings to see the new ranking.</p>
+<p>On a mixed ride the window has separate Teams and Solo tables; a solo ride shows one table. Rows rank by the ride's tie-break order, and a card cell marks the cards each rider drew.</p>
+<h3>Results options</h3>
+<p>The <strong>Results</strong> menu carries the options that shape exports and the published page:</p>
+<ul>
+  <li><strong>Show lap &amp; total times</strong> — adds the timing columns.</li>
+  <li><strong>Laps leaderboard</strong> — adds the laps ranking.</li>
+  <li><strong>Fastest-time leaderboard</strong> — adds the fastest-time ranking; available only while Show lap &amp; total times is on.</li>
+  <li><strong>Full field</strong> — lists the whole field.</li>
+  <li><strong>All cards drawn</strong> — shows every card a rider drew.</li>
+  <li><strong>Show DNS Riders</strong> — includes riders who did not start.</li>
+</ul>
+</section>
+
+<section>
+<h2 id="exports-and-publishing">10. Exports and publishing</h2>
+<p>Exports are available on a finished ride. Each export opens a save picker and writes in the background; the file's path is recorded so it can be previewed.</p>
+<table>
+  <tr><th>Results menu entry</th><th>What it writes</th></tr>
+  <tr><td>Export HTML…</td><td>The results page as a self-contained HTML file.</td></tr>
+  <tr><td>Export PDF…</td><td>The results report as a PDF.</td></tr>
+  <tr><td>Podium Poster PDF…</td><td>The podium poster as a PDF.</td></tr>
+  <tr><td>Podium Poster HTML…</td><td>The podium poster as an HTML page.</td></tr>
+  <tr><td>Export Standings CSV…</td><td>The standings as a CSV file.</td></tr>
+</table>
+<h3>Preview</h3>
+<p><strong>Preview HTML in Browser</strong>, <strong>Preview Podium Poster HTML in Browser</strong> and <strong>Preview PDF in Browser</strong> open the file written this session. If the export has not been written yet, the app says <em>Export the file first</em>.</p>
+<h3>Publish to WordPress</h3>
+<ol>
+  <li>Choose <strong>Results ▸ Publish to WordPress…</strong>.</li>
+  <li>Choose the kind, <strong>Full results</strong> or <strong>Podium</strong>; changing the kind refills the title and slug.</li>
+  <li>Enter the site URL and credentials, and the page title, slug, optional parent page and status (Draft, Publish, Pending or Private).</li>
+  <li>Confirm with Publish. A blank or non-https URL keeps the form open with the reason.</li>
+</ol>
+<p>The <strong>Publishing to WordPress</strong> window shows progress and a Cancel button; cancelling abandons the publish at its next checkpoint. On success the app offers to open the published page; on failure it offers Retry.</p>
+</section>
+
+<section>
+<h2 id="settings-and-appearance">11. Settings and appearance</h2>
+<p><strong>File ▸ Settings…</strong> opens the app-wide settings. OK saves them and Cancel discards the changes.</p>
+<h3>Appearance</h3>
+<ul>
+  <li><strong>Theme</strong> — one picker listing each built-in theme's Light, Dark and System variants.</li>
+  <li><strong>Contrast</strong> — System, Standard or High.</li>
+  <li><strong>Density</strong> — Compact or Comfortable.</li>
+  <li><strong>Text size</strong> — Tiny, Small, Medium or Large.</li>
+</ul>
+<p>The <strong>View</strong> menu repeats Density and Text size as quick choices, and carries the two console column options: <strong>Show Total Times on Crossings Panel</strong> and <strong>Show Lap Time on Crossings Panel</strong>.</p>
+<h3>Other settings</h3>
+<ul>
+  <li><strong>Sound</strong> — plays the console's cues.</li>
+  <li><strong>Show total times</strong> and <strong>Show lap time</strong> — the console columns.</li>
+  <li><strong>Verbose log</strong> — writes more detail to the launch log.</li>
+  <li><strong>Average rider speed</strong> — the default the simulator uses to propose a crossing interval.</li>
+</ul>
+<p>Settings are stored beside the ride database in the per-user configuration directory, in the same format as the earlier Python version of RiverCrossing.</p>
+</section>
+
+<section>
+<h2 id="appendix-keyboard-shortcuts">Appendix A — Keyboard shortcuts</h2>
+<p>Shortcuts follow the platform: <kbd>Ctrl</kbd> is <kbd>⌘</kbd> on macOS. Each shortcut runs the same action as its menu row, so the two cannot disagree.</p>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo Last Crossing</td></tr>
+  <tr><td><kbd>F5</kbd></td><td>Standings</td></tr>
+  <tr><td><kbd>F1</kbd></td><td>User Guide</td></tr>
+  <tr><td><kbd>Enter</kbd></td><td>Record the plate typed in the Plate field</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td>Cancel the open dialog</td></tr>
+</table>
+<p><strong>Help ▸ Keyboard Shortcuts</strong> shows the same table inside the app.</p>
+</section>
+
+<section>
+<h2 id="appendix-troubleshooting">Appendix B — Troubleshooting</h2>
+<h3>The ride will not start</h3>
+<p>The <strong>Cannot Start Ride</strong> dialog lists the reasons. Start needs a complete setup and a roster, and is available only on a draft, stopped or reopened ride. Fix the reason in Ride Setup or the Rider Editor and start again.</p>
+<h3>The plate field will not accept input</h3>
+<p>Entry is enabled only while the ride is live. Start the ride, and resume it if it was stopped.</p>
+<h3>Import or export of the roster reports a missing file picker</h3>
+<p>That notice is expected in this release: the roster CSV save and open pickers are not yet available. The results exports use the same picker and are available on a finished ride.</p>
+<h3>Exports and previews are disabled</h3>
+<p>Exports need a finished ride, and each preview needs its export written this session. Finish the ride, export the file, then preview it. A preview with no export says <em>Export the file first</em>.</p>
+<h3>The publish fails</h3>
+<p>Check that the site URL is https and the credentials are correct, then choose Retry in the failure box. A cancelled publish never changes the site.</p>
+<h3>Standings look out of date</h3>
+<p>The stale marker means the ride changed after the standings window was built. Close and reopen Standings.</p>
+<h3>The User Guide does not open</h3>
+<p>The guide is written to the per-user configuration directory and then opened in your browser. If either step fails, the status bar names the failure; check that the configuration directory is writable and that a default browser is set.</p>
+<h3>The window disappeared on macOS</h3>
+<p>The close button hides the console; the app keeps running. Click the Dock icon to bring it back, and quit only from <strong>File ▸ Exit</strong>.</p>
+</section>
+
+<footer>
+<p>RiverCrossing is distributed under the GNU General Public License, version 3 only. The full licence text is in the repository's LICENSE file.</p>
+</footer>
+</main>
+</body>
+</html>

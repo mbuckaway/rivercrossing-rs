@@ -224,6 +224,43 @@ pub(crate) fn mark_dnf(
     })
 }
 
+/// Return the DNF target the engine accepts: the entry the operator typed, resolved through the
+/// roster, else the typed *plate*.
+///
+/// A team's own name, plate or key names the whole entry; a member's name or own plate names that
+/// rider alone (R-15). Text that resolves to nothing is returned unchanged, so the engine's own
+/// refusal names it.
+pub(crate) fn dnf_target(roster: &Roster, plate: &str, entry: &str) -> String {
+    let entry = entry.trim();
+    if entry.is_empty() {
+        return plate.trim().to_owned();
+    }
+    resolve_dnf_entry(roster, entry).unwrap_or_else(|| entry.to_owned())
+}
+
+/// Return the plate that *text* names in *roster*, when it names a rider or an entry.
+fn resolve_dnf_entry(roster: &Roster, text: &str) -> Option<String> {
+    for entry in roster.entries() {
+        let rider = entry.riders.iter().find(|rider| {
+            rider.full_name().eq_ignore_ascii_case(text)
+                || rider
+                    .plate
+                    .as_deref()
+                    .is_some_and(|plate| plate.eq_ignore_ascii_case(text))
+        });
+        if let Some(rider) = rider {
+            return rider.plate.clone().or_else(|| Some(entry.plate.clone()));
+        }
+        if entry.display_name.eq_ignore_ascii_case(text)
+            || entry.plate.eq_ignore_ascii_case(text)
+            || entry.key.eq_ignore_ascii_case(text)
+        {
+            return Some(entry.plate.clone());
+        }
+    }
+    None
+}
+
 /// Void one credited *card* from *entry*'s hand.
 ///
 /// # Errors
