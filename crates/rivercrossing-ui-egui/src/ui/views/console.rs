@@ -16,9 +16,9 @@ use std::borrow::Cow;
 use craft::behavior::{
     Axis, ColumnKey, ColumnWidth, DisplayOrder, IconId, ItemSource, Selection, SelectionChange,
 };
-use craft::egui::{Align, Layout, Ui, vec2};
-use craft::theme::Variant;
+use craft::egui::{Align, Color32, Layout, Sense, Ui, UiBuilder, vec2};
 use craft::theme::variant::{Emphasis, Tone};
+use craft::theme::{Srgba, Variant};
 use craft::ui::bars::{Bar, BarKind};
 use craft::ui::buttons::Button;
 use craft::ui::choice::Checkbox;
@@ -31,9 +31,9 @@ use craft::ui::docking::Splitter;
 use craft::ui::list::ListRow;
 use craft::ui::pickers::Select;
 use craft::ui::primitives::IconSpec;
-use craft::ui::runtime::env::WindowKey;
-use craft::ui::sections::Panel;
+use craft::ui::runtime::env::{Env, WindowKey};
 use craft::ui::shell::{AppShell, Title, TitleBar};
+use craft::ui::style::UiTokens;
 use craft::ui::table::Table;
 use craft::ui::tabs::{Tab, TabStrip, TabStripOutput};
 use craft::ui::text::TextField;
@@ -666,15 +666,41 @@ fn docks(ui: &mut Ui, state: &mut AppState) {
     // dead band under them (`design/screenshots/current-ui/console-dark-window.jpg`, D13).
     let height = (ui.max_rect().bottom() - ui.cursor().top()).max(0.0);
     ui.horizontal_top(|ui| {
-        ui.allocate_ui_with_layout(vec2(feed, height), Layout::top_down(Align::Min), |ui| {
-            feed_panel(ui, state);
-        });
+        dock(ui, feed, height, |ui| feed_panel(ui, state, height));
         ui.push_id("main_splitter", |ui| {
             let _ = Splitter::new(Axis::X).label("Main splitter").show(ui);
         });
-        ui.allocate_ui_with_layout(vec2(review, height), Layout::top_down(Align::Min), |ui| {
-            review_panel(ui, state);
-        });
+        dock(ui, review, height, |ui| review_panel(ui, state, height));
+    });
+}
+
+/// Show one dock at `width` by `height`: a filling stack that offers the panel a definite room.
+///
+/// A `Panel` fills the room its host gives it, and a scrolling body reports that room as unbounded —
+/// so without this wrapper the panel takes its content's height and leaves a dead band under it.
+fn dock(ui: &mut Ui, width: f32, height: f32, mut content: impl FnMut(&mut Ui)) {
+    // An inline `Panel` sizes to its content and its scrolling body reports an unbounded room, so it
+    // leaves the dead band the audit calls D13. The dock draws the panel surface at the rect it is
+    // given and lays the content inside it, which is the design's card (`design/mockups/index.html`,
+    // `.panel`).
+    let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+    let env = Env::of(ui);
+    let fill = Color32::from(Srgba::from(env.tokens.color.surface.panel));
+    let corners = UiTokens::corner(env.tokens.shape.radius.panel);
+    ui.painter().rect_filled(rect, corners, fill);
+    let line = Color32::from(Srgba::from(env.tokens.color.line.border));
+    ui.painter().rect_stroke(
+        rect,
+        corners,
+        craft::egui::Stroke::new(1.0, line),
+        craft::egui::StrokeKind::Inside,
+    );
+    let pad = env.tokens.space.pad.regular;
+    let inside = UiBuilder::new()
+        .max_rect(rect.shrink(pad))
+        .layout(Layout::top_down(Align::Min));
+    ui.scope_builder(inside, |ui| {
+        content(ui);
     });
 }
 
@@ -684,13 +710,15 @@ fn split_width(ui: &Ui) -> f32 {
 }
 
 /// Show the crossings feed panel: the search field over the feed table.
-fn feed_panel(ui: &mut Ui, state: &mut AppState) {
+fn feed_panel(ui: &mut Ui, state: &mut AppState, room: f32) {
     let rows = feed_rows(state);
     let visible = data_source::filter_rows(&rows, &state.search);
     let show_lap_time = state.settings.show_lap_time;
     let show_total = state.settings.show_total_times;
     let columns = feed_columns(show_lap_time, show_total);
-    let _ = Panel::new("Crossings").titled().show(ui, |ui, _| {
+    let count = visible.len();
+    dock(ui, ui.available_width(), room, |ui| {
+        panel_heading(ui, "Crossings", Some(count));
         ui.push_id("crossings_search", |ui| {
             let _ = TextField::search(SEARCH_LABEL, Bind::bound(&mut state.search)).show(ui);
         });
@@ -719,6 +747,16 @@ fn feed_panel(ui: &mut Ui, state: &mut AppState) {
                 row
             });
         open_crossing(state, &visible, selection.lead);
+    });
+}
+
+/// Show a dock's heading band: its title, and the count the design puts beside it.
+fn panel_heading(ui: &mut Ui, title: &'static str, count: Option<usize>) {
+    ui.horizontal(|ui| {
+        let _ = Text::new(title).show(ui);
+        if let Some(count) = count {
+            let _ = Text::new(format!("· {count}")).shade(Shade::Muted).show(ui);
+        }
     });
 }
 
@@ -763,8 +801,8 @@ fn open_crossing(state: &mut AppState, rows: &[FeedRow], lead: Option<usize>) {
 }
 
 /// Show the review panel: the Riders / Needs Review notebook.
-fn review_panel(ui: &mut Ui, state: &mut AppState) {
-    let _ = Panel::new("Review").show(ui, |ui, _| {
+fn review_panel(ui: &mut Ui, state: &mut AppState, room: f32) {
+    dock(ui, ui.available_width(), room, |ui| {
         let shown = tab_index(state.console_tab);
         let out = ui
             .push_id("review_notebook", |ui| {
