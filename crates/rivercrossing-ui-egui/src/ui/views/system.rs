@@ -58,13 +58,11 @@ pub(crate) fn shortcuts(ui: &mut Ui) {
             .iter()
             .map(|row| TableRow {
                 label: row.label.to_owned(),
-                cells: vec![
-                    (NAME, row.label.to_owned()),
-                    (
-                        SHORTCUT,
-                        row.shortcut.map_or_else(String::new, Shortcut::text),
-                    ),
-                ],
+                // The label carries the command name into its column; a NAME cell would repeat it.
+                cells: vec![(
+                    SHORTCUT,
+                    row.shortcut.map_or_else(String::new, Shortcut::text),
+                )],
             })
             .collect(),
     };

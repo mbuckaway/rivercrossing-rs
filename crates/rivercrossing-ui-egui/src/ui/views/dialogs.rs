@@ -43,8 +43,9 @@ use crate::ui::state::{AppState, NativeTask};
 mod tests;
 
 /// The dialogs whose tables need a wide window.
-const WIDE: [&str; 8] = [
+const WIDE: [&str; 9] = [
     "ride_setup_dlg",
+    "shortcuts_dlg",
     "rider_editor_dlg",
     "csv_preview_dlg",
     "team_editor_dlg",

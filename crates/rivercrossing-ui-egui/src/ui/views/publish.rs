@@ -8,7 +8,7 @@ use craft::ui::contract::{Props as _, Show as _, ShowContainer as _};
 use craft::ui::display::{Progress, Text};
 use craft::ui::sections::Section;
 
-use super::dialogs::{notice, select_value, stack_secret_field, stack_text_field};
+use super::dialogs::{field_caption, notice, select_value, stack_secret_field, stack_text_field};
 use crate::ui::presenters::publish_wordpress::{
     PUBLISH_KIND_CHOICES, STATUS_CHOICES, resolved_kind, status_value,
 };
@@ -41,6 +41,7 @@ fn kind(ui: &mut Ui, state: &mut AppState) {
         .unwrap_or_default()
         .to_owned();
     let selected = resolved_kind(&stored);
+    field_caption(ui, "What to publish");
     if let Some(picked) = select_value(
         ui,
         "wp_kind_choice",
@@ -60,6 +61,7 @@ fn status(ui: &mut Ui, state: &mut AppState) {
         .unwrap_or_default()
         .to_owned();
     let selected = status_value(&stored);
+    field_caption(ui, "Status");
     if let Some(picked) = select_value(ui, "wp_status_choice", "Status", selected, &STATUS_CHOICES)
     {
         let _ = state.dialogs.set_field("wp_status_choice", picked);
