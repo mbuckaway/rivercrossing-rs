@@ -15,8 +15,8 @@ use craft::ui::fonts::{I18nScripts, UiFonts};
 use craft::ui::runtime::access::Role;
 use craft::ui::shell::app::ShellApp;
 use craft::ui::shell::embed::CloseDecision;
-use craft::ui::testing::Fixture;
 use craft::ui::testing::access::{AccessTree, violations};
+use craft::ui::testing::{Fixture, Target};
 use rivercrossing_ride::{
     EntryMode, PlateModel, RideConfig, RideConfigParams, RideEngine, SystemClock,
 };
@@ -680,6 +680,24 @@ fn test_the_console_review_notebook_opens_the_needs_review_tab() {
     );
 }
 
+/// Return the rail's entry for *label*.
+///
+/// The review notebook's first tab carries the same word as the rail's `Riders` entry, so the rail
+/// is found by its column: nothing else sits left of it.
+fn rail_entry(fixture: &Fixture, label: &str) -> Target {
+    let edge = RAIL_COLUMN_EDGE;
+    fixture
+        .by_role(Role::BUTTON)
+        .into_iter()
+        .find(|target| {
+            target.center().x < edge && fixture.tree().name_of(target.node) == Some(label)
+        })
+        .expect("the rail entry shows")
+}
+
+/// The x past which a control is no longer in the rail column.
+const RAIL_COLUMN_EDGE: f32 = 140.0;
+
 #[rstest]
 #[case::library("Library", "ride_library_dlg")]
 #[case::riders("Riders", "rider_editor_dlg")]
@@ -701,7 +719,7 @@ fn test_the_console_rail_dispatches_the_action(#[case] label: &str, #[case] dial
     app.borrow_mut().state.audit_row_count = 1;
     let mut fixture = app_fixture(&app);
     fixture.idle(2);
-    let rail = fixture.by_label(label).expect("the rail entry shows");
+    let rail = rail_entry(&fixture, label);
 
     // Act
     fixture.click(&rail);
