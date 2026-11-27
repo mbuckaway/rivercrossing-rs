@@ -681,12 +681,12 @@ fn test_the_console_review_notebook_opens_the_needs_review_tab() {
 }
 
 #[rstest]
-#[case::library("Ride Library", "ride_library_dlg")]
-#[case::riders("Rider Editor", "rider_editor_dlg")]
-#[case::teams("Team Editor", "team_editor_dlg")]
-#[case::issues("Rider Issues", "rider_issues_dlg")]
+#[case::library("Library", "ride_library_dlg")]
+#[case::riders("Riders", "rider_editor_dlg")]
+#[case::teams("Teams", "team_editor_dlg")]
+#[case::issues("Issues", "rider_issues_dlg")]
 #[case::standings("Standings", "results_dlg")]
-#[case::audit("Audit Trail", "audit_dlg")]
+#[case::audit("Audit", "audit_dlg")]
 #[case::settings("Settings", "settings_dlg")]
 fn test_the_console_rail_dispatches_the_action(#[case] label: &str, #[case] dialog: &str) {
     // Arrange: a running mixed ride with an audit row, so every rail action passes its gate.

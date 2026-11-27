@@ -6,8 +6,13 @@ use std::sync::{Arc, Mutex};
 
 use craft::behavior::placement::{Defaults, Placement};
 use craft::ui::shell::app::AppSpec;
+use craft::window::Prefix;
+use craft::window::policy::{Backend, TitleBarPref, decide_for};
 use craft::window::restore::{MAIN, Store};
 use rivercrossing_store::settings::AppSettings;
+
+/// The title-bar prefix this app reads: an override is `RIVERCROSSING_TITLEBAR`.
+const TITLEBAR_PREFIX: Prefix = Prefix::new("RIVERCROSSING");
 
 /// The product name shown in the window title (R-82).
 pub const APP_NAME: &str = "RiverCrossing";
@@ -30,9 +35,20 @@ pub fn spec() -> AppSpec {
 }
 
 /// Return the root window spec over an explicit placement store.
+///
+/// The frame is the app's own bar, not the OS's: a spec that leaves `frame` unset is drawn by the
+/// platform *and* by the console's `TitleBar`, which puts two titles on the window. `Integrated`
+/// resolves to the full-size content view with the title bar hidden on macOS, so the console's bar
+/// is the one title row (craft `crates/window/src/policy.rs`, `Frame::Inset`).
 #[must_use]
 pub(crate) fn spec_with_store(placement: Arc<Mutex<Store>>) -> AppSpec {
-    AppSpec::new(APP_ID, APP_NAME, Defaults::new(MIN_SIZE, MIN_SIZE)).placement(placement)
+    AppSpec::new(APP_ID, APP_NAME, Defaults::new(MIN_SIZE, MIN_SIZE))
+        .placement(placement)
+        .frame(decide_for(
+            TITLEBAR_PREFIX,
+            Backend::from_env(),
+            TitleBarPref::Integrated,
+        ))
 }
 
 /// Seed the placement store's first window from the Python settings geometry, on first run only.
