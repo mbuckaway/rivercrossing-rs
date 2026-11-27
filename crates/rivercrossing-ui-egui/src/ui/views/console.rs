@@ -350,7 +350,7 @@ fn rail_entry(ui: &mut Ui, label: &'static str, icon: &'static str, enabled: boo
         },
     );
     response.widget_info(|| {
-        craft::egui::WidgetInfo::labeled(craft::egui::WidgetType::Button, enabled, label)
+        craft::egui::WidgetInfo::labeled(craft::egui::Role::Button, enabled, label)
     });
     enabled && response.clicked()
 }

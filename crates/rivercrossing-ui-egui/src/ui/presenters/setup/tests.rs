@@ -578,3 +578,25 @@ fn test_params_from_fields_given_a_bad_team_size_reports_it() {
         ])
     );
 }
+
+#[rstest::rstest]
+#[case::defaults(None, ["high_card", "laps", "total_time"])]
+#[case::picked(Some("laps,total_time,high_card"), ["laps", "total_time", "high_card"])]
+#[case::short_list_keeps_the_rest(Some("laps"), ["laps", "laps", "total_time"])]
+#[case::unknown_keeps_the_default(Some("nonsense"), ["high_card", "laps", "total_time"])]
+fn test_params_take_the_tie_break_order_the_list_names(
+    #[case] stored: Option<&str>,
+    #[case] expected: [&str; 3],
+) {
+    // Arrange
+    let mut fields = complete_fields();
+    if let Some(stored) = stored {
+        fields.insert("tiebreak_list".to_owned(), stored.to_owned());
+    }
+
+    // Act
+    let params = params_from_fields(&fields).expect("the complete form passes");
+
+    // Assert
+    assert_eq!(params.tiebreak_order.map(|item| item.as_str()), expected);
+}

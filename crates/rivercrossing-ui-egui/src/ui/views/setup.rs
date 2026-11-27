@@ -13,8 +13,8 @@ use craft::ui::contract::ShowContainer as _;
 use craft::ui::sections::Section;
 
 use super::dialogs::{
-    notice, radio_group, stack_date_field, stack_decimal_field, stack_select, stack_text_field,
-    stack_whole_field,
+    field_caption, notice, radio_group, select_value, stack_date_field, stack_decimal_field,
+    stack_select, stack_text_field, stack_whole_field,
 };
 use crate::ui::state::AppState;
 
@@ -53,6 +53,7 @@ pub(crate) fn body(ui: &mut Ui, state: &mut AppState) {
     infobar(ui, state);
     let _ = Section::fixed("Ride").show(ui, |ui, _| ride_group(ui, state));
     let _ = Section::fixed("Format").show(ui, |ui, _| format_group(ui, state));
+    let _ = Section::fixed("Tie-break").show(ui, |ui, _| tiebreak_group(ui, state));
     let _ = Section::fixed("Shoe").show(ui, |ui, _| shoe_group(ui, state));
 }
 
@@ -131,6 +132,69 @@ fn format_group(ui: &mut Ui, state: &mut AppState) {
         ("hold_short_radio", "Hold short-lap cards for review"),
         ("always_deal_radio", "Always deal cards"),
     );
+}
+
+/// The tie-break choices, most important first as the design lists them.
+const TIEBREAK_CHOICES: [(&str, &str); 3] = [
+    ("Best hand", "high_card"),
+    ("Laps", "laps"),
+    ("Total time", "total_time"),
+];
+
+/// Show the tie-break order: three choices, first to last.
+///
+/// The order is one frozen field, `tiebreak_list`, holding the stored spellings joined by commas;
+/// each choice reads it and writes the whole list back.
+fn tiebreak_group(ui: &mut Ui, state: &mut AppState) {
+    let stored = state
+        .dialogs
+        .field("tiebreak_list")
+        .unwrap_or_default()
+        .to_owned();
+    let mut order = tiebreak_values(&stored);
+    let before = order;
+    field_caption(ui, "Tie-break order");
+    pair(ui, |left, right| {
+        if let Some(picked) =
+            select_value(left, "tiebreak_first", "First", order[0], &TIEBREAK_CHOICES)
+        {
+            order[0] = picked;
+        }
+        if let Some(picked) = select_value(
+            right,
+            "tiebreak_second",
+            "Second",
+            order[1],
+            &TIEBREAK_CHOICES,
+        ) {
+            order[1] = picked;
+        }
+    });
+    pair(ui, |left, _right| {
+        if let Some(picked) =
+            select_value(left, "tiebreak_third", "Third", order[2], &TIEBREAK_CHOICES)
+        {
+            order[2] = picked;
+        }
+    });
+    if order != before {
+        let _ = state.dialogs.set_field("tiebreak_list", order.join(","));
+    }
+}
+
+/// Return the three tie-break spellings the stored list holds, defaulting any it lacks.
+fn tiebreak_values(stored: &str) -> [&'static str; 3] {
+    let mut order = ["high_card", "laps", "total_time"];
+    for (slot, text) in order.iter_mut().zip(stored.split(',')) {
+        if let Some(known) = TIEBREAK_CHOICES
+            .iter()
+            .map(|(_, value)| *value)
+            .find(|value| *value == text)
+        {
+            *slot = known;
+        }
+    }
+    order
 }
 
 /// Show the shoe's options, two to a row where the design pairs them.

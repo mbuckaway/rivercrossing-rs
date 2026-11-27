@@ -717,6 +717,7 @@ impl AppState {
             ("solo_radio", "true".to_owned()),
             ("pooled_radio", "true".to_owned()),
             ("jokers_total_radio", "true".to_owned()),
+            ("tiebreak_list", "high_card,laps,total_time".to_owned()),
         ];
         for (field, value) in seeds {
             let _ = self.dialogs.set_field(field, value);

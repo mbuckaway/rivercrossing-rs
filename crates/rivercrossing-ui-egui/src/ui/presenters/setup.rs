@@ -254,10 +254,32 @@ impl ParsedForm {
                 JOKERS_TOTAL.to_owned()
             },
             max_cards: self.cap,
+            tiebreak_order: tiebreak_order(fields),
             hold_short_laps: !truthy(fields, "always_deal_radio"),
             ..RideConfigParams::default()
         }
     }
+}
+
+/// Return the tie-break order the three choices name, first to last.
+///
+/// A choice that names no tie-break keeps the design's default for its place: best hand, then laps,
+/// then total time.
+fn tiebreak_order(fields: &BTreeMap<String, String>) -> [rivercrossing_ride::TieBreak; 3] {
+    use std::str::FromStr as _;
+    let defaults = [
+        rivercrossing_ride::TieBreak::HighCard,
+        rivercrossing_ride::TieBreak::Laps,
+        rivercrossing_ride::TieBreak::TotalTime,
+    ];
+    let stored = text(fields, "tiebreak_list");
+    let mut order = defaults;
+    for (slot, part) in order.iter_mut().zip(stored.split(',')) {
+        if let Ok(known) = rivercrossing_ride::TieBreak::from_str(part) {
+            *slot = known;
+        }
+    }
+    order
 }
 
 /// Return the dialog field's text, or a blank string when it is unset.
