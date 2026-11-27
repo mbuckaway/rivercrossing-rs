@@ -14,7 +14,7 @@
 use std::borrow::Cow;
 
 use craft::behavior::{
-    Axis, ColumnKey, ColumnWidth, DisplayOrder, ItemSource, Selection, SelectionChange,
+    Axis, ColumnKey, ColumnWidth, DisplayOrder, IconId, ItemSource, Selection, SelectionChange,
 };
 use craft::egui::{Align, Layout, Ui, vec2};
 use craft::theme::Variant;
@@ -30,9 +30,10 @@ use craft::ui::display::{Badge, Divider, Progress, Shade, Text};
 use craft::ui::docking::Splitter;
 use craft::ui::list::ListRow;
 use craft::ui::pickers::Select;
+use craft::ui::primitives::IconSpec;
 use craft::ui::runtime::env::WindowKey;
 use craft::ui::sections::Panel;
-use craft::ui::shell::{AppShell, Slot, SlotSize, Title, TitleBar};
+use craft::ui::shell::{AppShell, Title, TitleBar};
 use craft::ui::table::Table;
 use craft::ui::tabs::{Tab, TabStrip, TabStripOutput};
 use craft::ui::text::TextField;
@@ -94,14 +95,18 @@ const RUN_BUTTONS: [(ActionId, &str, Variant); 2] = [
 ];
 
 /// The tool rail: the seven navigation entries, each dispatching the same action as the menu.
-const RAIL: [(ActionId, &str); 7] = [
-    (MI_OPEN_LIBRARY, "Ride Library"),
-    (MI_RIDER_EDITOR, "Rider Editor"),
-    (MI_TEAM_EDITOR, "Team Editor"),
-    (MI_CHECK_RIDER_ISSUES, "Rider Issues"),
-    (MI_STANDINGS, "Standings"),
-    (MI_AUDIT_TRAIL, "Audit Trail"),
-    (WX_ID_PREFERENCES, "Settings"),
+///
+/// The labels are the design's rail words (`design/mockups/index.html`, `.app-rail`), shorter than
+/// the registry's own: the rail is a fixed-width column, and a full action label elides in it. The
+/// icons are catalog meanings, so the set follows the theme's icon pack.
+const RAIL: [(ActionId, &str, &str); 7] = [
+    (MI_OPEN_LIBRARY, "Library", "folder_open"),
+    (MI_RIDER_EDITOR, "Riders", "grid"),
+    (MI_TEAM_EDITOR, "Teams", "layers"),
+    (MI_CHECK_RIDER_ISSUES, "Issues", "warning"),
+    (MI_STANDINGS, "Standings", "gauge"),
+    (MI_AUDIT_TRAIL, "Audit", "clock"),
+    (WX_ID_PREFERENCES, "Settings", "settings"),
 ];
 
 /// The crossings feed's label and plate columns.
@@ -128,13 +133,6 @@ pub(crate) fn show(ui: &mut Ui, state: &mut AppState, menu_bar: bool) {
             title_bar(ui, state, menu_bar);
         })
         .options_bar(true, |ui, _, state| options_bar(ui, state))
-        .start(
-            Slot::new("main_tool_rail")
-                .reveal()
-                .size(SlotSize::Content)
-                .label("Tools"),
-            |ui, _, state| rail(ui, state),
-        )
         .status(true, |ui, _, state| status_bar(ui, state))
         .body_label("Console")
         .body(|ui, _, state| body(ui, state))
@@ -144,14 +142,19 @@ pub(crate) fn show(ui: &mut Ui, state: &mut AppState, menu_bar: bool) {
 // ----------------------------------------------------------------- title bar
 
 /// Show the title bar: the in-window menu bar where no platform bar is installed, then the product and ride title.
+///
+/// The title is leading content, not the bar's own `Title`: a bar title sits in the gap, centred,
+/// which is not the design's left-aligned `RiverCrossing — <ride>` (`design/mockups/index.html`,
+/// `.app-titlebar`). With the frame's own title bar hidden, this is the window's only title row.
 fn title_bar(ui: &mut Ui, state: &mut AppState, menu_bar: bool) {
-    let _ = TitleBar::new().title_when_native().show_titled(
+    let _ = TitleBar::new().show_titled(
         ui,
-        Title::new(ride_title(state)),
+        Title::new(""),
         |ui, _| {
             if menu_bar {
                 menu::show(ui, state);
             }
+            let _ = Text::new(ride_title(state)).show(ui);
         },
         |_, _| {},
     );
@@ -250,18 +253,32 @@ fn density_spelling(choice: u8) -> &'static str {
 
 // -------------------------------------------------------------------- the rail
 
+/// The rail's width: the approved mockup's 96-point labelled column (`design/mockups/index.html`,
+/// `.app-rail`). The `ArtCraft` rail token is narrower because it is an icon-only rail; this app's
+/// rail carries the design's words, so it sets its own width and lets the slot follow its content.
+const RAIL_WIDTH: f32 = 118.0;
+
 /// Show the tool rail: one navigation button per entry, each gated and dispatching its §15 action.
 fn rail(ui: &mut Ui, state: &mut AppState) {
     let gate = state.gate();
-    ui.vertical(|ui| {
-        for (id, label) in RAIL {
+    let column = vec2(RAIL_WIDTH, ui.available_height());
+    ui.allocate_ui_with_layout(column, Layout::top_down(Align::Center), |ui| {
+        for (id, label, icon) in RAIL {
             let on = state.implemented(id) && enabled(id, &gate);
             ui.push_id(id.as_str(), |ui| {
-                let clicked = Button::new(label)
-                    .variant(Variant::GHOST)
-                    .enabled(on)
-                    .show(ui)
-                    .clicked();
+                // A fixed-width cell, so the label lays out at the rail's width instead of at
+                // whatever the slot measured on the first pass (which elides it to an ellipsis).
+                let row = vec2(RAIL_WIDTH, ui.spacing().interact_size.y);
+                let clicked = ui
+                    .allocate_ui_with_layout(row, Layout::top_down(Align::Center), |ui| {
+                        Button::new(label)
+                            .icon(IconSpec::svg(IconId::new(icon)))
+                            .variant(Variant::GHOST)
+                            .enabled(on)
+                            .show(ui)
+                            .clicked()
+                    })
+                    .inner;
                 if clicked {
                     let _ = state.act(id);
                 }
@@ -325,9 +342,21 @@ fn counters(state: &AppState) -> Counters {
     }
 }
 
-/// Return the status read-out: the last notice, else the ride state's word.
+/// Return the status read-out: the last notice, else the ride's state word and elapsed time.
+///
+/// The design's bar reads `Shift 1 · RUNNING · 02:14:07` (`design/mockups/index.html`,
+/// `.app-statusbar`); this app has no shift, so the word and the elapsed time carry it. No notice
+/// carries a file path: the store's paths belong in the log.
 fn status_readout(state: &AppState) -> String {
-    state.notice.clone().unwrap_or_else(|| status_word(state))
+    if let Some(notice) = &state.notice {
+        return notice.clone();
+    }
+    let word = status_word(state);
+    if state.ride.is_none() {
+        return word;
+    }
+    let (elapsed, _, _) = clock_readings(state);
+    format!("{word} · {}", format_duration(elapsed))
 }
 
 /// Return the ride state's word, or the no-ride word.
@@ -346,11 +375,23 @@ fn status_word(state: &AppState) -> String {
 
 /// Show the workspace: the header, the clocks, the entry row and the two docked panels.
 fn body(ui: &mut Ui, state: &mut AppState) {
-    ui.vertical(|ui| {
-        header(ui, state);
-        clocks_row(ui, state);
-        entry_row(ui, state);
-        docks(ui, state);
+    // The design's workspace is a rail column beside everything else (`design/mockups/index.html`,
+    // `.app-body`): the rail spans the header, the clocks, the entry row and the docks. It is body
+    // content, not a shell slot, because the slot measures its extent from the content it clips —
+    // a button elided to that measure would hold the rail at the ellipsis width for ever.
+    ui.horizontal_top(|ui| {
+        rail(ui, state);
+        let _ = Divider::vertical().show(ui);
+        // The workspace takes the rest of the body, and the docks take the rest of the workspace:
+        // a nested `ui.vertical` sizes to its content, which leaves the docks a strip and the
+        // window a dead band under them.
+        let rest = vec2(ui.available_width(), ui.available_height());
+        ui.allocate_ui_with_layout(rest, Layout::top_down(Align::Min), |ui| {
+            header(ui, state);
+            clocks_row(ui, state);
+            entry_row(ui, state);
+            docks(ui, state);
+        });
     });
 }
 
@@ -620,7 +661,10 @@ fn docks(ui: &mut Ui, state: &mut AppState) {
     let total = ui.available_width();
     let review = total * REVIEW_DOCK_SHARE;
     let feed = (total - review - split).max(0.0);
-    let height = ui.available_height();
+    // The room left in the workspace, measured from the allotted rect: `available_height` inside a
+    // content-sized parent reports the content's own height, which leaves the docks a strip and a
+    // dead band under them (`design/screenshots/current-ui/console-dark-window.jpg`, D13).
+    let height = (ui.max_rect().bottom() - ui.cursor().top()).max(0.0);
     ui.horizontal_top(|ui| {
         ui.allocate_ui_with_layout(vec2(feed, height), Layout::top_down(Align::Min), |ui| {
             feed_panel(ui, state);

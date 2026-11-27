@@ -423,6 +423,9 @@ pub(crate) struct AppState {
     pub(crate) quit_message: Option<String>,
     /// The last hour bucket that a backup ran in.
     pub(crate) last_backup_hour: Option<i64>,
+    /// Whether the next finished backup was asked for by the operator, so it earns a notice.
+    /// The startup and hourly backups write silently: the status bar is the ride's, not the store's.
+    pub(crate) announce_backup: bool,
     /// Whether the app may close (the operator confirmed).
     pub(crate) close_requested: bool,
 }
@@ -447,6 +450,10 @@ impl AppState {
 
 impl AppState {
     /// Build the launch state over *settings*, written to `settings_path`.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "the whole persisted default in one literal, so no field is left at its old value"
+    )]
     pub(crate) fn new(settings: AppSettings, settings_path: PathBuf) -> Self {
         Self {
             settings,
@@ -496,6 +503,7 @@ impl AppState {
             launch_message: None,
             quit_message: None,
             last_backup_hour: None,
+            announce_backup: false,
             close_requested: false,
         }
     }
@@ -1997,9 +2005,15 @@ impl AppState {
         true
     }
 
-    /// Queue a backup on request (`mi_backup_now`).
+    /// Queue a backup on request (`mi_backup_now`), and announce its result.
     pub(crate) fn queue_backup(&mut self) {
+        self.announce_backup = true;
         self.pending_store.push(StoreCommand::BackupNow);
+    }
+
+    /// Take the operator-backup flag: `true` when the backup that just finished was asked for.
+    pub(crate) fn take_backup_announcement(&mut self) -> bool {
+        std::mem::take(&mut self.announce_backup)
     }
 
     // ----------------------------------------------------------- library

@@ -556,6 +556,15 @@ impl RiverCrossingApp {
         }
     }
 
+    /// Record a finished backup: the path goes to the log, and only a backup the operator asked
+    /// for earns a notice. The status bar belongs to the ride, and it names no directory.
+    fn backup_reply(&mut self, path: &Path) {
+        self.event("backup", json!({ "path": path.display().to_string() }));
+        if self.state.take_backup_announcement() {
+            self.state.note(BACKUP_WRITTEN);
+        }
+    }
+
     /// Open *target* with the platform's handler, posting a notice when it cannot.
     fn open_target(&mut self, target: &str) {
         if let Some(notice) =
@@ -615,7 +624,7 @@ impl RiverCrossingApp {
                 self.library_changed(("ride-duplicated", "Ride duplicated"), id);
             }
             Ok(StoreReply::AuditRows(rows)) => self.state.audit_row_count = rows.len(),
-            Ok(StoreReply::Backup(path)) => self.state.note(path.display().to_string()),
+            Ok(StoreReply::Backup(path)) => self.backup_reply(&path),
             Ok(StoreReply::Exported { kind, path }) => {
                 self.event(
                     "export",
@@ -1080,6 +1089,10 @@ const JOB_POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// The wall clock's tick: one second, so the console's elapsed and remaining readouts advance while a
 /// ride is live.
 const CLOCK_TICK_INTERVAL: Duration = Duration::from_secs(1);
+
+/// What the status bar says after a backup the operator asked for. It names no file: the path is in
+/// the log.
+const BACKUP_WRITTEN: &str = "Backup written";
 
 /// Whether this pass consumed a pointer click or a key press.
 fn activation_consumed(ctx: &Context) -> bool {
