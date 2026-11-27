@@ -44,6 +44,7 @@ fn choices(ui: &mut Ui, state: &mut AppState, id: &'static str, label: &'static 
     let options: Vec<(String, String)> = (0..=MAX_CHOICE)
         .map(|value| (count_label(value), count_label(value)))
         .collect();
+    crate::ui::views::dialogs::field_caption(ui, label);
     if let Some(picked) = select_owned(ui, id, label, &selected, &options) {
         let _ = state.dialogs.set_field(id, picked);
     }

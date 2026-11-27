@@ -15,8 +15,8 @@ use craft::ui::contract::{Bind, Props as _, Show as _};
 use craft::ui::text::TextField;
 
 use super::dialogs::{
-    NAME, PLATE, TEAM, TableData, TableRow, columns, notice, select_owned, stack_select,
-    stack_text_field, table, value,
+    NAME, PLATE, TEAM, TableData, TableRow, columns, field_caption, notice, select_owned,
+    stack_select, stack_text_field, table, value,
 };
 use crate::ui::state::AppState;
 use crate::ui::state::RiderSelection;
@@ -219,6 +219,7 @@ fn team_choice(ui: &mut Ui, state: &mut AppState) {
         .field("team_choice")
         .unwrap_or(SOLO)
         .to_owned();
+    field_caption(ui, "Team");
     if let Some(picked) = select_owned(ui, "team_choice", "Team", &stored, &choices) {
         let _ = state.dialogs.set_field("team_choice", picked);
     }
