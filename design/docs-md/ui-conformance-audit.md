@@ -145,7 +145,7 @@ cards, entry card, two dock cards, filled chips. What the data exposes, still op
 | # | Item | State |
 |---|---|---|
 | R1 | The rail stacks its icon over its word, as the design does: each entry is a cell of its own that senses the click, fills under the pointer and reports itself as a button named by its word. | done |
-| R2 | The ride header carries the organizer-logo tile between the status word and the statistics; it shows the chosen logo file's name and the design's `LOGO` placeholder until one is picked. | done, but the tile shows the file's name, not the bitmap: rendering the image needs the imaging path |
-| R3 | Ride Setup gains the design's tie-break order (three captioned choices over the frozen `tiebreak_list` field) and the organizer-logo row (`logo_preview_bmp`, `logo_status_lbl`, `logo_browse_btn`); its primary button reads `Save`. | done, with two notes: the tie-break is three selects rather than the design's drag chips, and Browse reports the missing platform file picker |
+| R2 | The ride header carries the organizer-logo tile between the status word and the statistics; the tile and the setup dialog's preview draw the decoded PNG (cached per file version), and keep the design's `LOGO` placeholder when there is no file or it cannot be decoded. | done |
+| R3 | Ride Setup gains the design's tie-break order as drag-to-reorder chips, and the organizer-logo row with its preview (`logo_preview_bmp`, `logo_status_lbl`, `logo_browse_btn`); its primary button reads `Save`. Both controls are the design's, held in the dialog's state because the frozen field map does not name them. | done; Browse still reports the missing platform file picker |
 | R4 | The clock read-outs take the display role, the largest type the theme has. | done |
 | R5 | The review table is `Plate · Name · Laps`, the laps read from each entry's crossing count. | done |
