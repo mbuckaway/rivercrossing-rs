@@ -113,3 +113,20 @@ Severity: **S1** blocks use or the ArtCraft claim · **S2** visibly wrong · **S
 | 2026-11-27 | D2, D3 | The rail is a 118 pt labelled column of icon + word (`Library`, `Riders`, `Teams`, `Issues`, `Standings`, `Audit`, `Settings`) with catalog icons: the shell clips a content-sized slot to the width the buttons already elided to, so the rail is body content (`body` allocates the column and the workspace beside it). | Live: every rail word renders in full; the labels previously read `...`. |
 | 2026-11-27 | D1 (tab strip) | `ui/macos.rs` sets `NSWindow.tabbingMode = disallowed` for every window at launch (macOS-only dependency, called from `run()` in `ui/app.rs`). AppKit gives a window a tab strip whenever the Mac's tabbing preference is "always", and it injects View ▸ Hide Tab Bar and Show All Tabs only while a tab strip exists. | Live AX after relaunch: no `AXTabGroup`; window 1480×854 → 1480×812 pt; the traffic lights are back at 8,8 / 31,8 / 54,8; the View menu is now *Show Total Times on Crossings Panel*, *Show Lap Time on Crossings Panel*, separator, 90–150 %, separator, *Enter Full Screen*. |
 
+## 7. Populated console — what real data exposes
+
+Captured by driving the app over the control channel: `mi_new_ride`, the eight setup fields filled
+through their accessible names, `Generate Riders` (175 riders), `mi_start_ride`, then twelve plates
+recorded through the plate field. Artifact: `design/screenshots/current-ui/console-populated.png`,
+compared with the mockup in `compare-console-populated.png`.
+
+The shell now matches the design's structure — one title row, labelled rail, header card, two clock
+cards, entry card, two dock cards, filled chips. What the data exposes, still open:
+
+| # | Defect | Evidence | Site |
+|---|---|---|---|
+| D19 | The feed shows four of the design's eight columns. `Time`, `Team`, `Lap time` and `Total` are absent; the two time columns exist behind View ▸ Show … and are off by default, while Time and Team have no column at all. | App: `Name Plate Card Lap`; design: `Time Plate Name Team Card Lap Lap time Total`. | `views/console.rs` `feed_columns`, `feed_rows` |
+| D20 | The `Cards` chip reads `0` after twelve crossings dealt twelve cards. | Chip `Cards 0` beside `Crossings 12`. | `presenters/console.rs` `counters`, `presenters/data_source.rs` |
+| D21 | Card cells render as `9D`, `10H`, `4S` — rank plus a suit letter. The design draws the suit glyph, red for hearts and diamonds. | Feed column `Card`. | `presenters/data_source.rs` card text |
+| D22 | The review panel's table runs out of room: `Name` is clipped and `Team` is cut at the panel edge; the design's review table is `Plate · Name · Laps`. | Review card, Riders tab. | `views/console.rs` `riders_tab` |
+| D23 | The clock read-outs are body-sized; the design's are the largest type on the screen. | `0:00:37` beside the design's `02:14:07`. | `views/console.rs` `clock_column` |
