@@ -31,6 +31,8 @@ use super::action::enable::RidePhase;
 use super::action::spec::{CommandId, NativeDialog};
 use super::automation::{self, Control, ControlConfig};
 use super::logging::LaunchLog;
+#[cfg(target_os = "macos")]
+use super::macos;
 use super::native::{self, NativeDialogs};
 use super::native_menu::NativeBar;
 use super::presenters::simulator;
@@ -1052,6 +1054,10 @@ pub fn run(quit_after: Option<Duration>, control: Option<ControlConfig>) -> efra
     )));
     run_shell(window::spec_with_store(placement), move |ctx| {
         ctx.enable_accesskit();
+        // AppKit's window tab bar is off before the first frame: it is a title-row strip the app
+        // never uses, and it contributes View ▸ Hide Tab Bar and Show All Tabs.
+        #[cfg(target_os = "macos")]
+        macos::disallow_window_tabs();
         let automation = control.is_some();
         let control = control.map(|config| {
             Control::start(config, ctx).unwrap_or_else(|error| start_failure(&error))

@@ -27,6 +27,12 @@ serde_json = { workspace = true }
 time = { workspace = true }
 uuid = { workspace = true }
 
+# macOS window presentation the eframe builder cannot express: AppKit puts a window tab bar on the
+# root window unless its tabbing mode is disallowed (`ui/macos.rs`).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6.4", default-features = false, features = ["std"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSWindow"] }
+
 [dev-dependencies]
 craft = { workspace = true, features = ["ui-testing"] }
 egui_kittest = { workspace = true, features = ["snapshot", "wgpu"] }

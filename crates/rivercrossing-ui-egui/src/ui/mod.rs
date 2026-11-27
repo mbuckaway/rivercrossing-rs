@@ -9,6 +9,8 @@ pub mod automation;
 pub(crate) mod dialogs;
 pub(crate) mod ids;
 pub(crate) mod logging;
+#[cfg(target_os = "macos")]
+pub(crate) mod macos;
 pub(crate) mod native;
 pub(crate) mod native_menu;
 pub(crate) mod presenters;
