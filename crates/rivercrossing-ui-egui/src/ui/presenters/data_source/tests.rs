@@ -13,7 +13,7 @@ use rivercrossing_store::Store;
 use rstest::rstest;
 
 use super::{
-    FeedRow, StopLight, clock_fraction, clock_seconds, counters, current_lap, feed_rows,
+    FeedRow, StopLight, card_text, clock_fraction, clock_seconds, counters, current_lap, feed_rows,
     filter_rows, format_duration, is_miss, review_rows, status_text, stop_light_mode,
 };
 
@@ -336,7 +336,9 @@ fn test_feed_rows_flag_a_short_lap() -> Result<(), String> {
         .crossings()
         .get(1)
         .ok_or("the second lap is missing")?;
-    let dealt = engine.held_card_for(second).map(|card| card.code());
+    let dealt = engine
+        .held_card_for(second)
+        .map(|card| card_text(&card.code()));
 
     // Act
     let rows = feed_rows(&engine, &roster);
@@ -837,4 +839,18 @@ fn test_a_miss_row_has_no_total() -> Result<(), String> {
     assert_eq!(rows.len(), 1);
     assert!(rows[0].total_time.abs() < f64::EPSILON);
     Ok(())
+}
+
+#[rstest::rstest]
+#[case::diamond("9D", "9♦")]
+#[case::heart("10H", "10♥")]
+#[case::spade("AS", "A♠")]
+#[case::club("KC", "K♣")]
+#[case::joker("JK", "Joker")]
+fn test_card_text_draws_the_suit_glyph(#[case] code: &str, #[case] expected: &str) {
+    // Act
+    let text = card_text(code);
+
+    // Assert
+    assert_eq!(text, expected);
 }

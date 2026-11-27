@@ -121,8 +121,6 @@ const LAP: ColumnKey = ColumnKey::new("lap");
 const LAP_TIME: ColumnKey = ColumnKey::new("lap_time");
 /// The total-time column.
 const TOTAL: ColumnKey = ColumnKey::new("total");
-/// The team column.
-const TEAM: ColumnKey = ColumnKey::new("team");
 /// The review-issue column.
 const ISSUE: ColumnKey = ColumnKey::new("issue");
 
@@ -631,9 +629,7 @@ fn clock_column(ui: &mut Ui, view: ClockView, width: f32) {
                     .show(ui);
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                     ui.push_id(label, |ui| {
-                        let _ = Text::new(reading.clone())
-                            .role(TypeRole::BodyLarge)
-                            .show(ui);
+                        let _ = Text::new(reading.clone()).role(TypeRole::Title).show(ui);
                     });
                 });
             });
@@ -990,9 +986,7 @@ fn riders_tab(ui: &mut Ui, state: &mut AppState) {
                     .cells(icx.cells())
                     .striped(icx.row.striped);
                 if let Some(rider) = rows.get(*key) {
-                    row = row
-                        .cell(PLATE, rider.plate.clone())
-                        .cell(TEAM, rider.team.clone());
+                    row = row.cell(PLATE, rider.plate.clone());
                 }
                 row
             });
@@ -1010,8 +1004,6 @@ struct RiderRow {
     plate: String,
     /// The rider's full name.
     name: String,
-    /// The team's display name, or empty for a solo entry.
-    team: String,
 }
 
 /// Return the live roster's flattened rows.
@@ -1021,11 +1013,6 @@ fn rider_rows(state: &AppState) -> Vec<RiderRow> {
     };
     let mut rows = Vec::new();
     for entry in RosterView::entries(&ride.roster) {
-        let team = if entry.is_team {
-            entry.display_name.clone()
-        } else {
-            String::new()
-        };
         for rider in &entry.riders {
             let plate = rider
                 .plate
@@ -1035,7 +1022,6 @@ fn rider_rows(state: &AppState) -> Vec<RiderRow> {
             rows.push(RiderRow {
                 plate,
                 name: rider.full_name.clone(),
-                team: team.clone(),
             });
         }
     }
@@ -1044,10 +1030,11 @@ fn rider_rows(state: &AppState) -> Vec<RiderRow> {
 
 /// Return the roster table's columns.
 fn rider_columns() -> Vec<ColumnSpec> {
+    // The design's review table is `Plate · Name`; a third content column ran past the dock and
+    // cut the team name (D22).
     vec![
+        ColumnSpec::new(PLATE, "Plate", ColumnWidth::Content).numeric(),
         ColumnSpec::new(NAME, "Name", ColumnWidth::Content),
-        ColumnSpec::new(PLATE, "Plate", ColumnWidth::Content),
-        ColumnSpec::new(TEAM, "Team", ColumnWidth::Content),
     ]
 }
 

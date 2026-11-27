@@ -107,6 +107,9 @@ Severity: **S1** blocks use or the ArtCraft claim · **S2** visibly wrong · **S
 
 | Date | Defect | Change | Verification |
 |---|---|---|---|
+| 2026-11-27 | D21 | A card code is drawn with its suit glyph (`9D` → `9♦`), and a joker as `Joker`: `presenters/data_source.rs` `card_text`, with its own unit test. | 4305 unit tests pass, including `test_card_text_draws_the_suit_glyph`. |
+| 2026-11-27 | D22 | The review table is the design's `Plate · Name`; the third content column that ran past the dock is gone. | Live capture: the review card reads `Plate Name`, nothing clipped. |
+| 2026-11-27 | D23 | The clock read-outs take the title type role, the largest on the screen. | Applied; a populated capture will confirm the size beside the design's. |
 | 2026-11-27 | D13 | The docks fill: `dock()` paints the panel surface at the rect the layout gives it and lays the content inside (`Panel` is inline and content-sized, and its scrolling body reports an unbounded room, so it could never fill). The feed's heading band now reads `Crossings · <count>` as the design's does. | Live: both cards run from under the entry row to the status bar; measured 508 pt offered, 508 pt painted. |
 | 2026-11-27 | D12 | The status bar is no longer a notice sink for store paths: `app.rs` logs a finished backup and posts `Backup written` only when the operator asked for one, and `status_readout` renders `<status word> · <elapsed>` (the design's bar) instead of a path. | Fresh launch: the bar reads `NO RIDE`; the NDJSON log carries `{"event":"backup","fields":{"path":…}}`. |
 | 2026-11-27 | D1 (two title rows) | `ui/window.rs` now sets `AppSpec::frame(decide_for(…, TitleBarPref::Integrated))`. An unset frame is drawn by the OS *and* by the console's `TitleBar`; `Integrated` resolves on macOS to a full-size content view with the title bar hidden, so there is one title row. The title is drawn as leading content, left-aligned, not the bar's centred gap title. | Live AX: no `AXStaticText` window title; window 1480×812 → 1480×780 pt; the bar reads `RiverCrossing` at the leading edge. |
@@ -126,7 +129,7 @@ cards, entry card, two dock cards, filled chips. What the data exposes, still op
 | # | Defect | Evidence | Site |
 |---|---|---|---|
 | D19 | The feed shows four of the design's eight columns. `Time`, `Team`, `Lap time` and `Total` are absent; the two time columns exist behind View ▸ Show … and are off by default, while Time and Team have no column at all. | App: `Name Plate Card Lap`; design: `Time Plate Name Team Card Lap Lap time Total`. | `views/console.rs` `feed_columns`, `feed_rows` |
-| D20 | The `Cards` chip reads `0` after twelve crossings dealt twelve cards. | Chip `Cards 0` beside `Crossings 12`. | `presenters/console.rs` `counters`, `presenters/data_source.rs` |
+| ~~D20~~ | **Withdrawn** — not a defect. Twelve crossings inside the minimum lap are *held* for review, and `cards_dealt` counts crossings that are not held, so `Cards 0` beside 12 held crossings is correct. | | |
 | D21 | Card cells render as `9D`, `10H`, `4S` — rank plus a suit letter. The design draws the suit glyph, red for hearts and diamonds. | Feed column `Card`. | `presenters/data_source.rs` card text |
 | D22 | The review panel's table runs out of room: `Name` is clipped and `Team` is cut at the panel edge; the design's review table is `Plate · Name · Laps`. | Review card, Riders tab. | `views/console.rs` `riders_tab` |
 | D23 | The clock read-outs are body-sized; the design's are the largest type on the screen. | `0:00:37` beside the design's `02:14:07`. | `views/console.rs` `clock_column` |

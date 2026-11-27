@@ -521,7 +521,26 @@ fn card_code(engine: &RideEngine<Roster, SystemClock>, crossing: &Crossing) -> O
     engine
         .held_card_for(crossing)
         .or_else(|| engine.card_for(crossing))
-        .map(|card| card.code())
+        .map(|card| card_text(&card.code()))
+}
+
+/// Return a card code as the feed shows it: `9D` as `9♦`, and a joker as the word.
+///
+/// The design draws the suit (`design/mockups/index.html`, the feed's `Card` column); the code's
+/// last letter is the suit, so the glyph replaces it and the rank keeps its token.
+#[must_use]
+pub(crate) fn card_text(code: &str) -> String {
+    let Some((rank, suit)) = code.split_at_checked(code.len().saturating_sub(1)) else {
+        return code.to_owned();
+    };
+    let glyph = match suit {
+        "C" => "♣",
+        "D" => "♦",
+        "H" => "♥",
+        "S" => "♠",
+        _ => return "Joker".to_owned(),
+    };
+    format!("{rank}{glyph}")
 }
 
 /// Return the crossing's card disposition token.
