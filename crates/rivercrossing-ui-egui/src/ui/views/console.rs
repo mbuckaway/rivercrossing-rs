@@ -270,6 +270,9 @@ fn density_spelling(choice: u8) -> &'static str {
 /// The height of the feed's heading row: the title, the count and the search field.
 const SEARCH_ROW_HEIGHT: f32 = 24.0;
 
+/// The organizer-logo tile's side, as the design draws it beside the statistics.
+const LOGO_TILE: f32 = 40.0;
+
 /// The ride header card's height: one row of statistics.
 const HEADER_CARD_HEIGHT: f32 = 56.0;
 
@@ -501,6 +504,12 @@ fn header(ui: &mut Ui, state: &mut AppState, width: f32) {
                         let _ = Text::new(word.clone()).role(TypeRole::BodyStrong).show(ui);
                     });
                     ui.add_space(Env::of(ui).tokens.space.pad.regular);
+                    let logo = state
+                        .ride
+                        .as_ref()
+                        .and_then(|ride| ride.config.logo_path.as_deref());
+                    logo_tile(ui, logo);
+                    ui.add_space(Env::of(ui).tokens.space.pad.regular);
                     ride_values(ui, state);
                 });
             });
@@ -545,6 +554,42 @@ fn ride_badge(ui: &mut Ui, light: StopLight, word: String) {
         StopLight::Red => Variant::look(Emphasis::Soft, Tone::Bad),
     };
     let _ = Badge::new(word).variant(variant).show(ui);
+}
+
+/// Show the organizer-logo tile: the design's square beside the ride's statistics.
+///
+/// The tile holds the ride's logo when one was chosen in Ride Setup; until then it is the design's
+/// placeholder, with `LOGO` in caption type.
+fn logo_tile(ui: &mut Ui, logo: Option<&std::path::Path>) {
+    let (rect, _) = ui.allocate_exact_size(vec2(LOGO_TILE, LOGO_TILE), Sense::hover());
+    let env = Env::of(ui);
+    let fill = Color32::from(Srgba::from(env.tokens.color.surface.sunken));
+    let line = Color32::from(Srgba::from(env.tokens.color.line.border));
+    let corners = UiTokens::corner(env.tokens.shape.radius.control);
+    ui.painter().rect_filled(rect, corners, fill);
+    ui.painter().rect_stroke(
+        rect,
+        corners,
+        craft::egui::Stroke::new(1.0, line),
+        craft::egui::StrokeKind::Inside,
+    );
+    let caption = logo
+        .and_then(|path| path.file_stem())
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("LOGO")
+        .to_owned();
+    ui.scope_builder(
+        UiBuilder::new()
+            .max_rect(rect.shrink(2.0))
+            .layout(Layout::top_down(Align::Center)),
+        |ui| {
+            let _ = Text::new(caption)
+                .role(TypeRole::Caption)
+                .elide(craft::ui::display::Elide::Middle)
+                .shade(Shade::Muted)
+                .show(ui);
+        },
+    );
 }
 
 /// Show the six ride identity read-outs.
