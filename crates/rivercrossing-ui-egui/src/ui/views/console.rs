@@ -253,8 +253,14 @@ fn density_spelling(choice: u8) -> &'static str {
 
 // -------------------------------------------------------------------- the rail
 
+/// The height of the feed's heading row: the title, the count and the search field.
+const SEARCH_ROW_HEIGHT: f32 = 24.0;
+
 /// The ride header card's height: one row of statistics.
 const HEADER_CARD_HEIGHT: f32 = 56.0;
+
+/// The header card's `Current lap` slot: the room the design gives the lap at the card's end.
+const LAP_SLOT_WIDTH: f32 = 96.0;
 
 /// The clock card's height: the design's pair of clocks under the ride header.
 const CLOCK_CARD_HEIGHT: f32 = 64.0;
@@ -339,7 +345,9 @@ fn status_bar(ui: &mut Ui, state: &AppState) {
 /// Show one count chip under its frozen id.
 fn chip(ui: &mut Ui, id: &'static str, label: String) {
     ui.push_id(id, |ui| {
-        let _ = Badge::new(label).show(ui);
+        let _ = Badge::new(label)
+            .variant(Variant::look(Emphasis::Solid, Tone::Neutral))
+            .show(ui);
     });
 }
 
@@ -397,7 +405,8 @@ fn body(ui: &mut Ui, state: &mut AppState) {
         // window a dead band under them. The width is handed down, because a nested layout reports
         // a room wider than the window and the second card then draws past the right edge.
         let used = ui.cursor().left();
-        let rest = vec2((full.x - used).max(0.0), full.y);
+        let gutter = Env::of(ui).tokens.space.pad.regular;
+        let rest = vec2((full.x - used - gutter).max(0.0), full.y);
         ui.allocate_ui_with_layout(rest, Layout::top_down(Align::Min), |ui| {
             header(ui, state, rest.x);
             clocks_row(ui, state, rest.x);
@@ -410,26 +419,49 @@ fn body(ui: &mut Ui, state: &mut AppState) {
 /// Show the header strip: the status badge and word, the ride identity and the current lap.
 fn header(ui: &mut Ui, state: &mut AppState, width: f32) {
     let (light, word, lap) = ride_identity(state);
-    card(ui, width, HEADER_CARD_HEIGHT, |ui| {
-        ui.push_id("ride_status_panel", |ui| {
-            ui.horizontal(|ui| {
-                ui.push_id("ride_status_light", |ui| {
-                    ride_badge(ui, light, word.clone());
-                });
-                ui.push_id("ride_status_lbl", |ui| {
-                    let _ = Text::new(word.clone()).role(TypeRole::BodyStrong).show(ui);
-                });
-                ui.add_space(Env::of(ui).tokens.space.pad.regular);
-                ride_values(ui, state);
-                // The lap sits at the far end of the card, as the design's `Current lap` does. The
-                // inner rect is bounded, so the right-to-left layout cannot take a row's height.
-                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                    ui.push_id("current_lap_lbl", |ui| {
-                        stat(ui, "Current lap", lap.to_string());
+    card(ui, width, HEADER_CARD_HEIGHT, |ui, rect| {
+        // Two placed regions: the badge, the word and the statistics on the left, the lap at the
+        // card's end where the design puts it. A right-to-left child in the same row only took the
+        // width the statistics had already left.
+        let pad = Env::of(ui).tokens.space.pad.regular;
+        let inner = rect.shrink(pad);
+        let left = craft::egui::Rect::from_min_max(
+            inner.min,
+            craft::egui::pos2(inner.right() - LAP_SLOT_WIDTH - pad, inner.bottom()),
+        );
+        let lap_rect = craft::egui::Rect::from_min_max(
+            craft::egui::pos2(inner.right() - LAP_SLOT_WIDTH, inner.top()),
+            inner.max,
+        );
+        let bounded = |rect| {
+            UiBuilder::new()
+                .max_rect(rect)
+                .layout(Layout::top_down(Align::Min))
+        };
+        ui.scope_builder(bounded(left), |ui| {
+            ui.push_id("ride_status_panel", |ui| {
+                ui.horizontal(|ui| {
+                    ui.push_id("ride_status_light", |ui| {
+                        ride_badge(ui, light, word.clone());
                     });
+                    ui.push_id("ride_status_lbl", |ui| {
+                        let _ = Text::new(word.clone()).role(TypeRole::BodyStrong).show(ui);
+                    });
+                    ui.add_space(Env::of(ui).tokens.space.pad.regular);
+                    ride_values(ui, state);
                 });
             });
         });
+        ui.scope_builder(
+            UiBuilder::new()
+                .max_rect(lap_rect)
+                .layout(Layout::right_to_left(Align::Min)),
+            |ui| {
+                ui.push_id("current_lap_lbl", |ui| {
+                    stat(ui, "Current lap", lap.to_string());
+                });
+            },
+        );
     });
 }
 
@@ -590,7 +622,7 @@ fn clock_column(ui: &mut Ui, view: ClockView, width: f32) {
         fraction,
         reading,
     } = view;
-    card(ui, width, CLOCK_CARD_HEIGHT, |ui| {
+    card(ui, width, CLOCK_CARD_HEIGHT, |ui, _| {
         ui.push_id(panel, |ui| {
             ui.horizontal(|ui| {
                 let _ = Text::new(caption)
@@ -627,7 +659,7 @@ fn entry_row(ui: &mut Ui, state: &mut AppState, width: f32) {
     };
     let last = last_crossing(state);
     let gate = state.gate();
-    card(ui, width, ENTRY_CARD_HEIGHT, |ui| {
+    card(ui, width, ENTRY_CARD_HEIGHT, |ui, _| {
         ui.horizontal(|ui| {
             run_buttons(ui, state, gate);
             ui.add_space(Env::of(ui).tokens.space.pad.regular);
@@ -772,14 +804,14 @@ fn surface(ui: &Ui, rect: craft::egui::Rect) {
 ///
 /// The surface is painted at the rect the layout gives, as the dock does, so the card takes exactly
 /// that size whatever its content measures.
-fn card(ui: &mut Ui, width: f32, height: f32, content: impl FnOnce(&mut Ui)) {
+fn card(ui: &mut Ui, width: f32, height: f32, content: impl FnOnce(&mut Ui, craft::egui::Rect)) {
     let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
     surface(ui, rect);
     let pad = Env::of(ui).tokens.space.pad.regular;
     let inside = UiBuilder::new()
         .max_rect(rect.shrink(pad))
         .layout(Layout::top_down(Align::Min));
-    ui.scope_builder(inside, content);
+    ui.scope_builder(inside, |ui| content(ui, rect));
     ui.add_space(pad);
 }
 
@@ -797,9 +829,15 @@ fn feed_panel(ui: &mut Ui, state: &mut AppState, room: f32) {
     let columns = feed_columns(show_lap_time, show_total);
     let count = visible.len();
     dock(ui, ui.available_width(), room, |ui| {
-        panel_heading(ui, "Crossings", Some(count));
-        ui.push_id("crossings_search", |ui| {
-            let _ = TextField::search(SEARCH_LABEL, Bind::bound(&mut state.search)).show(ui);
+        ui.horizontal(|ui| {
+            panel_heading(ui, "Crossings", Some(count));
+            let end = vec2(ui.available_width(), SEARCH_ROW_HEIGHT);
+            ui.allocate_ui_with_layout(end, Layout::right_to_left(Align::Min), |ui| {
+                ui.push_id("crossings_search", |ui| {
+                    let _ =
+                        TextField::search(SEARCH_LABEL, Bind::bound(&mut state.search)).show(ui);
+                });
+            });
         });
         let mut selection = Selection::<usize>::default();
         let _ = Table::<usize>::new("Crossings", columns.clone())
@@ -862,10 +900,10 @@ fn feed_columns(show_lap_time: bool, show_total: bool) -> Vec<ColumnSpec> {
         ColumnSpec::new(LAP, "Lap", ColumnWidth::Content),
     ];
     if show_lap_time {
-        columns.push(ColumnSpec::new(LAP_TIME, "Lap time", ColumnWidth::Content));
+        columns.push(ColumnSpec::new(LAP_TIME, "Lap time", ColumnWidth::Content).numeric());
     }
     if show_total {
-        columns.push(ColumnSpec::new(TOTAL, "Total", ColumnWidth::Content));
+        columns.push(ColumnSpec::new(TOTAL, "Total", ColumnWidth::Content).numeric());
     }
     columns
 }
