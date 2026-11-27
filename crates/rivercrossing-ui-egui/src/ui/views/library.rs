@@ -29,8 +29,8 @@ pub(crate) fn body(ui: &mut Ui, state: &mut AppState) {
             .iter()
             .map(|row| TableRow {
                 label: row.name.clone(),
+                // The label carries the ride's name into the first column.
                 cells: vec![
-                    (NAME, row.name.clone()),
                     (DATE, row.date.clone()),
                     (STATUS, row.status.clone()),
                     (COUNT, row.entries.to_string()),

@@ -70,11 +70,8 @@ fn roster_rows(state: &AppState, visible: &[usize]) -> TableData {
         };
         rows.push(TableRow {
             label: row.row.name.clone(),
-            cells: vec![
-                (PLATE, row.row.plate.clone()),
-                (NAME, row.row.name.clone()),
-                (TEAM, row.row.team.clone()),
-            ],
+            // The label carries the rider's name into its column.
+            cells: vec![(PLATE, row.row.plate.clone()), (TEAM, row.row.team.clone())],
         });
     }
     TableData {
@@ -124,24 +121,32 @@ fn record_panel(ui: &mut Ui, state: &mut AppState) {
         let _ = state.dialogs.set_field(id, text);
     }
     ui.horizontal(|ui| {
+        let gap = craft::ui::runtime::env::Env::of(ui)
+            .tokens
+            .space
+            .pad
+            .regular;
         value(
             ui,
             "plate_input",
             "Plate",
             record.as_ref().map_or("", |r| r.plate.as_str()),
         );
+        ui.add_space(gap);
         value(
             ui,
             "first_name_input",
             "First name",
             record.as_ref().map_or("", |r| r.first.as_str()),
         );
+        ui.add_space(gap);
         value(
             ui,
             "last_name_input",
             "Last name",
             record.as_ref().map_or("", |r| r.last.as_str()),
         );
+        ui.add_space(gap);
         value(
             ui,
             "team_choice",

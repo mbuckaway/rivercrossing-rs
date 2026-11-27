@@ -97,11 +97,8 @@ fn issue_rows(state: &AppState) -> TableData {
         .iter()
         .map(|row| TableRow {
             label: row.name.clone(),
-            cells: vec![
-                (PLATE, row.plate.clone()),
-                (NAME, row.name.clone()),
-                (ISSUE, row.detail.clone()),
-            ],
+            // The row's label carries the name into its column; a NAME cell would show it twice.
+            cells: vec![(PLATE, row.plate.clone()), (ISSUE, row.detail.clone())],
         })
         .collect();
     TableData {

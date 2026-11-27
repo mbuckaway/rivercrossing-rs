@@ -181,10 +181,10 @@ fn standings(rows: &[StandingsRowModel]) -> TableData {
             .iter()
             .map(|row| TableRow {
                 label: row.name.clone(),
+                // The label carries the entry's name into its column.
                 cells: vec![
                     (PLACE, place_text(row)),
                     (PLATE, row.plate.clone()),
-                    (NAME, row.name.clone()),
                     (KIND, kind_text(row).to_owned()),
                     (LAP, row.laps.to_string()),
                     (HAND, row.hand.clone()),

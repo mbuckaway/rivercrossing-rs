@@ -766,7 +766,11 @@ pub(crate) fn value(
 ) {
     ui.push_id(id, |ui| {
         ui.vertical(|ui| {
-            let _ = Text::new(caption).show(ui);
+            // The caption reads muted and small, as the design's field captions do.
+            let _ = Text::new(caption)
+                .role(TypeRole::Caption)
+                .shade(Shade::Muted)
+                .show(ui);
             let _ = Text::new(value.into()).show(ui);
         });
     });
