@@ -118,6 +118,8 @@ the scenario JSON is the cross-language contract.
   Missing glyphs panic, so the app fonts (`craft::ui::fonts::UiFonts`) are installed. Regenerate
   deliberately on the golden host only:
   `UPDATE_SNAPSHOTS=force WGPU_BACKEND=vulkan cargo nextest run -P ui -p rivercrossing-ui-egui --locked`.
+  The golden host needs **16 GiB**: the coverage stage links the `ui` test binary with
+  `-C instrument-coverage`, and at 8 GiB `ld` is killed with signal 9.
 - **Artifacts.** Tier B writes `target/gate/control-smoke.log` and PNGs under `target/control/`;
   Tier C writes `Observation` JSON + PNGs under `target/gate/parity/<scenario>/`, or
   `docs/parity/SKIP.md` naming the missing prerequisite.
