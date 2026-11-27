@@ -139,3 +139,13 @@ cards, entry card, two dock cards, filled chips. What the data exposes, still op
 | D21 | Card cells render as `9D`, `10H`, `4S` — rank plus a suit letter. The design draws the suit glyph, red for hearts and diamonds. | Feed column `Card`. | `presenters/data_source.rs` card text |
 | D22 | The review panel's table runs out of room: `Name` is clipped and `Team` is cut at the panel edge; the design's review table is `Plate · Name · Laps`. | Review card, Riders tab. | `views/console.rs` `riders_tab` |
 | D23 | The clock read-outs are body-sized; the design's are the largest type on the screen. | `0:00:37` beside the design's `02:14:07`. | `views/console.rs` `clock_column` |
+
+## 8. Still open after the redesign pass
+
+| # | Item | Note |
+|---|---|---|
+| R1 | The rail stacks its glyph above the label in the design; this app's rail is icon beside label. The cells are craft `Button`s, which give the row its access node and its frozen id; a hand-painted cell would have to carry both. | cosmetic, deliberate |
+| R2 | The ride header has no logo tile: the design shows a 64 × 64 preview beside the statistics. | needs the ride's logo in the view model |
+| R3 | Ride Setup has no tie-break order or organizer logo rows, and saves with `OK` where the design says `Save`. | the fields do not exist in `RideConfig` |
+| R4 | The clock read-outs take the title role; the design's are larger still. | the type scale stops at `Display` |
+| R5 | The review panel's table is `Plate · Name`; the design adds `Laps`. | the row model carries no lap count |
