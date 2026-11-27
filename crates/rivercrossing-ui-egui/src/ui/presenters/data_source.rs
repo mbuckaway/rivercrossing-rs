@@ -47,10 +47,14 @@ const SECONDS_PER_MINUTE: u64 = 60;
 pub(crate) struct FeedRow {
     /// The entry that owns the crossing; empty for a miss.
     pub(crate) entry: rivercrossing_ride::EntryId,
+    /// The crossing's wall-clock time, `HH:MM` in the ride's offset.
+    pub(crate) time: String,
     /// The rider's typed plate, the entry's plate, or [`MISS_PLATE`].
     pub(crate) plate: String,
     /// The rider's name, the entry's display name, or [`MISS_NAME`].
     pub(crate) name: String,
+    /// The team's display name, or empty for a solo entry.
+    pub(crate) team: String,
     /// The per-entry lap number; zero for a miss.
     pub(crate) lap: u32,
     /// The derived lap time in seconds; zero for a miss.
@@ -328,8 +332,10 @@ fn insert_newest_first(rows: &mut Vec<(Timestamp, FeedRow)>, candidate: (Timesta
 fn miss_row() -> FeedRow {
     FeedRow {
         entry: rivercrossing_ride::EntryId(String::new()),
+        time: String::new(),
         plate: MISS_PLATE.to_owned(),
         name: MISS_NAME.to_owned(),
+        team: String::new(),
         lap: 0,
         lap_time: 0.0,
         total_time: 0.0,
@@ -345,6 +351,8 @@ fn miss_row() -> FeedRow {
 struct FeedContext<'a> {
     /// The ride engine.
     engine: &'a RideEngine<Roster, SystemClock>,
+    /// The ride's UTC offset, so a crossing shows the clock the scorer reads.
+    offset: time::UtcOffset,
     /// The roster that carries the crossings' entries.
     roster: &'a Roster,
     /// Each entry's derived lap times, keyed by the entry's stable identity.
@@ -360,6 +368,7 @@ struct FeedContext<'a> {
 impl<'a> FeedContext<'a> {
     /// Build the per-render lookups over *engine* and *roster*.
     fn new(engine: &'a RideEngine<Roster, SystemClock>, roster: &'a Roster) -> Self {
+        let offset = engine.config().planned_start.offset();
         let mut times: HashMap<EntryId, Vec<f64>> = HashMap::new();
         for crossing in engine.crossings() {
             times
@@ -379,6 +388,7 @@ impl<'a> FeedContext<'a> {
             .collect();
         Self {
             engine,
+            offset,
             roster,
             times,
             held,
@@ -434,8 +444,10 @@ fn crossing_row(context: &FeedContext<'_>, crossing: &Crossing) -> FeedRow {
     let lap_time = context.lap_time(crossing);
     FeedRow {
         entry: crossing.entry_id.clone(),
+        time: time_text(context.offset, crossing.crossed_at),
         plate: plate_text(entry.as_ref(), crossing),
         name: name_text(entry.as_ref(), crossing),
+        team: team_text(entry.as_ref()),
         lap: crossing.seq,
         lap_time,
         total_time: context.total_time(crossing),
@@ -491,6 +503,20 @@ fn plate_text(entry: Option<&EntrySnapshot>, crossing: &Crossing) -> String {
         .clone()
         .filter(|plate| !plate.is_empty())
         .or_else(|| entry.map(|entry| entry.plate.clone()))
+        .unwrap_or_default()
+}
+
+/// Return the crossing's wall-clock time in the ride's offset, `HH:MM`.
+fn time_text(offset: time::UtcOffset, at: Timestamp) -> String {
+    let local = at.to_offset(offset);
+    format!("{:02}:{:02}", local.hour(), local.minute())
+}
+
+/// Return the team cell: the entry's team name, or empty for a solo entry.
+fn team_text(entry: Option<&EntrySnapshot>) -> String {
+    entry
+        .filter(|entry| entry.is_team)
+        .map(|entry| entry.display_name.clone())
         .unwrap_or_default()
 }
 

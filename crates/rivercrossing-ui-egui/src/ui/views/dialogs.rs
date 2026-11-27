@@ -14,6 +14,7 @@ use std::borrow::Cow;
 use craft::behavior::ColumnKey;
 use craft::behavior::{ColumnWidth, DisplayOrder, ItemSource, Selection};
 use craft::egui::Ui;
+use craft::theme::TypeRole;
 use craft::theme::variant::Tone;
 use craft::ui::choice::{Checkbox, Radio, RadioGroup};
 use craft::ui::contract::{
@@ -21,7 +22,7 @@ use craft::ui::contract::{
     ShowContainer as _, Sizing,
 };
 use craft::ui::dialog::Dialog;
-use craft::ui::display::Text;
+use craft::ui::display::{Shade, Text};
 use craft::ui::list::{List, ListRow};
 use craft::ui::notices::Notice;
 use craft::ui::pickers::{DatePicker, PickedDate, Select};
@@ -487,11 +488,27 @@ pub(crate) fn stack_text_field(
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
     let mut value = stored.clone();
     ui.push_id(id, |ui| {
+        stack_label(ui, label);
         let _ = TextField::new(label, Bind::bound(&mut value)).show(ui);
     });
     if value != stored {
         let _ = state.dialogs.set_field(id, value);
     }
+}
+
+/// The width a number field takes: the design's narrow numeric input, not the full column.
+const NUMBER_FIELD_WIDTH: f32 = 120.0;
+
+/// Show a field's caption above its control.
+///
+/// A field's label names it for assistive technology; the design also draws it, muted and small,
+/// above the control (`design/mockups/index.html`, `.field label`). Without this a form is a column
+/// of unlabelled boxes.
+fn stack_label(ui: &mut Ui, caption: &'static str) {
+    let _ = Text::new(caption)
+        .role(TypeRole::Caption)
+        .shade(Shade::Muted)
+        .show(ui);
 }
 
 /// Show one masked text field bound to a dialog's frozen field id.
@@ -504,6 +521,7 @@ pub(crate) fn stack_secret_field(
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
     let mut value = stored.clone();
     ui.push_id(id, |ui| {
+        stack_label(ui, label);
         let _ = TextField::new(label, Bind::bound(&mut value))
             .masked()
             .show(ui);
@@ -523,6 +541,7 @@ pub(crate) fn stack_date_field(
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
     let mut picked = PickedDate::parse(&stored);
     ui.push_id(id, |ui| {
+        stack_label(ui, label);
         let _ = DatePicker::new(label, Bind::bound(&mut picked)).show(ui);
     });
     let text = picked.map_or_else(String::new, |date| date.iso());
@@ -543,11 +562,20 @@ pub(crate) fn stack_whole_field(
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
     let mut value = Some(stored.trim().parse().unwrap_or(default));
     ui.push_id(id, |ui| {
-        let _ = NumberField::new(label, Bind::bound(&mut value))
-            .range(range)
-            .step(1.0)
-            .snap_typed(true)
-            .show(ui);
+        stack_label(ui, label);
+        // A narrow cell: the design's numeric inputs are a tenth of a column wide, not the column.
+        let cell = craft::egui::vec2(NUMBER_FIELD_WIDTH, ui.spacing().interact_size.y);
+        let _ = ui.allocate_ui_with_layout(
+            cell,
+            craft::egui::Layout::top_down(craft::egui::Align::Min),
+            |ui| {
+                let _ = NumberField::new(label, Bind::bound(&mut value))
+                    .range(range)
+                    .step(1.0)
+                    .snap_typed(true)
+                    .show(ui);
+            },
+        );
     });
     let text = value.map_or_else(String::new, |number| format!("{number:.0}"));
     if text != stored {
@@ -567,10 +595,18 @@ pub(crate) fn stack_decimal_field(
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
     let mut value = Some(stored.trim().parse().unwrap_or(default));
     ui.push_id(id, |ui| {
-        let _ = NumberField::new(label, Bind::bound(&mut value))
-            .range(range)
-            .step(0.1)
-            .show(ui);
+        stack_label(ui, label);
+        let cell = craft::egui::vec2(NUMBER_FIELD_WIDTH, ui.spacing().interact_size.y);
+        let _ = ui.allocate_ui_with_layout(
+            cell,
+            craft::egui::Layout::top_down(craft::egui::Align::Min),
+            |ui| {
+                let _ = NumberField::new(label, Bind::bound(&mut value))
+                    .range(range)
+                    .step(0.1)
+                    .show(ui);
+            },
+        );
     });
     let text = value.map_or_else(String::new, |number| format!("{number:.1}"));
     if text != stored {
@@ -608,6 +644,7 @@ pub(crate) fn stack_select(
     choices: &[(&'static str, &'static str)],
 ) {
     let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
+    stack_label(ui, label);
     if let Some(value) = select_value(ui, id, label, &stored, choices) {
         let _ = state.dialogs.set_field(id, value);
     }

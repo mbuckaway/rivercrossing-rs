@@ -56,43 +56,67 @@ pub(crate) fn body(ui: &mut Ui, state: &mut AppState) {
     let _ = Section::fixed("Shoe").show(ui, |ui, _| shoe_group(ui, state));
 }
 
-/// Show the event identity fields.
+/// Show the event identity fields, two to a row as the design lays them out.
 fn ride_group(ui: &mut Ui, state: &mut AppState) {
-    stack_text_field(ui, state, "name_input", "Ride name");
-    stack_date_field(ui, state, "date_picker", "Date");
-    stack_text_field(ui, state, "start_time_picker", "Start time");
-    stack_text_field(ui, state, "venue_input", "Venue");
-    stack_text_field(ui, state, "organizer_input", "Organizer");
-    stack_text_field(ui, state, "scorer_input", "Scorer");
-    stack_decimal_field(
-        ui,
-        state,
-        "lap_km_spin",
-        "Lap length (km)",
-        DEFAULT_LAP_KM,
-        0.1..=100.0,
-    );
-    stack_text_field(ui, state, "duration_input", "Duration (H:MM)");
-    stack_text_field(ui, state, "min_lap_input", "Min lap (M:SS)");
+    pair(ui, |left, right| {
+        stack_text_field(left, state, "name_input", "Ride name");
+        stack_date_field(right, state, "date_picker", "Date");
+    });
+    pair(ui, |left, right| {
+        stack_text_field(left, state, "start_time_picker", "Start time");
+        stack_text_field(right, state, "venue_input", "Venue");
+    });
+    pair(ui, |left, right| {
+        stack_text_field(left, state, "organizer_input", "Organizer");
+        stack_text_field(right, state, "scorer_input", "Scorer");
+    });
+    pair(ui, |left, right| {
+        stack_decimal_field(
+            left,
+            state,
+            "lap_km_spin",
+            "Lap length (km)",
+            DEFAULT_LAP_KM,
+            0.1..=100.0,
+        );
+        stack_text_field(right, state, "duration_input", "Duration (H:MM)");
+    });
+    pair(ui, |left, right| {
+        stack_text_field(left, state, "min_lap_input", "Min lap (M:SS)");
+        stack_select(right, state, "cap_choice", "Hand cap", &CAP_CHOICES);
+    });
 }
 
-/// Show the short-lap, entry and plate-model choices.
+/// Show two fields side by side: the design's two-column form (`design/mockups/index.html`,
+/// `.grid2`).
+fn pair(ui: &mut Ui, content: impl FnOnce(&mut Ui, &mut Ui)) {
+    ui.columns(2, |columns| {
+        let (left, right) = columns.split_at_mut(1);
+        if let (Some(left), Some(right)) = (left.first_mut(), right.first_mut()) {
+            content(left, right);
+        }
+    });
+}
+
+/// Show the entry and plate-model choices, two to a row.
 fn format_group(ui: &mut Ui, state: &mut AppState) {
-    radio_pair(
-        ui,
-        state,
-        "Short laps",
-        ("hold_short_radio", "Hold short-lap cards for review"),
-        ("always_deal_radio", "Always deal cards"),
-    );
-    radio_pair(
-        ui,
-        state,
-        "Entry mode",
-        ("solo_radio", "Solo"),
-        ("mixed_radio", "Mixed (teams)"),
-    );
-    stack_whole_field(ui, state, "team_size_spin", "Largest team", 4.0, 2.0..=9.0);
+    pair(ui, |left, right| {
+        radio_pair(
+            left,
+            state,
+            "Entry mode",
+            ("solo_radio", "Solo"),
+            ("mixed_radio", "Mixed (teams)"),
+        );
+        stack_whole_field(
+            right,
+            state,
+            "team_size_spin",
+            "Largest team",
+            4.0,
+            2.0..=9.0,
+        );
+    });
     radio_pair(
         ui,
         state,
@@ -100,19 +124,35 @@ fn format_group(ui: &mut Ui, state: &mut AppState) {
         ("pooled_radio", "Rider plates (pooled)"),
         ("relay_radio", "Team relay"),
     );
-}
-
-/// Show the shoe size, the jokers and the card cap.
-fn shoe_group(ui: &mut Ui, state: &mut AppState) {
-    stack_whole_field(ui, state, "decks_spin", "Decks", DEFAULT_DECKS, 1.0..=20.0);
-    stack_whole_field(
+    radio_pair(
         ui,
         state,
-        "jokers_spin",
-        "Jokers",
-        DEFAULT_JOKERS,
-        0.0..=9.0,
+        "Short laps",
+        ("hold_short_radio", "Hold short-lap cards for review"),
+        ("always_deal_radio", "Always deal cards"),
     );
+}
+
+/// Show the shoe's options, two to a row where the design pairs them.
+fn shoe_group(ui: &mut Ui, state: &mut AppState) {
+    pair(ui, |left, right| {
+        stack_whole_field(
+            left,
+            state,
+            "decks_spin",
+            "Decks",
+            DEFAULT_DECKS,
+            1.0..=20.0,
+        );
+        stack_whole_field(
+            right,
+            state,
+            "jokers_spin",
+            "Jokers",
+            DEFAULT_JOKERS,
+            0.0..=9.0,
+        );
+    });
     radio_pair(
         ui,
         state,

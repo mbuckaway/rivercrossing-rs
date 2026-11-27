@@ -109,8 +109,12 @@ const RAIL: [(ActionId, &str, &str); 7] = [
     (WX_ID_PREFERENCES, "Settings", "settings"),
 ];
 
+/// The crossing's wall-clock column.
+const TIME: ColumnKey = ColumnKey::new("time");
 /// The crossings feed's label and plate columns.
 const NAME: ColumnKey = ColumnKey::new("name");
+/// The team column.
+const TEAM: ColumnKey = ColumnKey::new("team");
 /// The plate column.
 const PLATE: ColumnKey = ColumnKey::new("plate");
 /// The dealt-card column.
@@ -842,12 +846,14 @@ fn feed_panel(ui: &mut Ui, state: &mut AppState, room: f32) {
             .empty(NO_CROSSINGS)
             .selection(Bind::bound(&mut selection))
             .show_items(ui, &FeedSource(&visible), &mut |key, icx| {
-                let mut row = ListRow::new(feed_name(&visible, *key))
+                let mut row = ListRow::new(feed_time(&visible, *key))
                     .cells(icx.cells())
                     .striped(icx.row.striped);
                 if let Some(feed) = visible.get(*key) {
                     row = row
                         .cell(PLATE, feed.plate.clone())
+                        .cell(NAME, feed.name.clone())
+                        .cell(TEAM, feed.team.clone())
                         .cell(CARD, feed.card.clone().unwrap_or_default())
                         .cell(LAP, feed.lap.to_string());
                     if show_lap_time {
@@ -881,19 +887,23 @@ fn feed_rows(state: &AppState) -> Vec<FeedRow> {
     }
 }
 
-/// Return the feed's row label: the rider's name, or an empty label for a key off the end.
-fn feed_name(rows: &[FeedRow], key: usize) -> String {
+/// Return the feed's row label: the crossing's time, or an empty label for a key off the end.
+fn feed_time(rows: &[FeedRow], key: usize) -> String {
     rows.get(key)
-        .map_or_else(String::new, |row| row.name.clone())
+        .map_or_else(String::new, |row| row.time.clone())
 }
 
 /// Return the feed's columns, with the two optional time columns when their settings are on.
 fn feed_columns(show_lap_time: bool, show_total: bool) -> Vec<ColumnSpec> {
+    // The design's feed: `Time · Plate · Name · Team · Card · Lap`, with the two time columns
+    // behind the View settings (`design/mockups/index.html`, the console).
     let mut columns = vec![
+        ColumnSpec::new(TIME, "Time", ColumnWidth::Content).numeric(),
+        ColumnSpec::new(PLATE, "Plate", ColumnWidth::Content).numeric(),
         ColumnSpec::new(NAME, "Name", ColumnWidth::Content),
-        ColumnSpec::new(PLATE, "Plate", ColumnWidth::Content),
+        ColumnSpec::new(TEAM, "Team", ColumnWidth::Content),
         ColumnSpec::new(CARD, "Card", ColumnWidth::Content),
-        ColumnSpec::new(LAP, "Lap", ColumnWidth::Content),
+        ColumnSpec::new(LAP, "Lap", ColumnWidth::Content).numeric(),
     ];
     if show_lap_time {
         columns.push(ColumnSpec::new(LAP_TIME, "Lap time", ColumnWidth::Content).numeric());

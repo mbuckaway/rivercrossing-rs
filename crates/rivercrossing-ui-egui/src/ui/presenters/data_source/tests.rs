@@ -14,7 +14,7 @@ use rstest::rstest;
 
 use super::{
     FeedRow, StopLight, card_text, clock_fraction, clock_seconds, counters, current_lap, feed_rows,
-    filter_rows, format_duration, is_miss, review_rows, status_text, stop_light_mode,
+    filter_rows, format_duration, is_miss, review_rows, status_text, stop_light_mode, time_text,
 };
 
 /// The ride name every fixture uses.
@@ -143,8 +143,10 @@ fn crossing(seq: u32) -> Result<Crossing, String> {
 fn row(plate: &str, name: &str, card: Option<&str>) -> FeedRow {
     FeedRow {
         entry: EntryId("entry".to_owned()),
+        time: "10:00".to_owned(),
         plate: plate.to_owned(),
         name: name.to_owned(),
+        team: String::new(),
         lap: 1,
         lap_time: 100.0,
         total_time: 100.0,
@@ -850,6 +852,20 @@ fn test_a_miss_row_has_no_total() -> Result<(), String> {
 fn test_card_text_draws_the_suit_glyph(#[case] code: &str, #[case] expected: &str) {
     // Act
     let text = card_text(code);
+
+    // Assert
+    assert_eq!(text, expected);
+}
+
+#[rstest]
+#[case::midnight(0_i64, "00:00")]
+#[case::evening(22 * 3600 + 41 * 60, "22:41")]
+fn test_time_text_reads_the_ride_offset(#[case] seconds: i64, #[case] expected: &str) {
+    // Arrange: a crossing at that many seconds after the epoch, in the ride's offset.
+    let at = Timestamp::UNIX_EPOCH + time::Duration::seconds(seconds);
+
+    // Act
+    let text = time_text(time::UtcOffset::UTC, at);
 
     // Assert
     assert_eq!(text, expected);
