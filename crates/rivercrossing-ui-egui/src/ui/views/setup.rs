@@ -8,8 +8,12 @@
 //! refusal messages and the dialog stays open for the correction.
 
 use craft::egui::Ui;
+use craft::theme::TypeRole;
+use craft::theme::Variant;
 use craft::theme::variant::Tone;
-use craft::ui::contract::ShowContainer as _;
+use craft::ui::buttons::Button;
+use craft::ui::contract::{Props as _, Show as _, ShowContainer as _};
+use craft::ui::display::{Shade, Text};
 use craft::ui::sections::Section;
 
 use super::dialogs::{
@@ -54,6 +58,7 @@ pub(crate) fn body(ui: &mut Ui, state: &mut AppState) {
     let _ = Section::fixed("Ride").show(ui, |ui, _| ride_group(ui, state));
     let _ = Section::fixed("Format").show(ui, |ui, _| format_group(ui, state));
     let _ = Section::fixed("Tie-break").show(ui, |ui, _| tiebreak_group(ui, state));
+    let _ = Section::fixed("Organizer logo").show(ui, |ui, _| logo_group(ui, state));
     let _ = Section::fixed("Shoe").show(ui, |ui, _| shoe_group(ui, state));
 }
 
@@ -195,6 +200,41 @@ fn tiebreak_values(stored: &str) -> [&'static str; 3] {
         }
     }
     order
+}
+
+/// Show the organizer logo row: the chosen file, its state, and the browse button.
+///
+/// The frozen ids are the design's (`logo_preview_bmp`, `logo_status_lbl`, `logo_browse_btn`). The
+/// path is typed or pasted until the platform file picker lands; browsing reports that.
+fn logo_group(ui: &mut Ui, state: &mut AppState) {
+    stack_text_field(ui, state, "logo_preview_bmp", "Logo file");
+    ui.horizontal(|ui| {
+        let stored = state
+            .dialogs
+            .field("logo_preview_bmp")
+            .unwrap_or_default()
+            .to_owned();
+        let status = if stored.trim().is_empty() {
+            "No logo chosen"
+        } else {
+            "Ready"
+        };
+        ui.push_id("logo_status_lbl", |ui| {
+            let _ = Text::new(status.to_owned())
+                .role(TypeRole::Caption)
+                .shade(Shade::Muted)
+                .show(ui);
+        });
+        ui.push_id("logo_browse_btn", |ui| {
+            if Button::new("Browse…")
+                .variant(Variant::SECONDARY)
+                .show(ui)
+                .clicked()
+            {
+                state.note(crate::ui::state::FILE_PICKER_UNAVAILABLE);
+            }
+        });
+    });
 }
 
 /// Show the shoe's options, two to a row where the design pairs them.
