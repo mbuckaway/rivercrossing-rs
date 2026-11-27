@@ -425,6 +425,7 @@ fn button_label(state: &AppState, id: &str, button: Button) -> &'static str {
         ("add_team_dlg", Button::Ok) => "Add",
         ("csv_preview_dlg", Button::Ok) => "Import",
         ("ride_library_dlg", Button::Ok) => "Open",
+        ("ride_library_dlg", Button::Custom("duplicate_btn")) => "Duplicate…",
         ("publish_wordpress_dlg", Button::Ok) => "Publish",
         ("simulation_dlg", Button::Custom("new_ride_btn")) => "New Ride",
         ("simulation_dlg", Button::Custom("gen_riders_btn")) => "Generate Riders",
@@ -443,6 +444,7 @@ fn button_label(state: &AppState, id: &str, button: Button) -> &'static str {
         ("crossing_detail_dlg", Button::Custom("edit_btn")) => "Edit Plate",
         ("crossing_detail_dlg", Button::Custom("edit_time_btn")) => "Edit Time…",
         ("crossing_detail_dlg", Button::Custom("void_card_btn")) => "Void Card…",
+        ("crossing_detail_dlg", Button::Custom("delete_btn")) => "Delete…",
         (_, Button::Custom(id)) => id,
     }
 }
