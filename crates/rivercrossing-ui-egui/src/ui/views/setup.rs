@@ -289,7 +289,8 @@ fn logo_group(ui: &mut Ui, state: &mut AppState) {
                 .show(ui)
                 .clicked()
             {
-                state.note(crate::ui::state::FILE_PICKER_UNAVAILABLE);
+                // The picker is the platform's, so the app raises it on its next logic pass.
+                state.choose_logo = true;
             }
         });
     });

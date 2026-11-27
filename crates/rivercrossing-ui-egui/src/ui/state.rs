@@ -92,6 +92,8 @@ pub(crate) enum NativeTask {
         /// The file to write.
         kind: exports::ExportKind,
     },
+    /// Choose the organizer logo through the platform's open picker.
+    ChooseLogo,
     /// Open the page that a successful publish reported.
     OpenPublished {
         /// The page's public URL.
@@ -118,6 +120,7 @@ impl NativeTask {
                 exports::ExportKind::PosterHtml => "export_poster_html",
                 exports::ExportKind::Csv => "export_csv",
             },
+            Self::ChooseLogo => "choose_logo",
             Self::OpenPublished { .. } => "open_published",
             Self::RetryPublish => "retry_publish",
         }
@@ -342,6 +345,8 @@ pub(crate) struct AppState {
     pub(crate) setup_tiebreak: [&'static str; 3],
     /// The setup form's chosen logo path, for the same reason.
     pub(crate) setup_logo: String,
+    /// Set by the setup form's Browse button: the next logic pass raises the platform file picker.
+    pub(crate) choose_logo: bool,
     /// The open dialogs.
     pub(crate) dialogs: DialogStack,
     /// The status notice, when one is posted.
@@ -470,6 +475,7 @@ impl AppState {
             logos: crate::ui::logo::LogoTextures::default(),
             setup_tiebreak: ["high_card", "laps", "total_time"],
             setup_logo: String::new(),
+            choose_logo: false,
             notice: None,
             exports: ExportPresence::default(),
             results: exports::ResultsState::default(),
@@ -1820,9 +1826,10 @@ impl AppState {
             NativeTask::DeleteCrossing { entry, seq } => {
                 let _ = self.delete_crossing(&entry, seq);
             }
-            // The app runs these three itself: a file picker answers with a path, and the publish
+            // The app runs these itself: a file picker answers with a path, and the publish
             // outcomes own their own button rules.
-            NativeTask::ExportFile { .. }
+            NativeTask::ChooseLogo
+            | NativeTask::ExportFile { .. }
             | NativeTask::OpenPublished { .. }
             | NativeTask::RetryPublish => {}
         }
@@ -1855,6 +1862,7 @@ impl AppState {
             NativeTask::Command(CommandId::DuplicateRide) => "Duplicate the open ride?".to_owned(),
             NativeTask::Command(CommandId::AppQuit) => "Quit RiverCrossing?".to_owned(),
             NativeTask::Command(other) => format!("Run {}?", other.as_str()),
+            NativeTask::ChooseLogo => "Choose the organizer logo".to_owned(),
             NativeTask::DuplicateRide { id } => self
                 .library
                 .store_rows
@@ -1903,7 +1911,7 @@ impl AppState {
             NativeTask::Command(_) => "OK",
             NativeTask::DeleteRider { .. } | NativeTask::DeleteCrossing { .. } => "Delete",
             NativeTask::RemoveTeam { .. } => "Remove",
-            NativeTask::ExportFile { .. } => "Save",
+            NativeTask::ExportFile { .. } | NativeTask::ChooseLogo => "Save",
             NativeTask::OpenPublished { .. } => "Open",
             NativeTask::RetryPublish => "Retry",
         }

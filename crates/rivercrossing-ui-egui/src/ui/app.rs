@@ -494,11 +494,23 @@ impl RiverCrossingApp {
     /// modal, a save picker queues its export, and a cancel runs nothing.
     fn answer_native_dialogs(&mut self) {
         for (pending, answer) in self.native.answers() {
+            if let (NativeTask::ChooseLogo, craft::dialogs::Answer::Paths(paths)) =
+                (&pending.then, &answer)
+            {
+                // The picker's answer is the form's logo path; there is nothing else to raise.
+                self.state.setup_logo = paths
+                    .first()
+                    .map_or_else(String::new, |path| path.to_string_lossy().into_owned());
+                continue;
+            }
             match (&pending.then, &answer) {
                 (NativeTask::ExportFile { kind }, craft::dialogs::Answer::Paths(paths)) => {
                     self.pick_export(*kind, paths);
                 }
-                (NativeTask::ExportFile { .. }, craft::dialogs::Answer::Unavailable(reason)) => {
+                (
+                    NativeTask::ChooseLogo | NativeTask::ExportFile { .. },
+                    craft::dialogs::Answer::Unavailable(reason),
+                ) => {
                     self.event("native-unavailable", json!({ "reason": reason }));
                     self.state.note(FILE_PICKER_UNAVAILABLE);
                 }
@@ -757,6 +769,19 @@ impl RiverCrossingApp {
         self.native.ask_file(&pending, dialog);
     }
 
+    /// Raise the platform's open picker for the organizer logo.
+    fn choose_logo(&mut self) {
+        let pending = PendingNative {
+            dialog: NativeDialog::Confirm,
+            then: NativeTask::ChooseLogo,
+        };
+        let dialog = FileDialog::open()
+            .title("Choose the organizer logo")
+            .filter("PNG", &["png"]);
+        self.event("logo-picker", json!({}));
+        self.native.ask_file(&pending, dialog);
+    }
+
     /// Open the last file that *kind* wrote, or post why it cannot.
     fn preview(&mut self, kind: ExportKind) {
         match self.state.preview_target(kind) {
@@ -995,6 +1020,9 @@ impl ShellApp for RiverCrossingApp {
         self.drain_pending_store();
         self.start_pending_create();
         self.raise_native_dialogs();
+        if std::mem::take(&mut self.state.choose_logo) {
+            self.choose_logo();
+        }
         self.run_pending_command();
         self.sync_cancel_flags();
         self.start_pending_publish();
