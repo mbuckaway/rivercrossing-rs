@@ -10,7 +10,7 @@ Architecture: [architecture](architecture.md) §12. Executable matrix: [test pla
   (R-74); exactly one functional test survives (the open/quit smoke). Without a replacement, the
   port's parity with the Python app can only be eyeballed.
 - **EPIC-12 builds every screen.** Every screen and its dialogs are about to be authored from
-  `design/screenshots/` and the §15b frozen-name registry. Without a test contract each screen
+  `design/mockups/` and the §15b frozen-name registry. Without a test contract each screen
   would be verified only by unit tests on its presenter plus manual inspection — built blind.
 - **EPIC-10 delivers the mechanism, not the screens.** An in-process semantic harness,
   deterministic offscreen snapshots, a live token-authenticated control channel, and the scenario

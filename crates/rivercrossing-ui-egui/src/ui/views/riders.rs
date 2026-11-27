@@ -7,103 +7,92 @@
 //! in two modes: Add prefills the next free plate, Edit preloads the selected record, and its Save
 //! commits through the presenter before the dialog closes.
 
-use craft::egui::{self, ComboBox, TextEdit, Ui};
+use craft::egui::Ui;
+use craft::theme::Variant;
+use craft::theme::variant::Tone;
+use craft::ui::buttons::Button;
+use craft::ui::contract::{Bind, Props as _, Show as _};
+use craft::ui::text::TextField;
 
-use super::dialogs::stack_text_field;
-use super::text;
+use super::dialogs::{
+    NAME, PLATE, TEAM, TableData, TableRow, columns, notice, select_owned, stack_select,
+    stack_text_field, table, value,
+};
 use crate::ui::state::AppState;
+use crate::ui::state::RiderSelection;
+
+/// The rider rows' visible height before the table scrolls.
+const VISIBLE_ROWS: u16 = 8;
+
+/// The team choice's `solo` item.
+const SOLO: &str = "solo";
+
+/// The sex choices: blank, `M` or `F`.
+const SEX_CHOICES: [(&str, &str); 3] = [("—", ""), ("M", "M"), ("F", "F")];
 
 /// Show the rider editor's list, record panel and action buttons.
 pub(crate) fn editor_body(ui: &mut Ui, state: &mut AppState) {
     ui.push_id("rider_search", |ui| {
-        ui.horizontal(|ui| {
-            text(ui, "Search");
-            ui.add(
-                TextEdit::singleline(&mut state.rider_editor.search)
-                    .hint_text("Search riders")
-                    .desired_width(240.0),
-            )
-            .accessible_name("Search riders");
-        });
+        let _ = TextField::search("Search riders", Bind::bound(&mut state.rider_editor.search))
+            .show(ui);
     });
     let visible = state.rider_editor.visible();
-    let mut clicked = None;
-    ui.push_id("riders_list", |ui| {
-        egui::ScrollArea::vertical()
-            .id_salt("riders_list_scroll")
-            .max_height(240.0)
-            .show(ui, |ui| {
-                egui::Grid::new("riders_grid")
-                    .num_columns(3)
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for heading in ["Plate", "Name", "Team"] {
-                            text(ui, heading);
-                        }
-                        ui.end_row();
-                        for index in visible {
-                            let Some(row) = state.rider_editor.rows.get(index) else {
-                                continue;
-                            };
-                            let selected =
-                                state
-                                    .rider_editor
-                                    .selected
-                                    .as_ref()
-                                    .is_some_and(|selection| {
-                                        selection.entry == row.entry
-                                            && selection.rider_index == row.rider_index
-                                    });
-                            for cell in [&row.row.plate, &row.row.name, &row.row.team] {
-                                if super::cell(ui, selected, cell) {
-                                    clicked = Some(index);
-                                }
-                            }
-                            ui.end_row();
-                        }
-                    });
-            });
-    });
-    if let Some(index) = clicked
-        && let Some(row) = state.rider_editor.rows.get(index)
+    let rows = roster_rows(state, &visible);
+    let selected = visible.iter().position(|index| selection_at(state, *index));
+    if let Some(key) = table(
+        ui,
+        "riders_list",
+        &rows,
+        VISIBLE_ROWS,
+        "No riders",
+        selected,
+    ) && let Some(index) = visible.get(key)
+        && let Some(row) = state.rider_editor.rows.get(*index)
     {
-        state.rider_editor.selected = Some(crate::ui::state::RiderSelection {
+        state.rider_editor.selected = Some(RiderSelection {
             entry: row.entry.clone(),
             rider_index: row.rider_index,
         });
     }
     record_panel(ui, state);
-    ui.horizontal(|ui| {
-        if ui
-            .push_id("add_btn", |ui| ui.button("Add rider…"))
-            .inner
-            .clicked()
-        {
-            state.open_add_rider();
-        }
-        let selected = state.rider_editor.selected.is_some();
-        if ui
-            .push_id("edit_btn", |ui| {
-                ui.add_enabled(selected, egui::Button::new("Edit Rider…"))
-            })
-            .inner
-            .clicked()
-        {
-            state.open_edit_rider();
-        }
-        if ui
-            .push_id("delete_btn", |ui| {
-                ui.add_enabled(selected, egui::Button::new("Delete"))
-            })
-            .inner
-            .clicked()
-        {
-            let _ = state.raise_delete_rider();
-        }
-    });
+    buttons(ui, state);
     if let Some(errors) = &state.rider_editor.errors {
-        ui.push_id("roster_infobar", |ui| text(ui, errors));
+        notice(ui, "roster_infobar", Tone::Bad, errors.clone());
     }
+}
+
+/// Return the visible roster rows as a table.
+fn roster_rows(state: &AppState, visible: &[usize]) -> TableData {
+    let mut rows = Vec::with_capacity(visible.len());
+    for index in visible {
+        let Some(row) = state.rider_editor.rows.get(*index) else {
+            continue;
+        };
+        rows.push(TableRow {
+            label: row.row.name.clone(),
+            cells: vec![
+                (PLATE, row.row.plate.clone()),
+                (NAME, row.row.name.clone()),
+                (TEAM, row.row.team.clone()),
+            ],
+        });
+    }
+    TableData {
+        columns: columns(&[(PLATE, "Plate"), (NAME, "Name"), (TEAM, "Team")]),
+        rows,
+    }
+}
+
+/// Return whether the row at *index* is the selected record.
+fn selection_at(state: &AppState, index: usize) -> bool {
+    let Some(selection) = state.rider_editor.selected.as_ref() else {
+        return false;
+    };
+    state
+        .rider_editor
+        .rows
+        .get(index)
+        .is_some_and(|row| selection.entry == row.entry && selection.rider_index == row.rider_index)
 }
 
 /// Show the selected record as its read-only fields.
@@ -114,7 +103,7 @@ fn record_panel(ui: &mut Ui, state: &mut AppState) {
         .as_ref()
         .and_then(|selection| state.rider_record(selection));
     // Mirror the record into the frozen field map so `ui.inspect` reads what the panel displays.
-    for (id, value) in [
+    for (id, text) in [
         (
             "plate_input",
             record.as_ref().map_or("", |r| r.plate.as_str()),
@@ -132,118 +121,100 @@ fn record_panel(ui: &mut Ui, state: &mut AppState) {
             record.as_ref().map_or("", |r| r.team.as_str()),
         ),
     ] {
-        let _ = state.dialogs.set_field(id, value);
+        let _ = state.dialogs.set_field(id, text);
     }
     ui.horizontal(|ui| {
-        record_value(
+        value(
             ui,
             "plate_input",
             "Plate",
-            record.as_ref().map(|r| r.plate.as_str()),
+            record.as_ref().map_or("", |r| r.plate.as_str()),
         );
-        record_value(
+        value(
             ui,
             "first_name_input",
             "First name",
-            record.as_ref().map(|r| r.first.as_str()),
+            record.as_ref().map_or("", |r| r.first.as_str()),
         );
-        record_value(
+        value(
             ui,
             "last_name_input",
             "Last name",
-            record.as_ref().map(|r| r.last.as_str()),
+            record.as_ref().map_or("", |r| r.last.as_str()),
         );
-        record_value(
+        value(
             ui,
             "team_choice",
             "Team",
-            record.as_ref().map(|r| r.team.as_str()),
+            record.as_ref().map_or("", |r| r.team.as_str()),
         );
     });
 }
 
-/// Show one read-only record value under its caption.
-fn record_value(ui: &mut Ui, id: &str, caption: &str, value: Option<&str>) {
-    ui.push_id(id, |ui| {
-        ui.vertical(|ui| {
-            text(ui, caption);
-            text(ui, value.unwrap_or(""));
+/// Show the Add, Edit and Delete buttons.
+fn buttons(ui: &mut Ui, state: &mut AppState) {
+    let selected = state.rider_editor.selected.is_some();
+    ui.horizontal(|ui| {
+        ui.push_id("add_btn", |ui| {
+            if Button::new("Add rider…")
+                .variant(Variant::PRIMARY)
+                .show(ui)
+                .clicked()
+            {
+                state.open_add_rider();
+            }
+        });
+        ui.push_id("edit_btn", |ui| {
+            let clicked = Button::new("Edit Rider…")
+                .variant(Variant::SECONDARY)
+                .enabled(selected)
+                .show(ui)
+                .clicked();
+            if clicked {
+                state.open_edit_rider();
+            }
+        });
+        ui.push_id("delete_btn", |ui| {
+            let clicked = Button::new("Delete")
+                .variant(Variant::DANGER)
+                .enabled(selected)
+                .show(ui)
+                .clicked();
+            if clicked {
+                let _ = state.raise_delete_rider();
+            }
         });
     });
 }
 
 /// Show the Add/Edit rider form.
-pub(crate) fn form_body(ui: &mut Ui, state: &mut AppState, focused: Option<&str>) {
-    stack_text_field(ui, state, "plate_input", "Plate", focused);
-    stack_text_field(ui, state, "first_name_input", "First name", focused);
-    stack_text_field(ui, state, "last_name_input", "Last name", focused);
+pub(crate) fn form_body(ui: &mut Ui, state: &mut AppState) {
+    stack_text_field(ui, state, "plate_input", "Plate");
+    stack_text_field(ui, state, "first_name_input", "First name");
+    stack_text_field(ui, state, "last_name_input", "Last name");
     team_choice(ui, state);
-    sex_choice(ui, state);
+    stack_select(ui, state, "sex_choice", "Sex", &SEX_CHOICES);
     if let Some(errors) = &state.rider_editor.errors {
-        ui.push_id("add_rider_infobar", |ui| text(ui, errors));
+        notice(ui, "add_rider_infobar", Tone::Bad, errors.clone());
     }
 }
 
 /// Show the team choice: `solo` or one live team by name.
 fn team_choice(ui: &mut Ui, state: &mut AppState) {
-    let current = state
+    let mut choices: Vec<(String, String)> = vec![(SOLO.to_owned(), SOLO.to_owned())];
+    if let Some(ride) = state.ride.as_ref() {
+        for entry in ride.roster.entries() {
+            if entry.kind == rivercrossing_roster::enums::EntryType::Team {
+                choices.push((entry.display_name.clone(), entry.display_name.clone()));
+            }
+        }
+    }
+    let stored = state
         .dialogs
         .field("team_choice")
-        .unwrap_or("solo")
+        .unwrap_or(SOLO)
         .to_owned();
-    let mut selected = current.clone();
-    let mut choices = vec!["solo".to_owned()];
-    if let Some(ride) = state.ride.as_ref() {
-        choices.extend(
-            ride.roster
-                .entries()
-                .iter()
-                .filter(|entry| entry.kind == rivercrossing_roster::enums::EntryType::Team)
-                .map(|entry| entry.display_name.clone()),
-        );
-    }
-    ui.push_id("team_choice", |ui| {
-        ui.horizontal(|ui| {
-            text(ui, "Team");
-            ComboBox::from_id_salt("team_choice_combo")
-                .selected_text(&selected)
-                .show_ui(ui, |ui| {
-                    for choice in &choices {
-                        ui.selectable_value(&mut selected, choice.clone(), choice.clone());
-                    }
-                })
-                .response
-                .accessible_name("Team");
-        });
-    });
-    if selected != current {
-        let _ = state.dialogs.set_field("team_choice", selected);
-    }
-}
-
-/// Show the sex choice: blank, `M` or `F`.
-fn sex_choice(ui: &mut Ui, state: &mut AppState) {
-    let current = state.dialogs.field("sex_choice").unwrap_or("").to_owned();
-    let mut selected = current.clone();
-    ui.push_id("sex_choice", |ui| {
-        ui.horizontal(|ui| {
-            text(ui, "Sex");
-            ComboBox::from_id_salt("sex_choice_combo")
-                .selected_text(if selected.is_empty() {
-                    "—"
-                } else {
-                    selected.as_str()
-                })
-                .show_ui(ui, |ui| {
-                    for choice in ["", "M", "F"] {
-                        ui.selectable_value(&mut selected, choice.to_owned(), choice);
-                    }
-                })
-                .response
-                .accessible_name("Sex");
-        });
-    });
-    if selected != current {
-        let _ = state.dialogs.set_field("sex_choice", selected);
+    if let Some(picked) = select_owned(ui, "team_choice", "Team", &stored, &choices) {
+        let _ = state.dialogs.set_field("team_choice", picked);
     }
 }

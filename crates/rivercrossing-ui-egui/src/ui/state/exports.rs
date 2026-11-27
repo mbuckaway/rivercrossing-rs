@@ -9,11 +9,14 @@ use std::path::{Path, PathBuf};
 
 use rivercrossing_htmlexport::types::ExportInput;
 use rivercrossing_ride::EntryMode;
-use time::OffsetDateTime;
+use time::{Date, OffsetDateTime};
 
 use super::AppState;
 use crate::ui::action::spec::CommandId;
-use crate::ui::presenters::{export_input, publish_wordpress, results, simulator};
+use crate::ui::presenters::{export_input, publish_wordpress, results, ride_defaults, simulator};
+
+/// The refusal when the simulator's New Ride finds a ride already open.
+const SIM_RIDE_OPEN: &str = "A ride is already open";
 
 /// The results notebook's selected tab.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -434,6 +437,49 @@ impl AppState {
         for (field, value) in labels {
             let _ = self.dialogs.set_field(field, count_label(i64::from(value)));
         }
+    }
+
+    /// Create the simulator's "GORBA Test Ride #N" and close its dialog.
+    ///
+    /// The ride reuses the New Ride create path: the config goes into `pending_create`, which the
+    /// app's logic pass hands to the store. The number is the next free one among the ride library's
+    /// cached rows, and the gun is 10:00 on *today*, as the oracle's simulator did.
+    ///
+    /// # Errors
+    ///
+    /// Return the already-open refusal when a ride is loaded, so this route can never replace a live
+    /// ride with a throwaway.
+    pub(crate) fn create_sim_test_ride(&mut self, today: Date) -> Result<(), String> {
+        if self.ride.is_some() {
+            return Err(SIM_RIDE_OPEN.to_owned());
+        }
+        let existing: Vec<String> = self
+            .library
+            .store_rows
+            .iter()
+            .map(|row| row.name.clone())
+            .collect();
+        let name = ride_defaults::next_test_ride_name(&existing);
+        let planned_start = ride_defaults::test_ride_planned_start(today);
+        self.pending_create = Some(ride_defaults::build_test_ride_config(
+            &name,
+            today,
+            planned_start,
+        ));
+        let _ = self.dialogs.cancel();
+        Ok(())
+    }
+
+    /// Return whether the simulator's New Ride button accepts a click: only with no ride open.
+    #[must_use]
+    pub(crate) fn sim_new_ride_enabled(&self) -> bool {
+        self.ride.is_none()
+    }
+
+    /// Return whether the simulator's GO button accepts a click: only with a ride open.
+    #[must_use]
+    pub(crate) fn sim_go_enabled(&self) -> bool {
+        self.ride.is_some()
     }
 
     /// Return the simulator's five numeric fields and three count choices.

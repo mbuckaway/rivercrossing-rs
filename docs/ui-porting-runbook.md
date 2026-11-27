@@ -13,6 +13,17 @@ accumulated knowledge instead of re-learning it.
   (`gui-windows.md`, settings, registry, dialogs, state/worker, ride setup + `main_frame` console,
   sound, logging, theme/zoom, automation), **12b** editors/CSV, **12c** lifecycle/corrections/system,
   **12d** results/exports/publish/simulator, **12e** close-out (R-73 sweep, R-76 per dialog, Tier C).
+- [x] **ArtCraft UI redesign — design complete.** `ui-contract.md`, `visual-style.md`,
+  `control-mapping.md`, `screen-specs.md`, the approved `design/mockups/`, and
+  `docs/artcraft-ui-runbook.md` are in place. Implementation is **EPIC-15**; the wx visual layer is
+  retired.
+- [x] **EPIC-15 implementation complete (code).** Activation/repaint + wall clock, native macOS menu,
+  macOS close-hides, `RootEnv` theming + Settings appearance, the docked shell + console, the 29 dialogs
+  on the craft dialog host, and the `new_ride_btn`/`go_btn` parity gaps. 1406 UI + 503 store unit tests
+  pass. **Phase 6 is green on the Linux VM:** `validate-rust.sh` passed (4300 tests, line 97.03% / branch
+  93.71%), the 30 goldens are re-baselined there, and both Tier B smokes pass. The Mac `-P ui` compare
+  differs from the lavapipe goldens (Metal text AA), so the Mac visual check is a manual pass; the native
+  macOS menu and minimize/Dock-restore also need that manual pass.
 
 ## Build prerequisites and the platform split
 
@@ -364,7 +375,7 @@ the scenario JSON is the cross-language contract.
   3.14 / wxPython 4.3.1 oracle checkout and a desktop session, and it is not part of the gate. The
   SKIP file stays until that run is green; nothing here claims parity was measured.
 - **What remains for the operator (not the Linux gate):** the Mac visual pass over the 30 goldens
-  against `design/screenshots/`, the real save/open pickers and native boxes on macOS, the Tier C
+  against `design/mockups/`, the real save/open pickers and native boxes on macOS, the Tier C
   run, audio on a machine with an output device, and the Windows cross-check with `ring` in the
   graph at release. The Windows *target* check is runnable from this box; a real Windows run is
   EPIC-13.

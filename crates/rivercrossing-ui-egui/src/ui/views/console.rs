@@ -1,23 +1,55 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-//! The `main_frame` console: the ride header, the clock columns, the plate entry, the crossings
-//! feed with its two optional time columns (R-37), the counters and the two-tab review notebook
-//! (R-84).
+//! The `main_frame` console on the `ArtCraft` docked shell.
 //!
-//! Every control carries its frozen §15b id through `ui.push_id` and an explicit accessible name.
-//! The stop light never carries meaning by colour alone: the state label beside it spells the ride
-//! state. The console reads the presenter models; it makes no decision of its own.
+//! The shell holds the title bar (with the in-window menu bar where no platform bar is installed), the options
+//! bar (appearance, density and zoom), the tool rail, the workspace and the status bar. The workspace holds the
+//! ride header, the two flattened clocks (`Progress` plus a numeric read-out), the plate-entry row, and the two
+//! docked panels: the crossings feed and the Riders / Needs Review review notebook.
+//!
+//! Every control keeps its frozen §15b id through `ui.push_id` and its accessible name. The ride state never
+//! reads by colour alone: the badge beside the state label spells the same word. The console reads the
+//! presenter models; it makes no decision of its own.
 
-use craft::egui::{self, Color32, Key, Stroke, TextEdit, Ui};
-use rivercrossing_ride::RideStatus;
-use rivercrossing_ride::RosterView;
+use std::borrow::Cow;
 
-use super::text;
-use crate::ui::action::enable::RidePhase;
-use crate::ui::action::id::{MI_START_RIDE, MI_STOP_RIDE, MI_UNDO_CROSSING};
-use crate::ui::presenters::console::{self, ConsoleGates};
-use crate::ui::presenters::data_source::{self, Counters, FeedRow, StopLight, format_duration};
+use craft::behavior::{
+    Axis, ColumnKey, ColumnWidth, DisplayOrder, ItemSource, Selection, SelectionChange,
+};
+use craft::egui::{Align, Layout, Ui, vec2};
+use craft::theme::Variant;
+use craft::theme::variant::{Emphasis, Tone};
+use craft::ui::bars::{Bar, BarKind};
+use craft::ui::buttons::Button;
+use craft::ui::choice::Checkbox;
+use craft::ui::contract::{
+    Bind, CollectionEvent, ColumnSpec, Entry, Props as _, Show as _, ShowCollection as _,
+    ShowContainer as _, Sizing,
+};
+use craft::ui::display::{Badge, Divider, Progress, Shade, Text};
+use craft::ui::docking::Splitter;
+use craft::ui::list::ListRow;
+use craft::ui::pickers::Select;
+use craft::ui::runtime::env::WindowKey;
+use craft::ui::sections::Panel;
+use craft::ui::shell::{AppShell, Slot, SlotSize, Title, TitleBar};
+use craft::ui::table::Table;
+use craft::ui::tabs::{Tab, TabStrip, TabStripOutput};
+use craft::ui::text::TextField;
+use rivercrossing_ride::{RideStatus, RosterView};
+
+use super::menu;
+use crate::ui::action::enable::{GateState, RidePhase, enabled};
+use crate::ui::action::id::{
+    ActionId, MI_AUDIT_TRAIL, MI_CHECK_RIDER_ISSUES, MI_OPEN_LIBRARY, MI_RIDER_EDITOR,
+    MI_STANDINGS, MI_START_RIDE, MI_STOP_RIDE, MI_TEAM_EDITOR, MI_UNDO_CROSSING, WX_ID_PREFERENCES,
+};
+use crate::ui::presenters::console as labels;
+use crate::ui::presenters::data_source::{
+    self, Counters, FeedRow, ReviewRow, StopLight, format_duration,
+};
 use crate::ui::state::{AppState, ConsoleTab};
+use crate::ui::window::APP_NAME;
 
 /// The status label's text when no ride is open.
 const NO_RIDE: &str = "NO RIDE";
@@ -25,52 +57,361 @@ const NO_RIDE: &str = "NO RIDE";
 /// The plate field's hint while the entry is closed.
 const ENTRY_CLOSED_HINT: &str = "start the ride to record";
 
-/// The diameter of one clock dial, in points.
-const DIAL_SIZE: f32 = 48.0;
+/// The plate field's hint while the entry is open.
+const ENTRY_OPEN_HINT: &str = "Plate";
 
-/// Show the whole console.
-pub(crate) fn show(ui: &mut Ui, state: &mut AppState) {
-    ui.vertical(|ui| {
-        header(ui, state);
-        ui.add_space(4.0);
-        entry_row(ui, state);
-        ui.separator();
-        ui.horizontal_top(|ui| {
-            ui.vertical(|ui| feed_panel(ui, state));
-            ui.separator();
-            ui.vertical(|ui| review_panel(ui, state));
-        });
-        ui.separator();
-        status_bar(ui, state);
+/// The search field's accessible name.
+const SEARCH_LABEL: &str = "Search crossings";
+
+/// The last-crossing line with no crossings yet.
+const NO_CROSSINGS: &str = "No crossings yet";
+
+/// The review dock's share of the workspace width; the feed takes the rest.
+const REVIEW_DOCK_SHARE: f32 = 1.0 / 3.0;
+
+/// The crossings feed's visible rows before it scrolls inside its panel.
+const FEED_ROWS: u16 = 8;
+
+/// The review tables' visible rows before they scroll inside their panel.
+const REVIEW_ROWS: u16 = 8;
+
+/// The System appearance choice.
+const APPEARANCE_SYSTEM: u8 = 0;
+/// The Light appearance choice.
+const APPEARANCE_LIGHT: u8 = 1;
+/// The Dark appearance choice.
+const APPEARANCE_DARK: u8 = 2;
+
+/// The Compact density choice.
+const DENSITY_COMPACT: u8 = 0;
+/// The Comfortable density choice.
+const DENSITY_COMFORTABLE: u8 = 1;
+
+/// The Start and Stop ride buttons, gated by and dispatching their §15 actions.
+const RUN_BUTTONS: [(ActionId, &str, Variant); 2] = [
+    (MI_START_RIDE, labels::START_RIDE_LABEL, Variant::PRIMARY),
+    (MI_STOP_RIDE, labels::STOP_RIDE_LABEL, Variant::SECONDARY),
+];
+
+/// The tool rail: the seven navigation entries, each dispatching the same action as the menu.
+const RAIL: [(ActionId, &str); 7] = [
+    (MI_OPEN_LIBRARY, "Ride Library"),
+    (MI_RIDER_EDITOR, "Rider Editor"),
+    (MI_TEAM_EDITOR, "Team Editor"),
+    (MI_CHECK_RIDER_ISSUES, "Rider Issues"),
+    (MI_STANDINGS, "Standings"),
+    (MI_AUDIT_TRAIL, "Audit Trail"),
+    (WX_ID_PREFERENCES, "Settings"),
+];
+
+/// The crossings feed's label and plate columns.
+const NAME: ColumnKey = ColumnKey::new("name");
+/// The plate column.
+const PLATE: ColumnKey = ColumnKey::new("plate");
+/// The dealt-card column.
+const CARD: ColumnKey = ColumnKey::new("card");
+/// The lap column.
+const LAP: ColumnKey = ColumnKey::new("lap");
+/// The lap-time column.
+const LAP_TIME: ColumnKey = ColumnKey::new("lap_time");
+/// The total-time column.
+const TOTAL: ColumnKey = ColumnKey::new("total");
+/// The team column.
+const TEAM: ColumnKey = ColumnKey::new("team");
+/// The review-issue column.
+const ISSUE: ColumnKey = ColumnKey::new("issue");
+
+/// Show the whole console on the docked shell.
+pub(crate) fn show(ui: &mut Ui, state: &mut AppState, menu_bar: bool) {
+    AppShell::new(WindowKey::main())
+        .title_bar(move |ui, _, state: &mut AppState| {
+            title_bar(ui, state, menu_bar);
+        })
+        .options_bar(true, |ui, _, state| options_bar(ui, state))
+        .start(
+            Slot::new("main_tool_rail")
+                .reveal()
+                .size(SlotSize::Content)
+                .label("Tools"),
+            |ui, _, state| rail(ui, state),
+        )
+        .status(true, |ui, _, state| status_bar(ui, state))
+        .body_label("Console")
+        .body(|ui, _, state| body(ui, state))
+        .show(ui, state);
+}
+
+// ----------------------------------------------------------------- title bar
+
+/// Show the title bar: the in-window menu bar where no platform bar is installed, then the product and ride title.
+fn title_bar(ui: &mut Ui, state: &mut AppState, menu_bar: bool) {
+    let _ = TitleBar::new().title_when_native().show_titled(
+        ui,
+        Title::new(ride_title(state)),
+        |ui, _| {
+            if menu_bar {
+                menu::show(ui, state);
+            }
+        },
+        |_, _| {},
+    );
+}
+
+/// Return the title bar's text: the product name, with the ride's name when one is open.
+fn ride_title(state: &AppState) -> String {
+    match &state.ride {
+        Some(ride) => format!("{APP_NAME} — {}", ride.config.name),
+        None => APP_NAME.to_owned(),
+    }
+}
+
+// ---------------------------------------------------------------- options bar
+
+/// Show the options bar: the appearance and density choices and the zoom read-out.
+fn options_bar(ui: &mut Ui, state: &mut AppState) {
+    let _ = Bar::new("Options", BarKind::Options).show(ui, |ui, _| {
+        appearance_choice(ui, state);
+        density_choice(ui, state);
+        let _ = Divider::vertical().show(ui);
+        let _ = Text::new(format!("Zoom {}%", state.settings.zoom_percent)).show(ui);
     });
 }
 
-// ----------------------------------------------------------------- header
+/// Show the appearance choice and persist a new mode.
+fn appearance_choice(ui: &mut Ui, state: &mut AppState) {
+    let entries = [
+        Entry::new(APPEARANCE_SYSTEM, "System"),
+        Entry::new(APPEARANCE_LIGHT, "Light"),
+        Entry::new(APPEARANCE_DARK, "Dark"),
+    ];
+    let current = appearance_index(&state.settings.appearance);
+    let mut picked = current;
+    let _ = Select::new("Appearance", Bind::bound(&mut picked), &entries)
+        .sizing(Sizing::Content)
+        .show(ui);
+    if picked != current {
+        appearance_spelling(picked).clone_into(&mut state.settings.appearance);
+        let _ = state.save_settings();
+    }
+}
 
-/// Show the status light, the ride groups, the lap, the two clock columns and the run buttons.
+/// Show the density choice and persist a new preset.
+fn density_choice(ui: &mut Ui, state: &mut AppState) {
+    let entries = [
+        Entry::new(DENSITY_COMPACT, "Compact"),
+        Entry::new(DENSITY_COMFORTABLE, "Comfortable"),
+    ];
+    let current = density_index(&state.settings.density);
+    let mut picked = current;
+    let _ = Select::new("Density", Bind::bound(&mut picked), &entries)
+        .sizing(Sizing::Content)
+        .show(ui);
+    if picked != current {
+        density_spelling(picked).clone_into(&mut state.settings.density);
+        let _ = state.save_settings();
+    }
+}
+
+/// Return the appearance choice for a stored spelling; an unknown spelling is System.
+fn appearance_index(spelling: &str) -> u8 {
+    match spelling {
+        "light" => APPEARANCE_LIGHT,
+        "dark" => APPEARANCE_DARK,
+        _ => APPEARANCE_SYSTEM,
+    }
+}
+
+/// Return the stored spelling for an appearance choice.
+fn appearance_spelling(choice: u8) -> &'static str {
+    match choice {
+        APPEARANCE_LIGHT => "light",
+        APPEARANCE_DARK => "dark",
+        _ => "system",
+    }
+}
+
+/// Return the density choice for a stored spelling; an unknown spelling is Compact.
+fn density_index(spelling: &str) -> u8 {
+    if spelling == "comfortable" {
+        DENSITY_COMFORTABLE
+    } else {
+        DENSITY_COMPACT
+    }
+}
+
+/// Return the stored spelling for a density choice.
+fn density_spelling(choice: u8) -> &'static str {
+    if choice == DENSITY_COMFORTABLE {
+        "comfortable"
+    } else {
+        "compact"
+    }
+}
+
+// -------------------------------------------------------------------- the rail
+
+/// Show the tool rail: one navigation button per entry, each gated and dispatching its §15 action.
+fn rail(ui: &mut Ui, state: &mut AppState) {
+    let gate = state.gate();
+    ui.vertical(|ui| {
+        for (id, label) in RAIL {
+            let on = state.implemented(id) && enabled(id, &gate);
+            ui.push_id(id.as_str(), |ui| {
+                let clicked = Button::new(label)
+                    .variant(Variant::GHOST)
+                    .enabled(on)
+                    .show(ui)
+                    .clicked();
+                if clicked {
+                    let _ = state.act(id);
+                }
+            });
+        }
+    });
+}
+
+// ----------------------------------------------------------------- status bar
+
+/// Show the status bar: the six count chips and the ride or notice read-out.
+fn status_bar(ui: &mut Ui, state: &AppState) {
+    let counters = counters(state);
+    let readout = status_readout(state);
+    ui.push_id("main_statusbar", |ui| {
+        let _ = Bar::new("Status", BarKind::Status).show(ui, |ui, _| {
+            chip(
+                ui,
+                "crossings_count_lbl",
+                format!("Crossings {}", counters.crossings),
+            );
+            chip(
+                ui,
+                "cards_count_lbl",
+                format!("Cards {}", counters.cards_dealt),
+            );
+            chip(
+                ui,
+                "on_course_lbl",
+                format!("On course {}", counters.on_course),
+            );
+            chip(
+                ui,
+                "shoe_lbl",
+                format!("Shoe {}/{}", counters.shoe_remaining, counters.shoe_total),
+            );
+            chip(
+                ui,
+                "riders_count_lbl",
+                format!("Riders {}", counters.riders),
+            );
+            chip(ui, "teams_count_lbl", format!("Teams {}", counters.teams));
+            let _ = Divider::vertical().show(ui);
+            let _ = Text::new(readout.clone()).show(ui);
+        });
+    });
+}
+
+/// Show one count chip under its frozen id.
+fn chip(ui: &mut Ui, id: &'static str, label: String) {
+    ui.push_id(id, |ui| {
+        let _ = Badge::new(label).show(ui);
+    });
+}
+
+/// Return the ride's counters, or the all-zero counters with no ride.
+fn counters(state: &AppState) -> Counters {
+    match &state.ride {
+        Some(ride) => data_source::counters(&ride.engine, &ride.roster),
+        None => empty_counters(),
+    }
+}
+
+/// Return the status read-out: the last notice, else the ride state's word.
+fn status_readout(state: &AppState) -> String {
+    state.notice.clone().unwrap_or_else(|| status_word(state))
+}
+
+/// Return the ride state's word, or the no-ride word.
+fn status_word(state: &AppState) -> String {
+    let (status, stopped) = match &state.ride {
+        Some(ride) => (Some(ride.engine.state()), ride.engine.stopped()),
+        None => (None, false),
+    };
+    status.map_or_else(
+        || NO_RIDE.to_owned(),
+        |status| data_source::status_text(status, stopped),
+    )
+}
+
+// ------------------------------------------------------------------ workspace
+
+/// Show the workspace: the header, the clocks, the entry row and the two docked panels.
+fn body(ui: &mut Ui, state: &mut AppState) {
+    ui.vertical(|ui| {
+        header(ui, state);
+        clocks_row(ui, state);
+        entry_row(ui, state);
+        docks(ui, state);
+    });
+}
+
+/// Show the header strip: the status badge and word, the ride identity and the current lap.
 fn header(ui: &mut Ui, state: &mut AppState) {
-    let (status, stopped, lap, config) = match &state.ride {
+    let (light, word, lap) = ride_identity(state);
+    ui.push_id("ride_status_panel", |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.push_id("ride_status_light", |ui| {
+                ride_badge(ui, light, word.clone());
+            });
+            ui.push_id("ride_status_lbl", |ui| {
+                let _ = Text::new(word.clone()).show(ui);
+            });
+            ride_values(ui, state);
+            ui.push_id("current_lap_lbl", |ui| {
+                let _ = Text::new(format!("Lap {lap}")).show(ui);
+            });
+        });
+    });
+}
+
+/// Return the stop-light mode, the state word and the current lap.
+fn ride_identity(state: &AppState) -> (StopLight, String, u32) {
+    let (status, stopped, lap) = match &state.ride {
         Some(ride) => (
             Some(ride.engine.state()),
             ride.engine.stopped(),
             data_source::current_lap(ride.engine.crossings()),
-            Some(&ride.config),
         ),
-        None => (None, false, 0, None),
+        None => (None, false, 0),
     };
     let light = data_source::stop_light_mode(status, stopped);
-    let status_text = status.map_or_else(
+    let word = status.map_or_else(
         || NO_RIDE.to_owned(),
         |status| data_source::status_text(status, stopped),
     );
-    let (name, date, venue, organizer, scorer, lap_km) = match config {
-        Some(config) => (
-            config.name.clone(),
-            format_date(config.event_date),
-            config.venue.clone(),
-            config.organizer.clone(),
-            config.scorer.clone(),
-            config.lap_km,
+    (light, word, lap)
+}
+
+/// Show the ride status badge in its state tone.
+fn ride_badge(ui: &mut Ui, light: StopLight, word: String) {
+    let variant = match light {
+        StopLight::Off => Variant::look(Emphasis::Soft, Tone::Neutral),
+        StopLight::Green => Variant::look(Emphasis::Soft, Tone::Good),
+        StopLight::Yellow => Variant::look(Emphasis::Soft, Tone::Warn),
+        StopLight::Red => Variant::look(Emphasis::Soft, Tone::Bad),
+    };
+    let _ = Badge::new(word).variant(variant).show(ui);
+}
+
+/// Show the six ride identity read-outs.
+fn ride_values(ui: &mut Ui, state: &AppState) {
+    let (name, date, venue, organizer, scorer, lap_km) = match &state.ride {
+        Some(ride) => (
+            ride.config.name.clone(),
+            format_date(ride.config.event_date),
+            ride.config.venue.clone(),
+            ride.config.organizer.clone(),
+            ride.config.scorer.clone(),
+            format!("{:.1}", ride.config.lap_km),
         ),
         None => (
             String::new(),
@@ -78,45 +419,59 @@ fn header(ui: &mut Ui, state: &mut AppState) {
             String::new(),
             String::new(),
             String::new(),
-            0.0,
+            String::new(),
         ),
     };
-    ui.horizontal(|ui| {
-        ui.push_id("ride_status_panel", |ui| {
-            ui.horizontal(|ui| {
-                ui.push_id("ride_status_light", |ui| stop_light(ui, light));
-                ui.push_id("ride_status_lbl", |ui| text(ui, &status_text));
-            });
-        });
-        ui.separator();
-        value(ui, "ride_name_value", "Ride", &name);
-        value(ui, "ride_date_value", "Date", &date);
-        value(ui, "ride_venue_value", "Venue", &venue);
-        value(ui, "ride_organizer_value", "Organizer", &organizer);
-        value(ui, "ride_scorer_value", "Scorer", &scorer);
-        value(ui, "ride_lap_km_value", "Lap km", &format!("{lap_km:.1}"));
-        ui.separator();
-        ui.push_id("current_lap_lbl", |ui| text(ui, &format!("Lap {lap}")));
-        ui.separator();
-        clocks(ui, state);
-        ui.separator();
-        buttons(ui, state);
-    });
+    value(ui, "ride_name_value", "Ride", name);
+    value(ui, "ride_date_value", "Date", date);
+    value(ui, "ride_venue_value", "Venue", venue);
+    value(ui, "ride_organizer_value", "Organizer", organizer);
+    value(ui, "ride_scorer_value", "Scorer", scorer);
+    value(ui, "ride_lap_km_value", "Lap km", lap_km);
 }
 
 /// Show one header value as its caption beside the value.
-fn value(ui: &mut Ui, id: &str, caption: &str, value: &str) {
+fn value(ui: &mut Ui, id: &'static str, caption: &'static str, value: String) {
     ui.push_id(id, |ui| {
         ui.vertical(|ui| {
-            text(ui, caption);
-            text(ui, value);
+            let _ = Text::new(caption).shade(Shade::Muted).show(ui);
+            let _ = Text::new(value).show(ui);
         });
     });
 }
 
-/// Show the two clock columns, each a caption, a dial and its numeric readout.
-fn clocks(ui: &mut Ui, state: &mut AppState) {
-    let (elapsed, remaining, total) = match &state.ride {
+/// Show the two flattened clock columns.
+fn clocks_row(ui: &mut Ui, state: &mut AppState) {
+    let (elapsed, remaining, total) = clock_readings(state);
+    ui.horizontal_top(|ui| {
+        clock_column(
+            ui,
+            ClockView {
+                panel: "elapsed_clock_panel",
+                clock: "elapsed_clock",
+                label: "clock_elapsed_lbl",
+                caption: "Elapsed",
+                fraction: data_source::clock_fraction(elapsed, total),
+                reading: format_duration(elapsed),
+            },
+        );
+        clock_column(
+            ui,
+            ClockView {
+                panel: "remaining_clock_panel",
+                clock: "remaining_clock",
+                label: "clock_remaining_lbl",
+                caption: "Remaining",
+                fraction: data_source::clock_fraction(remaining, total),
+                reading: format_duration(remaining),
+            },
+        );
+    });
+}
+
+/// Return the elapsed, remaining and planned seconds the clocks read.
+fn clock_readings(state: &AppState) -> (f64, f64, f64) {
+    match &state.ride {
         Some(ride) => {
             let seconds = data_source::clock_seconds(&ride.engine, state.clock_frozen);
             let total = f64::from(ride.config.planned_duration_s);
@@ -127,170 +482,129 @@ fn clocks(ui: &mut Ui, state: &mut AppState) {
             }
         }
         None => (0.0, 0.0, 0.0),
-    };
-    clock_column(
-        ui,
-        "elapsed_clock_panel",
-        "elapsed_clock",
-        "clock_elapsed_lbl",
-        "Elapsed",
-        data_source::clock_fraction(elapsed, total),
-        &format_duration(elapsed),
-    );
-    clock_column(
-        ui,
-        "remaining_clock_panel",
-        "remaining_clock",
-        "clock_remaining_lbl",
-        "Remaining",
-        data_source::clock_fraction(remaining, total),
-        &format_duration(remaining),
-    );
+    }
 }
 
-/// Show one clock column.
-fn clock_column(
-    ui: &mut Ui,
-    panel: &str,
-    clock: &str,
-    label: &str,
-    caption: &str,
+/// One clock column's frozen ids, caption, progress and read-out.
+struct ClockView {
+    /// The `*_clock_panel` id.
+    panel: &'static str,
+    /// The `*_clock` id of the progress bar.
+    clock: &'static str,
+    /// The `clock_*_lbl` id of the numeric read-out.
+    label: &'static str,
+    /// The visible caption.
+    caption: &'static str,
+    /// The bar's filled fraction.
     fraction: f32,
-    reading: &str,
-) {
+    /// The numeric read-out.
+    reading: String,
+}
+
+/// Show one clock column: the caption and read-out over the progress bar.
+fn clock_column(ui: &mut Ui, view: ClockView) {
+    let ClockView {
+        panel,
+        clock,
+        label,
+        caption,
+        fraction,
+        reading,
+    } = view;
     ui.push_id(panel, |ui| {
-        ui.vertical(|ui| {
-            text(ui, caption);
-            ui.push_id(clock, |ui| dial(ui, fraction));
-            ui.push_id(label, |ui| text(ui, reading));
+        ui.horizontal(|ui| {
+            let _ = Text::new(caption).shade(Shade::Muted).show(ui);
+            ui.push_id(label, |ui| {
+                let _ = Text::new(reading.clone()).show(ui);
+            });
+        });
+        ui.push_id(clock, |ui| {
+            let _ = Progress::new(fraction)
+                .label(caption)
+                .sizing(Sizing::FillWidth)
+                .show(ui);
         });
     });
 }
 
-/// Paint a clock dial that fills toward *fraction*.
-fn dial(ui: &mut Ui, fraction: f32) {
-    let (rect, _response) =
-        ui.allocate_exact_size(egui::vec2(DIAL_SIZE, DIAL_SIZE), egui::Sense::hover());
-    let painter = ui.painter();
-    let center = rect.center();
-    let radius = rect.width() / 2.0 - 2.0;
-    painter.circle_stroke(
-        center,
-        radius,
-        Stroke::new(2.0, ui.visuals().weak_text_color()),
-    );
-    let angle = -std::f32::consts::FRAC_PI_2 + fraction * std::f32::consts::TAU;
-    let tip = center + egui::vec2(radius * angle.cos(), radius * angle.sin());
-    painter.line_segment(
-        [center, tip],
-        Stroke::new(3.0, ui.visuals().selection.stroke.color),
-    );
-}
+// ------------------------------------------------------------------ entry row
 
-/// Paint the ride-status stop light.
-fn stop_light(ui: &mut Ui, mode: StopLight) {
-    let colour = match mode {
-        StopLight::Off => Color32::from_gray(140),
-        StopLight::Green => Color32::from_rgb(46, 160, 67),
-        StopLight::Yellow => Color32::from_rgb(220, 160, 20),
-        StopLight::Red => Color32::from_rgb(200, 55, 55),
-    };
-    let (rect, _response) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
-    ui.painter().circle_filled(rect.center(), 8.0, colour);
-    ui.painter()
-        .circle_stroke(rect.center(), 8.0, Stroke::new(1.0, Color32::from_gray(60)));
-}
-
-/// Show the start, stop and undo buttons, each dispatching its §15 action.
-fn buttons(ui: &mut Ui, state: &mut AppState) {
-    let gates = match &state.ride {
-        Some(ride) => console::console_gates(&ride.engine),
-        None => ConsoleGates {
-            start: false,
-            stop: false,
-            undo: false,
-        },
-    };
-    ui.push_id("start_btn", |ui| {
-        if ui
-            .add_enabled(gates.start, egui::Button::new("Start Ride"))
-            .clicked()
-        {
-            let _ = state.act(MI_START_RIDE);
-        }
-    });
-    ui.push_id("stop_btn", |ui| {
-        if ui
-            .add_enabled(gates.stop, egui::Button::new("Stop Ride"))
-            .clicked()
-        {
-            let _ = state.act(MI_STOP_RIDE);
-        }
-    });
-    ui.push_id("undo_btn", |ui| {
-        if ui
-            .add_enabled(gates.undo, egui::Button::new("Undo"))
-            .clicked()
-        {
-            let _ = state.act(MI_UNDO_CROSSING);
-        }
-    });
-}
-
-// ------------------------------------------------------------ entry row
-
-/// Show the plate field, the record button, the last-crossing label and the search field.
+/// Show the Start and Stop buttons, the plate field, Record and Undo, and the last-crossing line.
 fn entry_row(ui: &mut Ui, state: &mut AppState) {
     let entry_open = state.phase() == RidePhase::Running;
     let hint = if entry_open {
-        "Plate"
+        ENTRY_OPEN_HINT
     } else {
         ENTRY_CLOSED_HINT
     };
-    ui.horizontal(|ui| {
-        let response = ui
+    let last = last_crossing(state);
+    let gate = state.gate();
+    ui.horizontal_wrapped(|ui| {
+        run_buttons(ui, state, gate);
+        let _ = Divider::vertical().show(ui);
+        let submitted = ui
             .push_id("plate_input", |ui| {
-                ui.add_enabled(
-                    entry_open,
-                    TextEdit::singleline(&mut state.plate)
-                        .hint_text(hint)
-                        .desired_width(120.0),
-                )
-                .accessible_name("Plate")
+                TextField::new(labels::PLATE_LABEL, Bind::bound(&mut state.plate))
+                    .placeholder(hint)
+                    .submits()
+                    .enabled(entry_open)
+                    .show(ui)
+                    .submitted
             })
             .inner;
-        let submitted = entry_open
-            && state.dialogs.is_empty()
-            && response.lost_focus()
-            && ui.input(|input| input.key_pressed(Key::Enter));
         if submitted {
             state.submit_plate();
         }
         ui.push_id("record_btn", |ui| {
-            if ui
-                .add_enabled(entry_open, egui::Button::new("Record"))
-                .clicked()
-            {
+            let clicked = Button::new(labels::RECORD_LABEL)
+                .variant(Variant::PRIMARY)
+                .enabled(entry_open)
+                .show(ui)
+                .clicked();
+            if clicked {
                 state.submit_plate();
             }
         });
-        let last = match &state.ride {
-            Some(ride) => data_source::feed_rows(&ride.engine, &ride.roster)
-                .first()
-                .map_or_else(|| "No crossings yet".to_owned(), last_crossing_text),
-            None => "No crossings yet".to_owned(),
-        };
-        ui.push_id("last_crossing_lbl", |ui| text(ui, &last));
-        ui.separator();
-        ui.push_id("crossings_search", |ui| {
-            ui.add(
-                TextEdit::singleline(&mut state.search)
-                    .hint_text("Search")
-                    .desired_width(160.0),
-            )
-            .accessible_name("Search crossings");
+        ui.push_id("undo_btn", |ui| {
+            let clicked = Button::new(labels::UNDO_LABEL)
+                .variant(Variant::SECONDARY)
+                .enabled(enabled(MI_UNDO_CROSSING, &gate))
+                .show(ui)
+                .clicked();
+            if clicked {
+                let _ = state.act(MI_UNDO_CROSSING);
+            }
+        });
+        ui.push_id("last_crossing_lbl", |ui| {
+            let _ = Text::new(last).shade(Shade::Muted).show(ui);
         });
     });
+}
+
+/// Show the Start and Stop buttons, each gated by and dispatching its §15 action.
+fn run_buttons(ui: &mut Ui, state: &mut AppState, gate: GateState) {
+    for (id, label, variant) in RUN_BUTTONS {
+        ui.push_id(id.as_str(), |ui| {
+            let clicked = Button::new(label)
+                .variant(variant)
+                .enabled(enabled(id, &gate))
+                .show(ui)
+                .clicked();
+            if clicked {
+                let _ = state.act(id);
+            }
+        });
+    }
+}
+
+/// Return the last-crossing line's text.
+fn last_crossing(state: &AppState) -> String {
+    match &state.ride {
+        Some(ride) => data_source::feed_rows(&ride.engine, &ride.roster)
+            .first()
+            .map_or_else(|| NO_CROSSINGS.to_owned(), last_crossing_text),
+        None => NO_CROSSINGS.to_owned(),
+    }
 }
 
 /// Return one feed row's summary text.
@@ -298,92 +612,437 @@ fn last_crossing_text(row: &FeedRow) -> String {
     format!("Last: {} lap {}", row.plate, row.lap)
 }
 
-// ------------------------------------------------------------ feed panel
+// ------------------------------------------------------------------- the docks
 
-/// Show the counters and the crossings feed with its optional time columns.
+/// Show the crossings feed and the review notebook as two docked panels split by the main splitter.
+fn docks(ui: &mut Ui, state: &mut AppState) {
+    let split = split_width(ui);
+    let total = ui.available_width();
+    let review = total * REVIEW_DOCK_SHARE;
+    let feed = (total - review - split).max(0.0);
+    let height = ui.available_height();
+    ui.horizontal_top(|ui| {
+        ui.allocate_ui_with_layout(vec2(feed, height), Layout::top_down(Align::Min), |ui| {
+            feed_panel(ui, state);
+        });
+        ui.push_id("main_splitter", |ui| {
+            let _ = Splitter::new(Axis::X).label("Main splitter").show(ui);
+        });
+        ui.allocate_ui_with_layout(vec2(review, height), Layout::top_down(Align::Min), |ui| {
+            review_panel(ui, state);
+        });
+    });
+}
+
+/// Return the splitter handle's width from the theme's pointer tolerance.
+fn split_width(ui: &Ui) -> f32 {
+    craft::ui::runtime::env::Env::of(ui).tokens.size.hit.target
+}
+
+/// Show the crossings feed panel: the search field over the feed table.
 fn feed_panel(ui: &mut Ui, state: &mut AppState) {
-    let (rows, counters) = match &state.ride {
-        Some(ride) => (
-            data_source::feed_rows(&ride.engine, &ride.roster),
-            data_source::counters(&ride.engine, &ride.roster),
-        ),
-        None => (Vec::new(), empty_counters()),
-    };
-    counters_row(ui, &counters);
+    let rows = feed_rows(state);
     let visible = data_source::filter_rows(&rows, &state.search);
     let show_lap_time = state.settings.show_lap_time;
     let show_total = state.settings.show_total_times;
-    let mut open_crossing = None;
-    ui.push_id("crossings_list", |ui| {
-        egui::ScrollArea::vertical()
-            .id_salt("crossings_list_scroll")
-            .max_height(240.0)
-            .show(ui, |ui| {
-                egui::Grid::new("crossings_grid")
-                    .num_columns(4 + usize::from(show_lap_time) + usize::from(show_total))
-                    .striped(true)
-                    .show(ui, |ui| {
-                        text(ui, "Plate");
-                        text(ui, "Lap");
-                        text(ui, "Card");
-                        if show_lap_time {
-                            text(ui, "Lap time");
-                        }
-                        if show_total {
-                            text(ui, "Total");
-                        }
-                        text(ui, "Rider");
-                        ui.end_row();
-                        for row in &visible {
-                            text(ui, &row.plate);
-                            text(ui, &row.lap.to_string());
-                            text(ui, row.card.as_deref().unwrap_or(""));
-                            if show_lap_time {
-                                text(ui, &format_duration(row.lap_time));
-                            }
-                            if show_total {
-                                text(ui, &format_duration(row.total_time));
-                            }
-                            let clicked = super::cell(ui, false, &row.name);
-                            if clicked && !row.entry.0.is_empty() {
-                                open_crossing = Some((row.entry.clone(), row.lap));
-                            }
-                            ui.end_row();
-                        }
-                    });
+    let columns = feed_columns(show_lap_time, show_total);
+    let _ = Panel::new("Crossings").titled().show(ui, |ui, _| {
+        ui.push_id("crossings_search", |ui| {
+            let _ = TextField::search(SEARCH_LABEL, Bind::bound(&mut state.search)).show(ui);
+        });
+        let mut selection = Selection::<usize>::default();
+        let _ = Table::<usize>::new("Crossings", columns.clone())
+            .striped(true)
+            .max_rows(FEED_ROWS)
+            .empty(NO_CROSSINGS)
+            .selection(Bind::bound(&mut selection))
+            .show_items(ui, &FeedSource(&visible), &mut |key, icx| {
+                let mut row = ListRow::new(feed_name(&visible, *key))
+                    .cells(icx.cells())
+                    .striped(icx.row.striped);
+                if let Some(feed) = visible.get(*key) {
+                    row = row
+                        .cell(PLATE, feed.plate.clone())
+                        .cell(CARD, feed.card.clone().unwrap_or_default())
+                        .cell(LAP, feed.lap.to_string());
+                    if show_lap_time {
+                        row = row.cell(LAP_TIME, format_duration(feed.lap_time));
+                    }
+                    if show_total {
+                        row = row.cell(TOTAL, format_duration(feed.total_time));
+                    }
+                }
+                row
             });
+        open_crossing(state, &visible, selection.lead);
     });
-    if let Some((entry, seq)) = open_crossing {
-        state.open_crossing_detail(&entry, seq);
+}
+
+/// Return the feed rows for the open ride, or none.
+fn feed_rows(state: &AppState) -> Vec<FeedRow> {
+    match &state.ride {
+        Some(ride) => data_source::feed_rows(&ride.engine, &ride.roster),
+        None => Vec::new(),
     }
 }
 
-/// Show the console's counter chips.
-fn counters_row(ui: &mut Ui, counters: &Counters) {
-    ui.horizontal_wrapped(|ui| {
-        ui.push_id("crossings_count_lbl", |ui| {
-            text(ui, &format!("Crossings: {}", counters.crossings));
-        });
-        ui.push_id("cards_count_lbl", |ui| {
-            text(ui, &format!("Cards: {}", counters.cards_dealt));
-        });
-        ui.push_id("on_course_lbl", |ui| {
-            text(ui, &format!("On course: {}", counters.on_course));
-        });
-        ui.push_id("shoe_lbl", |ui| {
-            text(
-                ui,
-                &format!("Shoe: {}/{}", counters.shoe_remaining, counters.shoe_total),
-            );
-        });
-        ui.push_id("riders_count_lbl", |ui| {
-            text(ui, &format!("Riders: {}", counters.riders));
-        });
-        ui.push_id("teams_count_lbl", |ui| {
-            text(ui, &format!("Teams: {}", counters.teams));
-        });
+/// Return the feed's row label: the rider's name, or an empty label for a key off the end.
+fn feed_name(rows: &[FeedRow], key: usize) -> String {
+    rows.get(key)
+        .map_or_else(String::new, |row| row.name.clone())
+}
+
+/// Return the feed's columns, with the two optional time columns when their settings are on.
+fn feed_columns(show_lap_time: bool, show_total: bool) -> Vec<ColumnSpec> {
+    let mut columns = vec![
+        ColumnSpec::new(NAME, "Name", ColumnWidth::Content),
+        ColumnSpec::new(PLATE, "Plate", ColumnWidth::Content),
+        ColumnSpec::new(CARD, "Card", ColumnWidth::Content),
+        ColumnSpec::new(LAP, "Lap", ColumnWidth::Content),
+    ];
+    if show_lap_time {
+        columns.push(ColumnSpec::new(LAP_TIME, "Lap time", ColumnWidth::Content));
+    }
+    if show_total {
+        columns.push(ColumnSpec::new(TOTAL, "Total", ColumnWidth::Content));
+    }
+    columns
+}
+
+/// Open the selected crossing's detail, when the row names an entry.
+fn open_crossing(state: &mut AppState, rows: &[FeedRow], lead: Option<usize>) {
+    if let Some(feed) = lead.and_then(|key| rows.get(key))
+        && !feed.entry.0.is_empty()
+    {
+        state.open_crossing_detail(&feed.entry, feed.lap);
+    }
+}
+
+/// Show the review panel: the Riders / Needs Review notebook.
+fn review_panel(ui: &mut Ui, state: &mut AppState) {
+    let _ = Panel::new("Review").show(ui, |ui, _| {
+        let shown = tab_index(state.console_tab);
+        let out = ui
+            .push_id("review_notebook", |ui| {
+                TabStrip::new("Review notebook").shown(shown).show_items(
+                    ui,
+                    &REVIEW_TABS,
+                    &mut |key, _| Tab::new(tab_title(*key)).closable(false),
+                )
+            })
+            .inner;
+        if let Some(picked) = tab_pick(&out) {
+            state.console_tab = tab_of(picked);
+        }
+        match state.console_tab {
+            ConsoleTab::Riders => riders_tab(ui, state),
+            ConsoleTab::NeedsReview => review_tab(ui, state),
+        }
     });
 }
+
+/// Return the tab the user picked: a selection change or an activation, else the overflow menu's pick.
+fn tab_pick(out: &TabStripOutput<u8>) -> Option<u8> {
+    out.response
+        .events
+        .iter()
+        .find_map(|event| match event {
+            CollectionEvent::Selection(SelectionChange::Set(keys)) => keys.last().copied(),
+            CollectionEvent::Activate(key) => Some(*key),
+            _ => None,
+        })
+        .or(out.picked)
+}
+
+/// Return the tab key the displayed tab shows.
+fn tab_index(tab: ConsoleTab) -> u8 {
+    match tab {
+        ConsoleTab::Riders => 0,
+        ConsoleTab::NeedsReview => 1,
+    }
+}
+
+/// Return the tab for a picked key.
+fn tab_of(key: u8) -> ConsoleTab {
+    if key == 0 {
+        ConsoleTab::Riders
+    } else {
+        ConsoleTab::NeedsReview
+    }
+}
+
+/// Return a tab's title.
+fn tab_title(key: u8) -> &'static str {
+    if key == 0 { "Riders" } else { "Needs Review" }
+}
+
+/// Show the live roster: name, plate and team.
+fn riders_tab(ui: &mut Ui, state: &mut AppState) {
+    let rows = rider_rows(state);
+    let mut selection = Selection::<usize>::default();
+    ui.push_id("console_riders_list", |ui| {
+        let _ = Table::<usize>::new("Riders", rider_columns())
+            .striped(true)
+            .max_rows(REVIEW_ROWS)
+            .empty("No riders")
+            .selection(Bind::bound(&mut selection))
+            .show_items(ui, &RiderSource(&rows), &mut |key, icx| {
+                let mut row = ListRow::new(rider_name(&rows, *key))
+                    .cells(icx.cells())
+                    .striped(icx.row.striped);
+                if let Some(rider) = rows.get(*key) {
+                    row = row
+                        .cell(PLATE, rider.plate.clone())
+                        .cell(TEAM, rider.team.clone());
+                }
+                row
+            });
+    });
+    if let Some(key) = selection.lead
+        && let Some(rider) = rows.get(key)
+    {
+        state.open_rider_at(&rider.plate);
+    }
+}
+
+/// One live roster row.
+struct RiderRow {
+    /// The rider's resolved plate.
+    plate: String,
+    /// The rider's full name.
+    name: String,
+    /// The team's display name, or empty for a solo entry.
+    team: String,
+}
+
+/// Return the live roster's flattened rows.
+fn rider_rows(state: &AppState) -> Vec<RiderRow> {
+    let Some(ride) = &state.ride else {
+        return Vec::new();
+    };
+    let mut rows = Vec::new();
+    for entry in RosterView::entries(&ride.roster) {
+        let team = if entry.is_team {
+            entry.display_name.clone()
+        } else {
+            String::new()
+        };
+        for rider in &entry.riders {
+            let plate = rider
+                .plate
+                .clone()
+                .filter(|plate| !plate.is_empty())
+                .unwrap_or_else(|| entry.plate.clone());
+            rows.push(RiderRow {
+                plate,
+                name: rider.full_name.clone(),
+                team: team.clone(),
+            });
+        }
+    }
+    rows
+}
+
+/// Return the roster table's columns.
+fn rider_columns() -> Vec<ColumnSpec> {
+    vec![
+        ColumnSpec::new(NAME, "Name", ColumnWidth::Content),
+        ColumnSpec::new(PLATE, "Plate", ColumnWidth::Content),
+        ColumnSpec::new(TEAM, "Team", ColumnWidth::Content),
+    ]
+}
+
+/// Return the roster's row label: the rider's name, or an empty label for a key off the end.
+fn rider_name(rows: &[RiderRow], key: usize) -> String {
+    rows.get(key)
+        .map_or_else(String::new, |row| row.name.clone())
+}
+
+/// Show the "Needs Review" tab: the held-only filter, the review button and the flagged rows.
+fn review_tab(ui: &mut Ui, state: &mut AppState) {
+    let rows = flagged_rows(state);
+    let first_plate = rows.first().map(|row| row.plate.clone());
+    let mut selection = Selection::<usize>::default();
+    let mut open_plate = None;
+    ui.horizontal(|ui| {
+        ui.push_id("show_held_only_chk", |ui| {
+            let _ = Checkbox::new(Bind::bound(&mut state.held_only))
+                .label("Show held only")
+                .show(ui);
+        });
+        let review = ui
+            .push_id("review_btn", |ui| {
+                Button::new("Review…")
+                    .variant(Variant::SECONDARY)
+                    .enabled(first_plate.is_some())
+                    .show(ui)
+                    .clicked()
+            })
+            .inner;
+        if review && let Some(plate) = first_plate.clone() {
+            open_plate = Some(plate);
+        }
+    });
+    ui.push_id("flagged_list", |ui| {
+        let _ = Table::<usize>::new("Needs review", flagged_columns())
+            .striped(true)
+            .max_rows(REVIEW_ROWS)
+            .empty("No crossings need review")
+            .selection(Bind::bound(&mut selection))
+            .show_items(ui, &ReviewSource(&rows), &mut |key, icx| {
+                let mut row = ListRow::new(flagged_name(&rows, *key))
+                    .cells(icx.cells())
+                    .striped(icx.row.striped);
+                if let Some(review) = rows.get(*key) {
+                    row = row
+                        .cell(ISSUE, review.issue.clone())
+                        .cell(CARD, review.card.clone())
+                        .cell(PLATE, review.plate.clone())
+                        .cell(LAP, review.lap.to_string())
+                        .cell(LAP_TIME, format_duration(review.lap_time));
+                }
+                row
+            });
+    });
+    if let Some(key) = selection.lead
+        && let Some(review) = rows.get(key)
+    {
+        open_plate = Some(review.plate.clone());
+    }
+    if let Some(plate) = open_plate {
+        state.open_rider_at(&plate);
+    }
+}
+
+/// Return the flagged crossing rows for the open ride, or none.
+fn flagged_rows(state: &AppState) -> Vec<ReviewRow> {
+    match &state.ride {
+        Some(ride) => data_source::review_rows(&ride.engine, &ride.roster, state.held_only),
+        None => Vec::new(),
+    }
+}
+
+/// Return the flagged table's columns.
+fn flagged_columns() -> Vec<ColumnSpec> {
+    vec![
+        ColumnSpec::new(NAME, "Rider", ColumnWidth::Content),
+        ColumnSpec::new(ISSUE, "Issue", ColumnWidth::Content),
+        ColumnSpec::new(CARD, "Card", ColumnWidth::Content),
+        ColumnSpec::new(PLATE, "Plate", ColumnWidth::Content),
+        ColumnSpec::new(LAP, "Lap", ColumnWidth::Content),
+        ColumnSpec::new(LAP_TIME, "Lap time", ColumnWidth::Content),
+    ]
+}
+
+/// Return the flagged table's row label: the rider's name, or an empty label for a key off the end.
+fn flagged_name(rows: &[ReviewRow], key: usize) -> String {
+    rows.get(key)
+        .map_or_else(String::new, |row| row.rider.clone())
+}
+
+// ------------------------------------------------------------------ the sources
+
+/// The crossings feed as a keyed collection source.
+struct FeedSource<'a>(&'a [FeedRow]);
+
+impl DisplayOrder<usize> for FeedSource<'_> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn key(&self, at: usize) -> usize {
+        at
+    }
+
+    fn index_of(&self, key: &usize) -> Option<usize> {
+        (*key < self.0.len()).then_some(*key)
+    }
+
+    fn text(&self, at: usize) -> Option<Cow<'_, str>> {
+        self.0.get(at).map(|row| Cow::Borrowed(row.name.as_str()))
+    }
+}
+
+impl ItemSource<usize> for FeedSource<'_> {}
+
+/// The live roster as a keyed collection source.
+struct RiderSource<'a>(&'a [RiderRow]);
+
+impl DisplayOrder<usize> for RiderSource<'_> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn key(&self, at: usize) -> usize {
+        at
+    }
+
+    fn index_of(&self, key: &usize) -> Option<usize> {
+        (*key < self.0.len()).then_some(*key)
+    }
+
+    fn text(&self, at: usize) -> Option<Cow<'_, str>> {
+        self.0.get(at).map(|row| Cow::Borrowed(row.name.as_str()))
+    }
+}
+
+impl ItemSource<usize> for RiderSource<'_> {}
+
+/// The flagged crossings as a keyed collection source.
+struct ReviewSource<'a>(&'a [ReviewRow]);
+
+impl DisplayOrder<usize> for ReviewSource<'_> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn key(&self, at: usize) -> usize {
+        at
+    }
+
+    fn index_of(&self, key: &usize) -> Option<usize> {
+        (*key < self.0.len()).then_some(*key)
+    }
+
+    fn text(&self, at: usize) -> Option<Cow<'_, str>> {
+        self.0.get(at).map(|row| Cow::Borrowed(row.rider.as_str()))
+    }
+}
+
+impl ItemSource<usize> for ReviewSource<'_> {}
+
+/// The review notebook's two tabs as a keyed collection source.
+#[derive(Clone, Copy, Debug, Default)]
+struct ReviewTabs;
+
+impl DisplayOrder<u8> for ReviewTabs {
+    fn len(&self) -> usize {
+        2
+    }
+
+    fn key(&self, at: usize) -> u8 {
+        u8::from(at != 0)
+    }
+
+    fn index_of(&self, key: &u8) -> Option<usize> {
+        match key {
+            0 => Some(0),
+            1 => Some(1),
+            _ => None,
+        }
+    }
+
+    fn text(&self, at: usize) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed(tab_title(u8::from(at != 0))))
+    }
+}
+
+impl ItemSource<u8> for ReviewTabs {}
+
+/// The shared review notebook source.
+const REVIEW_TABS: ReviewTabs = ReviewTabs;
+
+// --------------------------------------------------------------------- helpers
 
 /// Return the all-zero counters for the no-ride console.
 fn empty_counters() -> Counters {
@@ -396,156 +1055,6 @@ fn empty_counters() -> Counters {
         riders: 0,
         teams: 0,
     }
-}
-
-// ---------------------------------------------------------- review panel
-
-/// Show the two-tab review notebook: the live roster, and the crossings that need review.
-fn review_panel(ui: &mut Ui, state: &mut AppState) {
-    ui.push_id("review_notebook", |ui| {
-        ui.horizontal(|ui| {
-            if ui
-                .selectable_label(state.console_tab == ConsoleTab::Riders, "Riders")
-                .clicked()
-            {
-                state.console_tab = ConsoleTab::Riders;
-            }
-            if ui
-                .selectable_label(state.console_tab == ConsoleTab::NeedsReview, "Needs Review")
-                .clicked()
-            {
-                state.console_tab = ConsoleTab::NeedsReview;
-            }
-        });
-    });
-    match state.console_tab {
-        ConsoleTab::Riders => riders_tab(ui, state),
-        ConsoleTab::NeedsReview => review_tab(ui, state),
-    }
-}
-
-/// Show the live roster: plate, name and team.
-fn riders_tab(ui: &mut Ui, state: &mut AppState) {
-    let entries = match &state.ride {
-        Some(ride) => RosterView::entries(&ride.roster).clone(),
-        None => Vec::new(),
-    };
-    let mut open_plate = None;
-    ui.push_id("console_riders_list", |ui| {
-        egui::ScrollArea::vertical()
-            .id_salt("console_riders_scroll")
-            .max_height(200.0)
-            .show(ui, |ui| {
-                egui::Grid::new("console_riders_grid")
-                    .num_columns(3)
-                    .striped(true)
-                    .show(ui, |ui| {
-                        text(ui, "Plate");
-                        text(ui, "Name");
-                        text(ui, "Team");
-                        ui.end_row();
-                        for entry in &entries {
-                            let team = if entry.is_team {
-                                entry.display_name.clone()
-                            } else {
-                                String::new()
-                            };
-                            for (index, rider) in entry.riders.iter().enumerate() {
-                                let plate = rider
-                                    .plate
-                                    .clone()
-                                    .filter(|plate| !plate.is_empty())
-                                    .unwrap_or_else(|| entry.plate.clone());
-                                text(ui, &plate);
-                                let clicked = ui
-                                    .push_id(
-                                        ("console_rider_row", entry.id.0.as_str(), index),
-                                        |ui| super::cell(ui, false, &rider.full_name),
-                                    )
-                                    .inner;
-                                if clicked {
-                                    open_plate = Some(plate.clone());
-                                }
-                                text(ui, &team);
-                                ui.end_row();
-                            }
-                        }
-                    });
-            });
-    });
-    if let Some(plate) = open_plate {
-        state.open_rider_at(&plate);
-    }
-}
-
-/// Show the "Needs Review" tab: the flagged rows, the held-only filter and the review button.
-fn review_tab(ui: &mut Ui, state: &mut AppState) {
-    let rows = match &state.ride {
-        Some(ride) => data_source::review_rows(&ride.engine, &ride.roster, state.held_only),
-        None => Vec::new(),
-    };
-    let first_plate = rows.first().map(|row| row.plate.clone());
-    let mut open_plate = None;
-    ui.horizontal(|ui| {
-        ui.push_id("show_held_only_chk", |ui| {
-            ui.checkbox(&mut state.held_only, "Show held only");
-        });
-        let review = ui
-            .push_id("review_btn", |ui| {
-                ui.add_enabled(first_plate.is_some(), egui::Button::new("Review…"))
-            })
-            .inner;
-        if review.clicked()
-            && let Some(plate) = first_plate.clone()
-        {
-            open_plate = Some(plate);
-        }
-    });
-    ui.push_id("flagged_list", |ui| {
-        egui::ScrollArea::vertical()
-            .id_salt("flagged_scroll")
-            .max_height(170.0)
-            .show(ui, |ui| {
-                egui::Grid::new("flagged_grid")
-                    .num_columns(6)
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for heading in ["Issue", "Card", "Plate", "Lap", "Lap time", "Rider"] {
-                            text(ui, heading);
-                        }
-                        ui.end_row();
-                        for (index, row) in rows.iter().enumerate() {
-                            text(ui, &row.issue);
-                            text(ui, &row.card);
-                            text(ui, &row.plate);
-                            text(ui, &row.lap.to_string());
-                            text(ui, &format_duration(row.lap_time));
-                            let clicked = ui
-                                .push_id(("flagged_rider_row", index), |ui| {
-                                    ui.selectable_label(false, &row.rider)
-                                })
-                                .inner
-                                .clicked();
-                            if clicked {
-                                open_plate = Some(row.plate.clone());
-                            }
-                            ui.end_row();
-                        }
-                    });
-            });
-    });
-    if let Some(plate) = open_plate {
-        state.open_rider_at(&plate);
-    }
-}
-
-// ----------------------------------------------------------- status bar
-
-/// Show the status bar's notice.
-fn status_bar(ui: &mut Ui, state: &AppState) {
-    ui.push_id("main_statusbar", |ui| {
-        text(ui, state.notice.as_deref().unwrap_or(""));
-    });
 }
 
 /// Return *date* as the header's `YYYY-MM-DD` text.

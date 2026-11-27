@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RiverCrossing — ArtCraft mockups</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="chrome.css">
+</head>
+<body>
+<div class="mockup">
+  <div class="mockup-topbar">
+    <span class="brand">RiverCrossing</span>
+    <span class="hint">ArtCraft UI mockups · 30 screens</span>
+    <span class="spacer"></span>
+    <span class="hint">All values from craft.artcraft tokens</span>
+    <button class="btn small" id="theme-toggle">Dark mode</button>
+  </div>
+
+  <nav class="mockup-nav">
+    <div class="group">Console</div>
+    <button data-target="s-console" class="active">Console</button>
+    <div class="group">Ride</div>
+    <button data-target="s-setup">Ride Setup</button>
+    <button data-target="s-start">Set Start Time</button>
+    <button data-target="s-resume">Resume Ride</button>
+    <button data-target="s-exit">Ride Is Running</button>
+    <div class="group">Roster &amp; teams</div>
+    <button data-target="s-rider-editor">Rider Editor</button>
+    <button data-target="s-add-rider">Add / Edit Rider</button>
+    <button data-target="s-csv">Import CSV Preview</button>
+    <button data-target="s-team-editor">Teams Editor</button>
+    <button data-target="s-add-team">Add / Edit Team</button>
+    <button data-target="s-issues">Rider Issues</button>
+    <button data-target="s-blocked">Cannot Start</button>
+    <div class="group">Corrections &amp; cards</div>
+    <button data-target="s-crossing-detail">Crossing Detail</button>
+    <button data-target="s-crossing-number">Plate</button>
+    <button data-target="s-edit-crossing">Edit / Add Crossing</button>
+    <button data-target="s-manual-deal">Deal Bonus Card</button>
+    <button data-target="s-dnf">Mark DNF</button>
+    <button data-target="s-void">Void Card</button>
+    <div class="group">Results, library &amp; audit</div>
+    <button data-target="s-results">Standings</button>
+    <button data-target="s-library">Ride Library</button>
+    <button data-target="s-delete-ride">Delete Ride</button>
+    <button data-target="s-audit">Audit Trail</button>
+    <div class="group">System</div>
+    <button data-target="s-settings">Settings</button>
+    <button data-target="s-about">About</button>
+    <button data-target="s-shortcuts">Keyboard Shortcuts</button>
+    <button data-target="s-selftest">Evaluator Self-Test</button>
+    <div class="group">Simulator &amp; publish</div>
+    <button data-target="s-sim">Rider Simulator</button>
+    <button data-target="s-sim-running">Simulating…</button>
+    <button data-target="s-publish">Publish to WordPress</button>
+    <button data-target="s-publish-running">Publishing…</button>
+  </nav>
+
+  <main class="mockup-main">
+
+    <!-- CONSOLE -->
+    <section class="screen active" id="s-console">
+      <p class="screen-caption">Console — <code>main_frame</code><small>Docked shell: tool rail, header, clocks, plate entry, crossings feed, review panel, status bar. Shown RUNNING.</small></p>
+      <div class="app-shell">
+        <div class="app-titlebar">RiverCrossing <span class="meta">— GORBA EPIC &amp; MTB Festival 2026</span></div>
+        <div class="app-options">
+          <span class="label">Appearance</span>
+          <div class="seg"><button class="active">System</button><button>Light</button><button>Dark</button></div>
+          <span class="label">Density</span>
+          <div class="seg"><button class="active">Compact</button><button>Comfortable</button></div>
+          <span style="flex:1"></span>
+          <span class="label">Zoom 100%</span>
+        </div>
+        <div class="app-body">
+          <aside class="app-rail">
+            <button class="rail-btn"><span class="glyph">▤</span>Library</button>
+            <button class="rail-btn"><span class="glyph">☷</span>Riders</button>
+            <button class="rail-btn"><span class="glyph">⚑</span>Teams</button>
+            <button class="rail-btn"><span class="glyph">⚐</span>Issues</button>
+            <button class="rail-btn"><span class="glyph">▦</span>Standings</button>
+            <button class="rail-btn"><span class="glyph">⌕</span>Audit</button>
+            <button class="rail-btn"><span class="glyph">⚙</span>Settings</button>
+          </aside>
+          <div class="app-workspace">
+            <div class="panel"><div class="body" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;">
+              <span class="badge good">RUNNING</span><span style="width:38px;height:38px;border-radius:6px;background:var(--sunken);border:1px solid var(--control-edge);display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:var(--faint);">LOGO</span>
+              <div class="stat"><span class="k">Ride</span><span class="v">GORBA EPIC 2026</span></div>
+              <div class="stat"><span class="k">Date</span><span class="v">2026-06-13</span></div>
+              <div class="stat"><span class="k">Venue</span><span class="v">GORBA Park</span></div>
+              <div class="stat"><span class="k">Organizer</span><span class="v">GORBA</span></div>
+              <div class="stat"><span class="k">Scorer</span><span class="v">M. Buckaway</span></div>
+              <div class="stat"><span class="k">Lap</span><span class="v">7.5 km</span></div>
+              <div style="flex:1"></div>
+              <div class="stat" style="align-items:flex-end;"><span class="k">Current lap</span><span class="v">4</span></div>
+            </div></div>
+
+            <div class="split">
+              <div class="panel grow"><div class="body">
+                <div class="row" style="justify-content:space-between;"><span class="field-label">Elapsed</span><span class="readout">02:14:07</span></div>
+                <div class="progress" style="margin-top:7px;"><i style="width:56%"></i></div>
+              </div></div>
+              <div class="panel grow"><div class="body">
+                <div class="row" style="justify-content:space-between;"><span class="field-label">Remaining</span><span class="readout">01:45:53</span></div>
+                <div class="progress" style="margin-top:7px;"><i style="width:44%"></i></div>
+              </div></div>
+            </div>
+
+            <div class="panel"><div class="body" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <button class="btn" disabled>Start Ride</button>
+              <button class="btn">Stop Ride</button>
+              <span style="width:1px;height:22px;background:var(--divider);"></span>
+              <span class="field-label">Plate</span>
+              <input class="input plate" style="width:150px;" placeholder="123">
+              <button class="btn primary">Record</button>
+              <button class="btn">Undo</button>
+              <span class="muted" style="margin-left:6px;">✓ 123 · Sam Ellis · Lap 4 · 22:41 · dealt <span class="red">9♥</span></span>
+            </div></div>
+
+            <div class="split" style="flex:1;min-height:272px;">
+              <div class="panel grow" style="display:flex;flex-direction:column;min-width:0;">
+                <div class="band" style="display:flex;align-items:center;gap:8px;">Crossings <span class="muted" style="font-weight:400;">· 128</span><input class="input" style="margin-left:auto;height:20px;font-size:11px;" placeholder="Search plate, name, card"></div>
+                <div style="overflow:auto;flex:1;">
+                  <table class="table">
+                    <thead><tr><th>Time</th><th>Plate</th><th>Name</th><th>Team</th><th>Card</th><th>Lap</th><th>Lap time</th><th>Total</th></tr></thead>
+                    <tbody>
+                      <tr class="selected"><td class="mono">22:41</td><td>123</td><td>Sam Ellis</td><td>River Rats</td><td class="red">9♥</td><td>4</td><td class="mono">21:58</td><td class="mono">1:31:12</td></tr>
+                      <tr><td class="mono">22:38</td><td>077</td><td>Ana Ruiz</td><td>River Rats</td><td>K♠</td><td>4</td><td class="mono">22:05</td><td class="mono">1:30:44</td></tr>
+                      <tr><td class="mono">22:35</td><td>204</td><td>Ben Okafor</td><td>Solo</td><td class="red">J♦</td><td>4</td><td class="mono">21:40</td><td class="mono">1:30:10</td></tr>
+                      <tr><td class="mono">22:31</td><td>156</td><td>Cho Lin</td><td>Mud Dawgs</td><td>4♣</td><td>4</td><td class="mono">22:12</td><td class="mono">1:29:55</td></tr>
+                      <tr><td class="mono">22:27</td><td>099</td><td>Dee Park</td><td>Mud Dawgs</td><td class="red">A♥</td><td>4</td><td class="mono">21:49</td><td class="mono">1:29:31</td></tr>
+                      <tr><td class="mono">22:24</td><td>311</td><td>Eli Novak</td><td>Solo</td><td>Joker</td><td>4</td><td class="mono">21:57</td><td class="mono">1:29:02</td></tr>
+                      <tr><td class="mono">22:19</td><td>142</td><td>Fay Kim</td><td>River Rats</td><td>8♠</td><td>4</td><td class="mono">22:03</td><td class="mono">1:28:40</td></tr>
+                      <tr><td class="mono">22:14</td><td>188</td><td>Gus Meyer</td><td>Solo</td><td class="red">7♦</td><td>4</td><td class="mono">21:38</td><td class="mono">1:28:11</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <aside class="panel" style="width:308px;display:flex;flex-direction:column;">
+                <div class="tabs"><div class="tab active">Riders</div><div class="tab">Needs Review</div></div>
+                <div style="overflow:auto;flex:1;">
+                  <table class="table">
+                    <thead><tr><th>Plate</th><th>Name</th><th>Laps</th></tr></thead>
+                    <tbody>
+                      <tr><td>123</td><td>Sam Ellis</td><td>4</td></tr>
+                      <tr><td>077</td><td>Ana Ruiz</td><td>4</td></tr>
+                      <tr><td>204</td><td>Ben Okafor</td><td>4</td></tr>
+                      <tr><td>156</td><td>Cho Lin</td><td>4</td></tr>
+                      <tr><td>099</td><td>Dee Park</td><td>4</td></tr>
+                      <tr><td>311</td><td>Eli Novak</td><td>4</td></tr>
+                      <tr><td>142</td><td>Fay Kim</td><td>4</td></tr>
+                      <tr><td>188</td><td>Gus Meyer</td><td>4</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+        <div class="app-statusbar">
+          <span class="chip">Crossings <b>128</b></span>
+          <span class="chip">Cards <b>128</b></span>
+          <span class="chip">On course <b>37</b></span>
+          <span class="chip">Shoe <b>412</b></span>
+          <span class="chip">Riders <b>175</b></span>
+          <span class="chip">Teams <b>40</b></span>
+          <span style="margin-left:auto;">Shift 1 · RUNNING · 02:14:07</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIDE SETUP -->
+    <section class="screen" id="s-setup">
+      <p class="screen-caption">Ride Setup — <code>ride_setup_dlg</code><small>Event identity always editable; structural fields lock after DRAFT.</small></p>
+      <div class="backdrop"><div class="dialog wide">
+        <div class="dialog-titlebar">Ride Setup <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="notice">Structural fields (format, plate model, decks/jokers, cap, tie-break) lock once the ride reaches DRAFT.</div>
+          <div class="grid2">
+            <div class="field"><label>Name</label><input class="input" value="GORBA EPIC 2026"></div>
+            <div class="field"><label>Date</label><input class="input" value="2026-06-13"></div>
+            <div class="field"><label>Start time</label><input class="input" value="10:00"></div>
+            <div class="field"><label>Venue</label><input class="input" value="GORBA Park"></div>
+            <div class="field"><label>Organizer</label><input class="input" value="GORBA"></div>
+            <div class="field"><label>Scorer</label><input class="input" value="M. Buckaway"></div>
+            <div class="field"><label>Lap length (km)</label><input class="input" value="7.5"></div>
+            <div class="field"><label>Duration (H:MM)</label><input class="input" value="4:00"></div>
+            <div class="field"><label>Min lap (M:SS)</label><input class="input" value="20:00"></div>
+            <div class="field"><label>Hand cap</label><select class="select"><option>Disabled</option><option>5</option><option>6</option></select></div>
+          </div>
+          <div class="section-label">Format</div>
+          <div class="grid3">
+            <div class="field"><label>Entry mode</label><div class="row"><label class="radio"><input type="radio" name="entry" checked> Solo</label><label class="radio"><input type="radio" name="entry"> Mixed</label></div></div>
+            <div class="field"><label>Team size</label><input class="input" value="4"></div>
+            <div class="field"><label>Plate model</label><div class="row"><label class="radio"><input type="radio" name="plate" checked> Pooled</label><label class="radio"><input type="radio" name="plate"> Relay</label></div></div>
+            <div class="field"><label>Decks</label><input class="input" value="6"></div>
+            <div class="field"><label>Jokers</label><input class="input" value="2"></div>
+            <div class="field"><label>Jokers counted</label><div class="row"><label class="radio"><input type="radio" name="j" checked> Per deck</label><label class="radio"><input type="radio" name="j"> Total</label></div></div>
+          </div>
+          <div class="field"><label>Short laps</label><div class="row"><label class="radio"><input type="radio" name="shortlap" checked> Hold short laps</label><label class="radio"><input type="radio" name="shortlap"> Always deal</label></div></div>
+          <div class="field"><label>Tie-break order</label><div class="row wrap"><span class="chip">Best hand</span><span class="chip">Laps</span><span class="chip">Total time</span><span class="chip">Draw order</span></div></div>
+          <div class="field"><label>Organizer logo</label><div class="row"><span class="chip">logo.png · 64×64</span><span class="faint">Ready</span><button class="btn small">Browse…</button></div></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button><button class="btn primary">Save</button></div>
+      </div></div>
+    </section>
+
+    <!-- SET START -->
+    <section class="screen" id="s-start">
+      <p class="screen-caption">Set Start Time — <code>set_start_dlg</code><small>Back-dates the gun time and recomputes lap 1.</small></p>
+      <div class="backdrop"><div class="dialog narrow">
+        <div class="dialog-titlebar">Set Start Time <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="field"><label>Start date</label><input class="input" value="2026-06-13"></div>
+          <div class="field"><label>Start time</label><input class="input" value="10:00"></div>
+          <div class="help">Lap 1 timestamps are recomputed from the new gun time.</div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button><button class="btn primary">OK</button></div>
+      </div></div>
+    </section>
+
+    <!-- RESUME -->
+    <section class="screen" id="s-resume">
+      <p class="screen-caption">Resume Ride — <code>resume_dlg</code><small>Shown at launch when a ride was running at exit.</small></p>
+      <div class="backdrop"><div class="dialog narrow">
+        <div class="dialog-titlebar">Resume Ride <span class="x">×</span></div>
+        <div class="dialog-body">
+          <p class="message"><strong>GORBA EPIC 2026</strong> was still running when the app last closed. The wall clock kept counting.</p>
+        </div>
+        <div class="dialog-footer"><div class="left"><button class="btn">Open library</button></div><button class="btn primary">Continue</button></div>
+      </div></div>
+    </section>
+
+    <!-- EXIT RUNNING -->
+    <section class="screen" id="s-exit">
+      <p class="screen-caption">Ride Is Running — <code>exit_running_dlg</code><small>Quit while a ride is live. Cancel is safe and focused.</small></p>
+      <div class="backdrop"><div class="dialog narrow">
+        <div class="dialog-titlebar">Ride Is Running <span class="x">×</span></div>
+        <div class="dialog-body">
+          <p class="message"><strong>GORBA EPIC 2026</strong> is still running. The wall clock keeps counting while the app is closed.</p>
+          <div class="notice">Finish the ride first to publish results, or quit and keep it running to resume later.</div>
+        </div>
+        <div class="dialog-footer"><div class="left"><button class="btn">Finish ride first…</button></div><button class="btn primary">Cancel</button><button class="btn danger">Quit — keep ride running</button></div>
+      </div></div>
+    </section>
+
+    <!-- RIDER EDITOR -->
+    <section class="screen" id="s-rider-editor">
+      <p class="screen-caption">Rider Editor — <code>rider_editor_dlg</code><small>Read-only record panel; Add/Edit open the form; Delete gated by ride state.</small></p>
+      <div class="backdrop"><div class="dialog wide">
+        <div class="dialog-titlebar">Rider Editor <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="row"><input class="input" style="flex:1;" placeholder="Search plate, name or team"><button class="btn primary">Add</button><button class="btn">Edit</button><button class="btn danger" disabled>Delete</button></div>
+          <div class="split" style="min-height:300px;">
+            <div class="panel grow" style="overflow:auto;"><table class="table">
+              <thead><tr><th>Plate</th><th>First</th><th>Last</th><th>Team</th></tr></thead>
+              <tbody>
+                <tr class="selected"><td>123</td><td>Sam</td><td>Ellis</td><td>River Rats</td></tr>
+                <tr><td>077</td><td>Ana</td><td>Ruiz</td><td>River Rats</td></tr>
+                <tr><td>204</td><td>Ben</td><td>Okafor</td><td>Solo</td></tr>
+                <tr><td>156</td><td>Cho</td><td>Lin</td><td>Mud Dawgs</td></tr>
+                <tr><td>099</td><td>Dee</td><td>Park</td><td>Mud Dawgs</td></tr>
+                <tr><td>311</td><td>Eli</td><td>Novak</td><td>Solo</td></tr>
+              </tbody>
+            </table></div>
+            <div class="panel" style="width:250px;"><div class="body stack">
+              <div class="field"><label>Plate</label><div>123</div></div>
+              <div class="field"><label>First name</label><div>Sam</div></div>
+              <div class="field"><label>Last name</label><div>Ellis</div></div>
+              <div class="field"><label>Team</label><div>River Rats</div></div>
+            </div></div>
+          </div>
+          <div class="notice">Delete is available only for a DRAFT entry with no recorded data.</div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Close</button></div>
+      </div></div>
+    </section>
+
+    <!-- ADD RIDER -->
+    <section class="screen" id="s-add-rider">
+      <p class="screen-caption">Add / Edit Rider — <code>add_rider_dlg</code><small>One window, two modes; plate locked off DRAFT.</small></p>
+      <div class="backdrop"><div class="dialog">
+        <div class="dialog-titlebar">Add Rider <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="grid2">
+            <div class="field"><label>Plate</label><input class="input" value=""></div>
+            <div class="field"><label>Sex</label><select class="select"><option>—</option><option>M</option><option>F</option></select></div>
+            <div class="field"><label>First name</label><input class="input" value=""></div>
+            <div class="field"><label>Last name</label><input class="input" value=""></div>
+            <div class="field"><label>Team</label><select class="select"><option>Solo</option><option>River Rats</option><option>Mud Dawgs</option></select></div>
+          </div>
+          <div class="notice">Plate can be changed only while the ride is DRAFT.</div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button><button class="btn primary">Save</button></div>
+      </div></div>
+    </section>
+
+    <!-- CSV PREVIEW -->
+    <section class="screen" id="s-csv">
+      <p class="screen-caption">Import Riders — Preview — <code>csv_preview_dlg</code><small>Import stays disabled while conflicts remain.</small></p>
+      <div class="backdrop"><div class="dialog wide">
+        <div class="dialog-titlebar">Import Riders — Preview <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="notice">174 riders parsed · 2 conflicts require a decision.</div>
+          <div class="panel" style="overflow:auto;max-height:220px;"><table class="table">
+            <thead><tr><th>Row</th><th>Plate</th><th>Name</th><th>Issue</th></tr></thead>
+            <tbody>
+              <tr><td>17</td><td>077</td><td>Ana Ruiz</td><td>Duplicate plate</td></tr>
+              <tr><td>43</td><td>—</td><td>Ben Okafor</td><td>Missing plate</td></tr>
+            </tbody>
+          </table></div>
+          <label class="check"><input type="checkbox"> Map unknown sex to M/F</label>
+          <label class="check"><input type="checkbox"> Convert teams of one to solo</label>
+          <div class="notice warn">Import is disabled until both conflicts are resolved.</div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button><button class="btn primary" disabled>Import</button></div>
+      </div></div>
+    </section>
+
+    <!-- TEAM EDITOR -->
+    <section class="screen" id="s-team-editor">
+      <p class="screen-caption">Teams Editor — <code>team_editor_dlg</code><small>Mixed rides only; relay row hidden unless relay.</small></p>
+      <div class="backdrop"><div class="dialog wide">
+        <div class="dialog-titlebar">Teams Editor <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="row"><label class="check"><input type="checkbox"> Single-member teams only</label><span style="flex:1"></span><button class="btn primary">Add</button><button class="btn">Edit</button><button class="btn danger">Remove</button></div>
+          <div class="split" style="min-height:260px;">
+            <div class="panel grow" style="overflow:auto;"><table class="table">
+              <thead><tr><th>Team</th><th>Riders</th></tr></thead>
+              <tbody>
+                <tr class="selected"><td>River Rats</td><td>4</td></tr>
+                <tr><td>Mud Dawgs</td><td>4</td></tr>
+                <tr><td>Gravel Grinders</td><td>3</td></tr>
+              </tbody>
+            </table></div>
+            <div class="panel" style="width:250px;"><div class="body stack">
+              <div class="field"><label>Name</label><div>River Rats</div></div>
+              <div class="field"><label>Notes</label><div class="muted">—</div></div>
+              <div class="field"><label>Members</label><div>Sam Ellis · Ana Ruiz · Fay Kim · Gus Meyer</div></div>
+            </div></div>
+          </div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Close</button></div>
+      </div></div>
+    </section>
+
+    <!-- ADD TEAM -->
+    <section class="screen" id="s-add-team">
+      <p class="screen-caption">Add / Edit Team — <code>add_team_dlg</code></p>
+      <div class="backdrop"><div class="dialog">
+        <div class="dialog-titlebar">Add Team <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="field"><label>Name</label><input class="input" value=""></div>
+          <div class="field"><label>Relay plate</label><input class="input" value=""><span class="help">Relay rides only.</span></div>
+          <div class="field"><label>Notes</label><textarea class="input" rows="2"></textarea></div>
+          <div class="field"><label>Logo card</label><div class="row"><span class="chip">card-back.png</span><button class="btn small">Pick card…</button></div></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button><button class="btn primary">Save</button></div>
+      </div></div>
+    </section>
+
+    <!-- RIDER ISSUES -->
+    <section class="screen" id="s-issues">
+      <p class="screen-caption">Check for Rider Issues — <code>rider_issues_dlg</code><small>Fixes gated on selection + DRAFT.</small></p>
+      <div class="backdrop"><div class="dialog wide">
+        <div class="dialog-titlebar">Check for Rider Issues <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="notice warn">3 rider issues found.</div>
+          <div class="panel" style="overflow:auto;max-height:240px;"><table class="table">
+            <thead><tr><th>Plate</th><th>Name</th><th>Issue</th></tr></thead>
+            <tbody>
+              <tr class="selected"><td>—</td><td>Ben Okafor</td><td>Missing plate</td></tr>
+              <tr><td>077</td><td>Ana Ruiz</td><td>Duplicate plate</td></tr>
+              <tr><td>156</td><td>Cho Lin</td><td>Solo on a mixed ride</td></tr>
+            </tbody>
+          </table></div>
+          <div class="row wrap"><button class="btn primary">Open editor</button><button class="btn">Convert to solo</button><button class="btn">Assign plate…</button><button class="btn">Renumber…</button></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Close</button></div>
+      </div></div>
+    </section>
+
+    <!-- START BLOCKED -->
+    <section class="screen" id="s-blocked">
+      <p class="screen-caption">Cannot Start Ride — <code>start_blocked_dlg</code></p>
+      <div class="backdrop"><div class="dialog narrow">
+        <div class="dialog-titlebar">Cannot Start Ride <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="notice bad">The ride cannot start yet.</div>
+          <ul class="message" style="margin:0;padding-left:18px;">
+            <li>The roster is empty.</li>
+            <li>The start time is in the future.</li>
+            <li>No cards remain in the shoe.</li>
+          </ul>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button><button class="btn primary">OK</button></div>
+      </div></div>
+    </section>
+
+    <!-- CROSSING DETAIL -->
+    <section class="screen" id="s-crossing-detail">
+      <p class="screen-caption">Crossing Detail — <code>crossing_detail_dlg</code><small>Corrections: Edit plate, Edit time, Void card, Delete.</small></p>
+      <div class="backdrop"><div class="dialog">
+        <div class="dialog-titlebar">Crossing Detail <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="grid2">
+            <div class="field"><label>Rider</label><div>Sam Ellis</div></div>
+            <div class="field"><label>Team</label><div>River Rats</div></div>
+            <div class="field"><label>Plate</label><div>123</div></div>
+            <div class="field"><label>Lap</label><div>4</div></div>
+            <div class="field"><label>Time</label><div class="mono">22:41</div></div>
+            <div class="field"><label>Lap time</label><div class="mono">21:58</div></div>
+            <div class="field"><label>Total</label><div class="mono">1:31:12</div></div>
+            <div class="field"><label>Card</label><div class="red">9♥</div></div>
+          </div>
+          <div class="notice">Held card: no — this crossing is credited.</div>
+        </div>
+        <div class="dialog-footer"><div class="left"><button class="btn">Edit plate…</button><button class="btn">Edit time…</button><button class="btn">Void card…</button><button class="btn danger">Delete…</button></div><button class="btn primary">OK</button></div>
+      </div></div>
+    </section>
+
+    <!-- CROSSING NUMBER -->
+    <section class="screen" id="s-crossing-number">
+      <p class="screen-caption">Plate — <code>crossing_number_dlg</code></p>
+      <div class="backdrop"><div class="dialog narrow">
+        <div class="dialog-titlebar">Plate <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="field"><label>Plate</label><input class="input plate" value="123" style="width:140px;"></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button><button class="btn primary">Save</button></div>
+      </div></div>
+    </section>
+
+    <!-- EDIT CROSSING -->
+    <section class="screen" id="s-edit-crossing">
+      <p class="screen-caption">Edit / Add Crossing at Time — <code>edit_crossing_dlg</code><small>Void is shown in edit mode only.</small></p>
+      <div class="backdrop"><div class="dialog">
+        <div class="dialog-titlebar">Edit Crossing <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="field"><label>Plate</label><input class="input" value="123"></div>
+          <div class="field"><label>Time</label><input class="input mono" value="22:41"></div>
+          <div class="field"><label>Reason</label><input class="input" value="Scorer correction"></div>
+        </div>
+        <div class="dialog-footer"><div class="left"><button class="btn danger">Void card…</button></div><button class="btn">Cancel</button><button class="btn primary">OK</button></div>
+      </div></div>
+    </section>
+
+    <!-- MANUAL DEAL -->
+    <section class="screen" id="s-manual-deal">
+      <p class="screen-caption">Deal Bonus Card — <code>manual_deal_dlg</code></p>
+      <div class="backdrop"><div class="dialog narrow">
+        <div class="dialog-titlebar">Deal Bonus Card <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="field"><label>Plate</label><input class="input" value="123"></div>
+          <div class="field"><label>Reason</label><input class="input" value="Bonus for volunteer"></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button><button class="btn primary">Deal</button></div>
+      </div></div>
+    </section>
+
+    <!-- DNF -->
+    <section class="screen" id="s-dnf">
+      <p class="screen-caption">Mark DNF — <code>dnf_confirm_dlg</code><small>Cancel is the safe default.</small></p>
+      <div class="backdrop"><div class="dialog narrow">
+        <div class="dialog-titlebar">Mark DNF <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="field"><label>Plate</label><input class="input" value="123"></div>
+          <div class="field"><label>Entry</label><div>Sam Ellis · River Rats</div></div>
+          <div class="field"><label>Reason</label><input class="input" value="Mechanical"></div>
+        </div>
+        <div class="dialog-footer"><button class="btn primary">Cancel</button><button class="btn danger">Mark DNF</button></div>
+      </div></div>
+    </section>
+
+    <!-- VOID CARD -->
+    <section class="screen" id="s-void">
+      <p class="screen-caption">Void Card — <code>void_card_confirm_dlg</code><small>Reason required; Cancel is safe and focused.</small></p>
+      <div class="backdrop"><div class="dialog narrow">
+        <div class="dialog-titlebar">Void Card <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="field"><label>Card</label><div class="red">9♥</div></div>
+          <div class="field"><label>Entry</label><div>Sam Ellis · River Rats</div></div>
+          <p class="message">Removes the card from the entry's scored hand. Audit-logged.</p>
+          <div class="field"><label>Reason</label><input class="input" value="Wrong plate recorded"></div>
+        </div>
+        <div class="dialog-footer"><button class="btn primary">Cancel</button><button class="btn danger">Void card</button></div>
+      </div></div>
+    </section>
+
+    <!-- RESULTS -->
+    <section class="screen" id="s-results">
+      <p class="screen-caption">Standings — <code>results_dlg</code><small>Mixed ride: Teams / Solo tabs. Live while running; final when finished.</small></p>
+      <div class="backdrop"><div class="dialog wide">
+        <div class="dialog-titlebar">Standings <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="notice warn">Corrections were made after the last export — results are stale.</div>
+          <div class="tabs"><div class="tab active">Teams</div><div class="tab">Solo</div></div>
+          <div class="panel" style="overflow:auto;max-height:320px;"><table class="table">
+            <thead><tr><th>#</th><th>Entry</th><th>Laps</th><th>Best 5</th><th>Total</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>River Rats</td><td>24</td><td class="red">A♥ K♥ Q♥ J♥ 10♥</td><td class="mono">5:58:12</td></tr>
+              <tr><td>2</td><td>Mud Dawgs</td><td>24</td><td>K♠ <span class="red">K♦</span> K♣ 9♠ <span class="red">9♦</span></td><td class="mono">5:59:40</td></tr>
+              <tr><td>3</td><td>Gravel Grinders</td><td>23</td><td><span class="red">Q♦</span> <span class="red">Q♥</span> 8♣ 8♠ <span class="red">2♥</span></td><td class="mono">5:55:01</td></tr>
+              <tr><td>4</td><td>Trail Blazers</td><td>23</td><td>A♠ J♣ <span class="red">10♦</span> <span class="red">9♥</span> 7♠</td><td class="mono">5:57:33</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Close</button></div>
+      </div></div>
+    </section>
+
+    <!-- RIDE LIBRARY -->
+    <section class="screen" id="s-library">
+      <p class="screen-caption">Ride Library — <code>ride_library_dlg</code><small>Delete is disabled on a running row.</small></p>
+      <div class="backdrop"><div class="dialog wide">
+        <div class="dialog-titlebar">Ride Library <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="panel" style="overflow:auto;max-height:300px;"><table class="table">
+            <thead><tr><th>Ride</th><th>Date</th><th>Status</th><th>Entries</th></tr></thead>
+            <tbody>
+              <tr class="selected"><td>GORBA EPIC 2026</td><td>2026-06-13</td><td><span class="badge good">RUNNING</span></td><td>175</td></tr>
+              <tr><td>Spring Classic</td><td>2026-04-18</td><td><span class="badge info">FINISHED</span></td><td>142</td></tr>
+              <tr><td>Test Ride #4</td><td>2026-03-02</td><td><span class="badge neutral">DRAFT</span></td><td>0</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+        <div class="dialog-footer"><div class="left"><button class="btn">Open</button><button class="btn">Duplicate…</button><button class="btn danger" disabled>Delete…</button></div><button class="btn">Close</button></div>
+      </div></div>
+    </section>
+
+    <!-- DELETE RIDE -->
+    <section class="screen" id="s-delete-ride">
+      <p class="screen-caption">Delete Ride — <code>delete_ride_dlg</code><small>Type-to-confirm; Delete disables until an exact match.</small></p>
+      <div class="backdrop"><div class="dialog narrow">
+        <div class="dialog-titlebar">Delete Ride <span class="x">×</span></div>
+        <div class="dialog-body">
+          <p class="message">Delete <strong>Spring Classic</strong>? A backup is written first. This cannot be undone.</p>
+          <div class="field"><label>Type the ride name to confirm</label><input class="input" placeholder="Spring Classic"></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button><button class="btn danger" disabled>Delete</button></div>
+      </div></div>
+    </section>
+
+    <!-- AUDIT -->
+    <section class="screen" id="s-audit">
+      <p class="screen-caption">Audit Trail — <code>audit_dlg</code></p>
+      <div class="backdrop"><div class="dialog wide">
+        <div class="dialog-titlebar">Audit Trail <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="row"><input class="input" style="flex:1;" placeholder="Filter plate or name"><select class="select"><option>All actions</option><option>Crossing recorded</option><option>Card voided</option></select></div>
+          <div class="panel" style="overflow:auto;max-height:300px;"><table class="table">
+            <thead><tr><th>When</th><th>Action</th><th>Entry</th><th>Reason</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">22:41</td><td>Crossing recorded</td><td>123</td><td>—</td></tr>
+              <tr><td class="mono">22:35</td><td>Card voided</td><td>204</td><td>Wrong plate</td></tr>
+              <tr><td class="mono">22:12</td><td>DNF marked</td><td>311</td><td>Mechanical</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Close</button></div>
+      </div></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="screen" id="s-settings">
+      <p class="screen-caption">Settings — <code>settings_dlg</code><small>System/Light/Dark is the primary mode; contrast/density/text size/theme are the ArtCraft axes.</small></p>
+      <div class="backdrop"><div class="dialog">
+        <div class="dialog-titlebar">Settings <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="section-label">Appearance</div>
+          <div class="field"><label>Mode</label><div class="row"><label class="radio"><input type="radio" name="mode" checked> System</label><label class="radio"><input type="radio" name="mode"> Light</label><label class="radio"><input type="radio" name="mode"> Dark</label></div></div>
+          <div class="grid2">
+            <div class="field"><label>Contrast</label><select class="select"><option>System</option><option>Standard</option><option>High</option></select></div>
+            <div class="field"><label>Density</label><select class="select"><option>Compact</option><option>Comfortable</option></select></div>
+            <div class="field"><label>Text size</label><select class="select"><option>Tiny</option><option selected>Medium</option><option>Small</option><option>Large</option></select></div>
+            <div class="field"><label>Theme</label><select class="select"><option>ArtCraft</option><option>Pro</option><option>Graphite</option></select></div>
+          </div>
+          <div class="section-label">Console</div>
+          <label class="check"><input type="checkbox" checked> Sound cues</label>
+          <label class="check"><input type="checkbox" checked> Show total times on the crossings panel</label>
+          <label class="check"><input type="checkbox" checked> Show lap time on the crossings panel</label>
+          <label class="check"><input type="checkbox"> Verbose launch log</label>
+          <div class="field" style="max-width:220px;"><label>Average speed (km/h)</label><input class="input" value="12.0"></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button><button class="btn primary">OK</button></div>
+      </div></div>
+    </section>
+
+    <!-- ABOUT -->
+    <section class="screen" id="s-about">
+      <p class="screen-caption">About RiverCrossing — <code>about_dlg</code></p>
+      <div class="backdrop"><div class="dialog narrow">
+        <div class="dialog-titlebar">About RiverCrossing <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="stat"><span class="k">Version</span><span class="v">0.1.0</span></div>
+          <div class="stat"><span class="k">Author</span><span class="v">Mark Buckaway</span></div>
+          <div class="stat"><span class="k">Copyright</span><span class="v">© 2026</span></div>
+          <div class="stat"><span class="k">License</span><span class="v">GPL-3.0-only</span></div>
+          <div class="row"><span class="muted">GORBA EPIC:</span><a href="#" style="color:var(--accent-text);">gorba.example</a></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Close</button></div>
+      </div></div>
+    </section>
+
+    <!-- SHORTCUTS -->
+    <section class="screen" id="s-shortcuts">
+      <p class="screen-caption">Keyboard Shortcuts — <code>shortcuts_dlg</code><small>Generated from the Action registry; cannot drift.</small></p>
+      <div class="backdrop"><div class="dialog">
+        <div class="dialog-titlebar">Keyboard Shortcuts <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="panel" style="overflow:auto;max-height:320px;"><table class="table">
+            <thead><tr><th>Command</th><th>Shortcut</th></tr></thead>
+            <tbody>
+              <tr><td>Record crossing</td><td class="mono">Enter</td></tr>
+              <tr><td>Undo last crossing</td><td class="mono">⌘Z</td></tr>
+              <tr><td>Standings</td><td class="mono">F5</td></tr>
+              <tr><td>User guide</td><td class="mono">F1</td></tr>
+              <tr><td>Crossing detail</td><td class="mono">F2</td></tr>
+              <tr><td>Delete selected crossing</td><td class="mono">Delete / ⌘D</td></tr>
+              <tr><td>Edit plate</td><td class="mono">⌘E</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Close</button></div>
+      </div></div>
+    </section>
+
+    <!-- SELFTEST -->
+    <section class="screen" id="s-selftest">
+      <p class="screen-caption">Evaluator Self-Test — <code>selftest_dlg</code><small>Mono PASS/FAIL; Rerun disabled mid-run.</small></p>
+      <div class="backdrop"><div class="dialog">
+        <div class="dialog-titlebar">Evaluator Self-Test <span class="x">×</span></div>
+        <div class="dialog-body">
+          <pre class="panel" style="margin:0;padding:12px;font-family:var(--font-mono);font-size:11.5px;line-height:1.5;overflow:auto;max-height:280px;">eval5 rank table ........ PASS
+joker wild ............... PASS
+tie-break order .......... PASS
+card cap ................. PASS
+shoe exhaustion .......... FAIL — expected 0, got 1
+publish options .......... PASS</pre>
+          <div class="notice bad">1 check failed. The results page may be wrong until this is fixed.</div>
+        </div>
+        <div class="dialog-footer"><button class="btn" disabled>Rerun</button><button class="btn primary">Close</button></div>
+      </div></div>
+    </section>
+
+    <!-- SIMULATOR -->
+    <section class="screen" id="s-sim">
+      <p class="screen-caption">Rider Simulator — <code>simulation_dlg</code><small>With a ride open: New Ride disabled, generators + GO enabled.</small></p>
+      <div class="backdrop"><div class="dialog">
+        <div class="dialog-titlebar">Rider Simulator <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="grid2">
+            <div class="field"><label>Number of riders</label><input class="input" value="175"></div>
+            <div class="field"><label>Number of teams</label><input class="input" value="40"></div>
+            <div class="field"><label>Solo riders</label><input class="input" value="15"></div>
+            <div class="field"><label>Number of laps</label><input class="input" value="1"></div>
+            <div class="field"><label>Minutes between first rider</label><input class="input" value="45"></div>
+            <div class="field"><label>Short-lap riders</label><select class="select"><option>Disabled</option><option selected>1</option></select></div>
+            <div class="field"><label>Lapped riders</label><select class="select"><option selected>Disabled</option></select></div>
+            <div class="field"><label>Team riders stop after 4 laps</label><select class="select"><option selected>Disabled</option></select></div>
+          </div>
+          <div class="notice">GO validates the race settings; refusals stay on this infobar.</div>
+        </div>
+        <div class="dialog-footer"><div class="left"><button class="btn" disabled>New Ride</button><button class="btn">Generate Riders</button><button class="btn">Check</button></div><button class="btn">Cancel</button><button class="btn primary">GO</button></div>
+      </div></div>
+    </section>
+
+    <!-- SIM RUNNING -->
+    <section class="screen" id="s-sim-running">
+      <p class="screen-caption">Simulating… — <code>sim_running_dlg</code></p>
+      <div class="backdrop"><div class="dialog narrow">
+        <div class="dialog-titlebar">Simulating… <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div>Simulated 240 of 1 800 crossings</div>
+          <div class="progress"><i style="width:13%"></i></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button></div>
+      </div></div>
+    </section>
+
+    <!-- PUBLISH -->
+    <section class="screen" id="s-publish">
+      <p class="screen-caption">Publish to WordPress — <code>publish_wordpress_dlg</code><small>Kind re-fills title/slug; blank or non-https URL refuses.</small></p>
+      <div class="backdrop"><div class="dialog">
+        <div class="dialog-titlebar">Publish to WordPress <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div class="field"><label>What to publish</label><select class="select"><option>Full results</option><option>Podium results</option></select></div>
+          <div class="section-label">Site</div>
+          <div class="grid2">
+            <div class="field"><label>URL</label><input class="input" value="https://example.test"></div>
+            <div class="field"><label>Username</label><input class="input" value="organizer"></div>
+            <div class="field"><label>Application password</label><input class="input" type="password" value="********"></div>
+          </div>
+          <div class="section-label">Page</div>
+          <div class="grid2">
+            <div class="field"><label>Title</label><input class="input" value="GORBA EPIC 2026 — Full results"></div>
+            <div class="field"><label>Slug</label><input class="input" value="gorba-epic-2026-full-results"></div>
+            <div class="field"><label>Parent page</label><input class="input" value=""></div>
+            <div class="field"><label>Status</label><select class="select"><option>Draft</option><option>Publish</option><option>Pending</option><option>Private</option></select></div>
+          </div>
+          <div class="help">The Application Password is kept in this machine's settings file for now. A blank parent page publishes at the top level.</div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button><button class="btn primary">Publish</button></div>
+      </div></div>
+    </section>
+
+    <!-- PUBLISH RUNNING -->
+    <section class="screen" id="s-publish-running">
+      <p class="screen-caption">Publishing to WordPress — <code>publish_running_dlg</code><small>Indeterminate progress; Cancel abandons at the next checkpoint.</small></p>
+      <div class="backdrop"><div class="dialog narrow">
+        <div class="dialog-titlebar">Publishing to WordPress <span class="x">×</span></div>
+        <div class="dialog-body">
+          <div>Publishing to https://example.test…</div>
+          <div class="progress indeterminate"><i></i></div>
+        </div>
+        <div class="dialog-footer"><button class="btn">Cancel</button></div>
+      </div></div>
+    </section>
+
+  </main>
+</div>
+<script>
+  const navButtons = document.querySelectorAll('.mockup-nav button');
+  const screens = document.querySelectorAll('.screen');
+  function show(target) {
+    navButtons.forEach(function (b) { b.classList.toggle('active', b.dataset.target === target); });
+    screens.forEach(function (s) { s.classList.toggle('active', s.id === target); });
+    document.querySelector('.mockup-main').scrollTop = 0;
+  }
+  navButtons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      show(btn.dataset.target);
+      history.replaceState(null, '', '#' + btn.dataset.target);
+    });
+  });
+  const themeButton = document.getElementById('theme-toggle');
+  function applyTheme(dark) {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    themeButton.textContent = dark ? 'Light mode' : 'Dark mode';
+  }
+  themeButton.addEventListener('click', function () {
+    applyTheme(document.documentElement.getAttribute('data-theme') !== 'dark');
+  });
+  // Deep links: index.html#s-setup, and ?theme=dark for screenshots/review.
+  const params = new URLSearchParams(location.search);
+  if (params.get('theme') === 'dark') applyTheme(true);
+  if (location.hash) show(location.hash.slice(1));
+  window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });
+</script>
+</body>
+</html>

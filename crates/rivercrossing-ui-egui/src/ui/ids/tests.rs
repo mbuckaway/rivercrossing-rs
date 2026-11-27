@@ -64,6 +64,15 @@ fn test_a_few_known_controls_are_present() {
 }
 
 #[test]
+fn test_the_simulation_dialog_lists_the_new_ride_button() {
+    // Act
+    let found = controls("simulation_dlg").map(|ids| ids.contains(&"new_ride_btn"));
+
+    // Assert
+    assert_eq!(found, Some(true));
+}
+
+#[test]
 fn test_controls_given_an_unknown_window_returns_none() {
     // Act
     let found = controls("no_such_window");

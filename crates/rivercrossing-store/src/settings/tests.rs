@@ -30,6 +30,10 @@ fn env_from<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<Stri
 fn non_default_settings() -> AppSettings {
     AppSettings {
         appearance: "dark".to_owned(),
+        contrast: "high".to_owned(),
+        density: "comfortable".to_owned(),
+        text_size: "large".to_owned(),
+        theme: "craft.studio".to_owned(),
         sound_on: false,
         show_total_times: true,
         show_lap_time: false,
@@ -65,6 +69,38 @@ fn non_default_settings() -> AppSettings {
 fn appearance(value: &str) -> AppSettings {
     AppSettings {
         appearance: value.to_owned(),
+        ..default_settings()
+    }
+}
+
+/// Build the defaults with one contrast spelling.
+fn contrast(value: &str) -> AppSettings {
+    AppSettings {
+        contrast: value.to_owned(),
+        ..default_settings()
+    }
+}
+
+/// Build the defaults with one density spelling.
+fn density(value: &str) -> AppSettings {
+    AppSettings {
+        density: value.to_owned(),
+        ..default_settings()
+    }
+}
+
+/// Build the defaults with one text-size spelling.
+fn text_size(value: &str) -> AppSettings {
+    AppSettings {
+        text_size: value.to_owned(),
+        ..default_settings()
+    }
+}
+
+/// Build the defaults with one theme id.
+fn theme(value: &str) -> AppSettings {
+    AppSettings {
+        theme: value.to_owned(),
         ..default_settings()
     }
 }
@@ -153,6 +189,10 @@ fn geometry(value: Option<[i32; 4]>) -> AppSettings {
 fn test_settings_defaults_match_the_python_table() {
     let expected = AppSettings {
         appearance: "system".to_owned(),
+        contrast: "system".to_owned(),
+        density: "compact".to_owned(),
+        text_size: "medium".to_owned(),
+        theme: "craft.artcraft".to_owned(),
         sound_on: true,
         show_total_times: false,
         show_lap_time: true,
@@ -200,6 +240,82 @@ fn test_settings_round_trip_every_field() -> Result<(), Box<dyn std::error::Erro
 
     // Assert
     assert_eq!((loaded, warnings), (settings, Vec::new()));
+    Ok(())
+}
+
+#[test]
+fn test_settings_round_trip_persists_the_appearance_axes() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Arrange
+    let directory = TempDir::new()?;
+    let path = directory.path().join("settings.json");
+    let settings = AppSettings {
+        contrast: "high".to_owned(),
+        density: "comfortable".to_owned(),
+        text_size: "tiny".to_owned(),
+        theme: "craft.graphite".to_owned(),
+        ..default_settings()
+    };
+
+    // Act
+    save_settings(&settings, &path)?;
+    let (loaded, warnings) = load_settings(&path);
+
+    // Assert
+    assert_eq!(
+        (
+            loaded.contrast,
+            loaded.density,
+            loaded.text_size,
+            loaded.theme,
+            warnings,
+        ),
+        (
+            "high".to_owned(),
+            "comfortable".to_owned(),
+            "tiny".to_owned(),
+            "craft.graphite".to_owned(),
+            Vec::new(),
+        )
+    );
+    Ok(())
+}
+
+#[test]
+fn test_load_settings_given_json_without_the_appearance_axes_reads_the_defaults()
+-> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = TempDir::new()?;
+    let path = directory.path().join("settings.json");
+    std::fs::write(
+        &path,
+        r#"{"appearance": "light", "zoom_percent": 120, "theme": "craft.soft"}"#,
+    )?;
+
+    // Act
+    let (settings, warnings) = load_settings(&path);
+
+    // Assert
+    assert_eq!(
+        (
+            settings.appearance,
+            settings.zoom_percent,
+            settings.contrast,
+            settings.density,
+            settings.text_size,
+            settings.theme,
+            warnings,
+        ),
+        (
+            "light".to_owned(),
+            120,
+            "system".to_owned(),
+            "compact".to_owned(),
+            "medium".to_owned(),
+            "craft.soft".to_owned(),
+            Vec::new(),
+        )
+    );
     Ok(())
 }
 
@@ -284,6 +400,20 @@ fn test_load_settings_given_a_non_object_returns_defaults_with_warning()
 #[case::appearance_dark_is_kept(r#"{"appearance": "dark"}"#, appearance("dark"))]
 #[case::appearance_unknown_is_system(r#"{"appearance": "pastel"}"#, appearance("system"))]
 #[case::appearance_not_a_string_is_system(r#"{"appearance": 7}"#, default_settings())]
+#[case::contrast_high_is_kept(r#"{"contrast": "high"}"#, contrast("high"))]
+#[case::contrast_standard_is_kept(r#"{"contrast": "standard"}"#, contrast("standard"))]
+#[case::contrast_unknown_is_system(r#"{"contrast": "max"}"#, contrast("system"))]
+#[case::contrast_not_a_string_is_system(r#"{"contrast": 2}"#, default_settings())]
+#[case::density_comfortable_is_kept(r#"{"density": "comfortable"}"#, density("comfortable"))]
+#[case::density_unknown_is_compact(r#"{"density": "wide"}"#, density("compact"))]
+#[case::density_not_a_string_is_compact(r#"{"density": true}"#, default_settings())]
+#[case::text_size_tiny_is_kept(r#"{"text_size": "tiny"}"#, text_size("tiny"))]
+#[case::text_size_large_is_kept(r#"{"text_size": "large"}"#, text_size("large"))]
+#[case::text_size_unknown_is_medium(r#"{"text_size": "huge"}"#, text_size("medium"))]
+#[case::text_size_not_a_string_is_medium(r#"{"text_size": 14}"#, default_settings())]
+#[case::theme_studio_is_kept(r#"{"theme": "craft.studio"}"#, theme("craft.studio"))]
+#[case::theme_unknown_is_artcraft(r#"{"theme": "craft.neon"}"#, theme("craft.artcraft"))]
+#[case::theme_not_a_string_is_artcraft(r#"{"theme": 5}"#, default_settings())]
 #[case::sound_on_false_is_kept(r#"{"sound_on": false}"#, sound_on(false))]
 #[case::sound_on_not_a_bool_is_the_default(r#"{"sound_on": 1}"#, default_settings())]
 #[case::show_lap_time_false_is_kept(r#"{"show_lap_time": false}"#, show_lap_time(false))]
@@ -407,7 +537,7 @@ fn test_save_settings_writes_atomically_and_creates_parents()
             text.ends_with("\n}\n"),
             temp_path.exists(),
         ),
-        (Some(29), true, true, false)
+        (Some(33), true, true, false)
     );
     Ok(())
 }

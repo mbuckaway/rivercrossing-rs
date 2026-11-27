@@ -2,85 +2,78 @@
 
 //! The `WordPress` publish form and its progress window.
 
-use craft::egui::{self, ComboBox, Ui};
+use craft::egui::Ui;
+use craft::theme::variant::Tone;
+use craft::ui::contract::{Props as _, Show as _, ShowContainer as _};
+use craft::ui::display::{Progress, Text};
+use craft::ui::sections::Section;
 
-use super::dialogs::stack_text_field;
-use super::text;
+use super::dialogs::{notice, select_value, stack_secret_field, stack_text_field};
 use crate::ui::presenters::publish_wordpress::{
     PUBLISH_KIND_CHOICES, STATUS_CHOICES, resolved_kind, status_value,
 };
 use crate::ui::state::AppState;
 
 /// Show the publish form.
-pub(crate) fn form_body(ui: &mut Ui, state: &mut AppState, focused: Option<&str>) {
-    choice(ui, state, "wp_kind_choice", "Kind", &PUBLISH_KIND_CHOICES);
-    for (field, label) in [
-        ("wp_url_input", "Site URL"),
-        ("wp_username_input", "Username"),
-        ("wp_password_input", "Application password"),
-        ("wp_title_input", "Page title"),
-        ("wp_slug_input", "Slug"),
-        ("wp_parent_input", "Parent page id"),
-    ] {
-        stack_text_field(ui, state, field, label, focused);
-    }
-    choice(ui, state, "wp_status_choice", "Status", &STATUS_CHOICES);
-    if let Some(errors) = state.publish_errors.clone() {
-        ui.push_id("publish_infobar", |ui| text(ui, &errors.join("; ")));
-    }
-}
-
-/// Show a label and a choice bound to one dialog field.
-fn choice(
-    ui: &mut Ui,
-    state: &mut AppState,
-    id: &str,
-    label: &str,
-    choices: &[(&'static str, &'static str)],
-) {
-    let stored = state.dialogs.field(id).unwrap_or_default().to_owned();
-    let selected = if id == "wp_kind_choice" {
-        resolved_kind(&stored)
-    } else {
-        status_value(&stored)
-    };
-    let shown = choices
-        .iter()
-        .find(|(_label, value)| *value == selected)
-        .map_or_else(
-            || choices.first().map_or("", |(label, _value)| *label),
-            |(label, _value)| *label,
-        );
-    let mut picked = stored.clone();
-    ui.push_id(id, |ui| {
-        ui.horizontal(|ui| {
-            ui.add(egui::Label::new(label).selectable(false))
-                .accessible_name(label);
-            ComboBox::from_id_salt(format!("{id}_combo"))
-                .selected_text(shown)
-                .show_ui(ui, |ui| {
-                    for (choice_label, value) in choices {
-                        ui.selectable_value(&mut picked, (*value).to_owned(), *choice_label);
-                    }
-                })
-                .response
-                .accessible_name(label);
-        });
+pub(crate) fn form_body(ui: &mut Ui, state: &mut AppState) {
+    kind(ui, state);
+    let _ = Section::fixed("Site").show(ui, |ui, _| {
+        stack_text_field(ui, state, "wp_url_input", "Site URL");
+        stack_text_field(ui, state, "wp_username_input", "Username");
+        stack_secret_field(ui, state, "wp_password_input", "Application password");
     });
-    if picked != stored {
-        if id == "wp_kind_choice" {
-            state.set_publish_kind(&picked);
-        } else {
-            let _ = state.dialogs.set_field(id, picked);
-        }
+    let _ = Section::fixed("Page").show(ui, |ui, _| {
+        stack_text_field(ui, state, "wp_title_input", "Page title");
+        stack_text_field(ui, state, "wp_slug_input", "Slug");
+        stack_text_field(ui, state, "wp_parent_input", "Parent page id");
+        status(ui, state);
+    });
+    if let Some(errors) = state.publish_errors.clone() {
+        notice(ui, "publish_infobar", Tone::Bad, errors.join("; "));
     }
 }
 
-/// Show the publish progress window.
+/// Show the publish-kind choice; a new kind re-fills the page title and slug.
+fn kind(ui: &mut Ui, state: &mut AppState) {
+    let stored = state
+        .dialogs
+        .field("wp_kind_choice")
+        .unwrap_or_default()
+        .to_owned();
+    let selected = resolved_kind(&stored);
+    if let Some(picked) = select_value(
+        ui,
+        "wp_kind_choice",
+        "What to publish",
+        selected,
+        &PUBLISH_KIND_CHOICES,
+    ) {
+        state.set_publish_kind(picked);
+    }
+}
+
+/// Show the page-status choice.
+fn status(ui: &mut Ui, state: &mut AppState) {
+    let stored = state
+        .dialogs
+        .field("wp_status_choice")
+        .unwrap_or_default()
+        .to_owned();
+    let selected = status_value(&stored);
+    if let Some(picked) = select_value(ui, "wp_status_choice", "Status", selected, &STATUS_CHOICES)
+    {
+        let _ = state.dialogs.set_field("wp_status_choice", picked);
+    }
+}
+
+/// Show the publish progress window: an indeterminate bar, since the worker reports no fraction.
 pub(crate) fn running_body(ui: &mut Ui, state: &AppState) {
-    ui.push_id("publish_status_lbl", |ui| text(ui, &state.publish_status));
+    ui.push_id("publish_status_lbl", |ui| {
+        let _ = Text::new(state.publish_status.clone()).show(ui);
+    });
     ui.push_id("progress_gauge", |ui| {
-        ui.add(egui::ProgressBar::new(0.5))
-            .accessible_name("Publishing progress");
+        let _ = Progress::indeterminate()
+            .label("Publishing progress")
+            .show(ui);
     });
 }

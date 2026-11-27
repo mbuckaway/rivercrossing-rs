@@ -5,8 +5,9 @@
 //! The rules follow the Python oracle's `ui/presenters/settings.py` and
 //! `ui/views/settings.py`: the three appearance radios spell the stored
 //! appearance, Light winning over Dark, and the average rider speed keeps its
-//! decimal and its 1 km/h floor. Every field the dialog has no control for
-//! carries through unchanged.
+//! decimal and its 1 km/h floor. The `ArtCraft` contrast, density, text-size and
+//! theme axes are additive controls outside the frozen fields. Every field the
+//! dialog has no control for carries through unchanged.
 
 #![cfg_attr(
     not(test),
@@ -24,6 +25,25 @@ mod tests;
 /// The appearance spellings the dialog carries.
 const APPEARANCES: [&str; 3] = ["system", "light", "dark"];
 
+/// The contrast choices the dialog carries, as (label, stored spelling).
+pub(crate) const CONTRAST_CHOICES: [(&str, &str); 3] = [
+    ("System", "system"),
+    ("Standard", "standard"),
+    ("High", "high"),
+];
+
+/// The density choices the dialog carries, as (label, stored spelling).
+pub(crate) const DENSITY_CHOICES: [(&str, &str); 2] =
+    [("Compact", "compact"), ("Comfortable", "comfortable")];
+
+/// The text-size choices the dialog carries, as (label, stored spelling).
+pub(crate) const TEXT_SIZE_CHOICES: [(&str, &str); 4] = [
+    ("Tiny", "tiny"),
+    ("Small", "small"),
+    ("Medium", "medium"),
+    ("Large", "large"),
+];
+
 /// The floor for the stored average rider speed, in km/h.
 const MIN_AVG_SPEED_KMH: f64 = 1.0;
 
@@ -32,6 +52,18 @@ pub(crate) const MIN_AVG_SPEED: f64 = MIN_AVG_SPEED_KMH;
 
 /// The refusal for an appearance outside the three spellings.
 const APPEARANCE_UNKNOWN: &str = "Appearance must be system, light or dark";
+
+/// The refusal for a contrast outside the three spellings.
+const CONTRAST_UNKNOWN: &str = "Contrast must be system, standard or high";
+
+/// The refusal for a density outside the two spellings.
+const DENSITY_UNKNOWN: &str = "Density must be compact or comfortable";
+
+/// The refusal for a text size outside the four spellings.
+const TEXT_SIZE_UNKNOWN: &str = "Text size must be tiny, small, medium or large";
+
+/// The refusal for a theme id that names no built-in theme.
+const THEME_UNKNOWN: &str = "Theme must be a built-in theme";
 
 /// The refusal for a non-finite average rider speed.
 const AVG_SPEED_NOT_A_NUMBER: &str = "Average rider speed must be a number";
@@ -48,6 +80,14 @@ const AVG_SPEED_BELOW_FLOOR: &str = "Average rider speed must be at least 1 km/h
 pub(crate) struct FormValues {
     /// The appearance spelling the checked radio selects.
     pub(crate) appearance: String,
+    /// The contrast spelling.
+    pub(crate) contrast: String,
+    /// The density spelling.
+    pub(crate) density: String,
+    /// The text-size spelling.
+    pub(crate) text_size: String,
+    /// The theme id.
+    pub(crate) theme: String,
     /// Whether the sound cues play.
     pub(crate) sound_on: bool,
     /// Whether the console shows the total-time column.
@@ -65,6 +105,10 @@ pub(crate) struct FormValues {
 pub(crate) fn from_settings(settings: &AppSettings) -> FormValues {
     FormValues {
         appearance: settings.appearance.clone(),
+        contrast: settings.contrast.clone(),
+        density: settings.density.clone(),
+        text_size: settings.text_size.clone(),
+        theme: settings.theme.clone(),
         sound_on: settings.sound_on,
         show_total_times: settings.show_total_times,
         show_lap_time: settings.show_lap_time,
@@ -75,12 +119,12 @@ pub(crate) fn from_settings(settings: &AppSettings) -> FormValues {
 
 /// Apply *values* to *settings* and return the refusals, if any.
 ///
-/// The six dialog fields always apply. An appearance outside
-/// `system`/`light`/`dark` is refused and leaves the stored spelling alone. A
-/// non-finite average rider speed is refused and leaves the stored value
-/// alone; a value below 1 km/h is floored to 1 km/h and refused. Every other
-/// setting carries through unchanged. An empty list means the form was
-/// accepted.
+/// The ten dialog fields always apply. A spelling outside its axis's choices
+/// is refused and leaves the stored value alone; a theme id that names no
+/// built-in theme is refused the same way. A non-finite average rider speed is
+/// refused and leaves the stored value alone; a value below 1 km/h is floored
+/// to 1 km/h and refused. Every other setting carries through unchanged. An
+/// empty list means the form was accepted.
 #[must_use]
 pub(crate) fn apply(values: &FormValues, settings: &mut AppSettings) -> Vec<String> {
     let mut messages = Vec::new();
@@ -88,6 +132,26 @@ pub(crate) fn apply(values: &FormValues, settings: &mut AppSettings) -> Vec<Stri
         settings.appearance.clone_from(&values.appearance);
     } else {
         messages.push(APPEARANCE_UNKNOWN.to_owned());
+    }
+    if is_choice(&CONTRAST_CHOICES, &values.contrast) {
+        settings.contrast.clone_from(&values.contrast);
+    } else {
+        messages.push(CONTRAST_UNKNOWN.to_owned());
+    }
+    if is_choice(&DENSITY_CHOICES, &values.density) {
+        settings.density.clone_from(&values.density);
+    } else {
+        messages.push(DENSITY_UNKNOWN.to_owned());
+    }
+    if is_choice(&TEXT_SIZE_CHOICES, &values.text_size) {
+        settings.text_size.clone_from(&values.text_size);
+    } else {
+        messages.push(TEXT_SIZE_UNKNOWN.to_owned());
+    }
+    if is_builtin_theme(&values.theme) {
+        settings.theme.clone_from(&values.theme);
+    } else {
+        messages.push(THEME_UNKNOWN.to_owned());
     }
     settings.sound_on = values.sound_on;
     settings.show_total_times = values.show_total_times;
@@ -102,6 +166,18 @@ pub(crate) fn apply(values: &FormValues, settings: &mut AppSettings) -> Vec<Stri
         messages.push(AVG_SPEED_NOT_A_NUMBER.to_owned());
     }
     messages
+}
+
+/// Whether *spelling* is one of the axis's stored choices.
+fn is_choice(choices: &[(&str, &str)], spelling: &str) -> bool {
+    choices.iter().any(|(_, value)| *value == spelling)
+}
+
+/// Whether *id* names a built-in theme.
+fn is_builtin_theme(id: &str) -> bool {
+    craft::theme::builtins()
+        .iter()
+        .any(|theme| theme.id.as_str() == id)
 }
 
 /// Return the checked appearance radio's spelling.

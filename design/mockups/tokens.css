@@ -1,0 +1,38 @@
+/* ArtCraft mockup tokens — vendored from craft.artcraft (pinned craft-libs rev).
+   Values mirror design/docs-md/visual-style.md. No local colour invention. */
+:root {
+  color-scheme: light;
+  --bg: #e2e2e2; --canvas: #d6d6d6; --panel: #f0f0f0; --sunken: #ffffff; --chrome: #e8e8e8; --raised: #f7f7f7;
+  --text: #141414; --muted: #404040; --faint: #787878; --on-accent: #ffffff;
+  --divider: #d6d6d6; --border: #d6d6d6; --control-edge: #bababa; --focus: #378ef0;
+  --hover: #e2e2e2; --pressed: #cecece; --selected: #cccccc;
+  --accent: #378ef0; --accent-text: #1062c4; --accent-strong: #1062c4; --accent-soft: #e3eefc; --bad-fill: #c42b1c;
+  --good: #85dc6a; --warn: #e8b046; --bad: #ff8080; --info: #78adf6;
+  --good-bg: #e7f6e0; --good-fg: #2f6b1f;
+  --warn-bg: #fbefd6; --warn-fg: #7a5310;
+  --bad-bg: #fbe0e0; --bad-fg: #8a2a2a;
+  --info-bg: #e3eefc; --info-fg: #1d4f8f;
+  --neutral-bg: #e4e4e4; --neutral-fg: #404040;
+  --space-1: 2px; --space-2: 4px; --space-3: 6px; --space-4: 8px; --space-5: 12px; --space-6: 16px; --space-7: 20px; --space-8: 24px;
+  --radius-control: 3px; --radius-surface: 4px; --radius-window: 6px; --radius-pill: 999px;
+  --shadow-dialog: 0 6px 20px rgba(0,0,0,.20);
+  --shadow-float: 0 10px 32px rgba(0,0,0,.20);
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --fs-caption: 10.5px; --fs-label: 11.5px; --fs-body: 12px; --fs-title: 13px; --fs-heading: 15px; --fs-display: 38px;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #424242; --canvas: #282828; --panel: #535353; --sunken: #454545; --chrome: #3c3c3c; --raised: #5c5c5c;
+  --text: #eeeeee; --muted: #d4d4d4; --faint: #a0a0a0; --on-accent: #ffffff;
+  --divider: #3e3e3e; --border: #424242; --control-edge: #686868; --focus: #78adf6;
+  --hover: #626262; --pressed: #707070; --selected: #6b6b6b;
+  --accent: #378ef0; --accent-text: #378ef0; --accent-strong: #4a8fe8; --accent-soft: #26364a; --bad-fill: #a12a2a;
+  --good-bg: #24331f; --good-fg: #b7e8a8;
+  --warn-bg: #3a2f18; --warn-fg: #f0cf95;
+  --bad-bg: #3a2020; --bad-fg: #ffb3b3;
+  --info-bg: #243345; --info-fg: #b7d4f7;
+  --neutral-bg: #4a4a4a; --neutral-fg: #d4d4d4;
+  --shadow-dialog: 0 6px 20px rgba(0,0,0,.55);
+  --shadow-float: 0 10px 32px rgba(0,0,0,.55);
+}

@@ -3,10 +3,11 @@
 //! The persisted app settings: the Python `settings.json` schema.
 //!
 //! The module reads and writes the same file the Python app uses, with the
-//! same 29 fields and the same per-field coercers. A load never fails: a
-//! missing, unreadable, corrupt or non-object file returns the defaults and
-//! records one warning. A save creates the parent directory, writes a sibling
-//! temporary file and renames it over the target.
+//! same 29 Python fields and the same per-field coercers, plus four additive
+//! `ArtCraft` appearance fields. A load never fails: a missing, unreadable,
+//! corrupt or non-object file returns the defaults and records one warning. A
+//! save creates the parent directory, writes a sibling temporary file and
+//! renames it over the target.
 
 use std::path::{Path, PathBuf};
 
@@ -22,6 +23,29 @@ const ZOOM_LADDER: [u16; 7] = [90, 100, 110, 120, 130, 140, 150];
 
 /// The appearance spellings the settings dialog carries.
 const APPEARANCES: [&str; 3] = ["system", "light", "dark"];
+
+/// The contrast spellings the settings dialog carries.
+const CONTRASTS: [&str; 3] = ["system", "standard", "high"];
+
+/// The density spellings the settings dialog carries.
+const DENSITIES: [&str; 2] = ["compact", "comfortable"];
+
+/// The text-size spellings the settings dialog carries.
+const TEXT_SIZES: [&str; 4] = ["tiny", "small", "medium", "large"];
+
+/// The built-in theme ids, mirroring the pinned craft-libs theme set.
+const THEMES: [&str; 10] = [
+    "craft.artcraft",
+    "craft.pro",
+    "craft.pro-light-gray",
+    "craft.graphite",
+    "craft.studio",
+    "craft.solarized-dark",
+    "craft.adwaita",
+    "craft.breeze",
+    "craft.classic",
+    "craft.soft",
+];
 
 /// The `WordPress` post statuses the publish feature can reach.
 const WP_STATUSES: [&str; 4] = ["draft", "publish", "pending", "private"];
@@ -48,8 +72,16 @@ const TEMP_SUFFIX: &str = ".tmp";
 )]
 #[derive(Debug, Clone, PartialEq)]
 pub struct AppSettings {
-    /// The appearance spelling: `system`, `light` or `dark`.
+    /// The appearance mode spelling: `system`, `light` or `dark`.
     pub appearance: String,
+    /// The contrast spelling: `system`, `standard` or `high`.
+    pub contrast: String,
+    /// The density spelling: `compact` or `comfortable`.
+    pub density: String,
+    /// The text-size spelling: `tiny`, `small`, `medium` or `large`.
+    pub text_size: String,
+    /// The theme id; a value outside the built-in set loads as the suite default.
+    pub theme: String,
     /// Whether the sound cues play.
     pub sound_on: bool,
     /// Whether the console shows the total-time column.
@@ -119,6 +151,10 @@ impl Default for AppSettings {
 pub fn default_settings() -> AppSettings {
     AppSettings {
         appearance: "system".to_owned(),
+        contrast: "system".to_owned(),
+        density: "compact".to_owned(),
+        text_size: "medium".to_owned(),
+        theme: "craft.artcraft".to_owned(),
         sound_on: true,
         show_total_times: false,
         show_lap_time: true,
@@ -213,6 +249,10 @@ pub fn save_settings(settings: &AppSettings, path: &Path) -> Result<(), StoreErr
 fn payload(settings: &AppSettings) -> Value {
     json!({
         "appearance": settings.appearance,
+        "contrast": settings.contrast,
+        "density": settings.density,
+        "text_size": settings.text_size,
+        "theme": settings.theme,
         "sound_on": settings.sound_on,
         "show_total_times": settings.show_total_times,
         "show_lap_time": settings.show_lap_time,
@@ -256,6 +296,10 @@ fn from_mapping(raw: &Map<String, Value>) -> AppSettings {
     let defaults = default_settings();
     AppSettings {
         appearance: whitelist_or(raw.get("appearance"), &APPEARANCES, &defaults.appearance),
+        contrast: whitelist_or(raw.get("contrast"), &CONTRASTS, &defaults.contrast),
+        density: whitelist_or(raw.get("density"), &DENSITIES, &defaults.density),
+        text_size: whitelist_or(raw.get("text_size"), &TEXT_SIZES, &defaults.text_size),
+        theme: whitelist_or(raw.get("theme"), &THEMES, &defaults.theme),
         sound_on: bool_or(raw.get("sound_on"), defaults.sound_on),
         show_total_times: bool_or(raw.get("show_total_times"), defaults.show_total_times),
         show_lap_time: bool_or(raw.get("show_lap_time"), defaults.show_lap_time),

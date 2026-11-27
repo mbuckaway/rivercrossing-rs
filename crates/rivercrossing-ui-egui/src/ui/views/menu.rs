@@ -27,8 +27,8 @@ pub(crate) struct MenuRow {
     pub(crate) id: ActionId,
     /// The row's label.
     pub(crate) label: &'static str,
-    /// The shortcut text, when the row has one.
-    pub(crate) shortcut: Option<String>,
+    /// The documented shortcut, when the row has one.
+    pub(crate) shortcut: Option<Shortcut>,
     /// Whether the row accepts activation.
     pub(crate) enabled: bool,
     /// The check mark's state, for a checkable row.
@@ -64,7 +64,7 @@ pub(crate) fn rows(state: &AppState) -> Vec<MenuRow> {
                 section: section(row.id),
                 id: row.id,
                 label: row.label,
-                shortcut: row.shortcut.map(Shortcut::text),
+                shortcut: row.shortcut,
                 enabled: state.implemented(row.id) && enabled(row.id, &gate),
                 checked,
                 radio,
@@ -102,7 +102,7 @@ pub(crate) fn show(ui: &mut Ui, state: &mut AppState) {
                         item = item.radio_mark(radio);
                     }
                     if let Some(shortcut) = &row.shortcut {
-                        item = item.shortcut(shortcut.clone());
+                        item = item.shortcut(shortcut.text());
                     }
                     let ran = ui.push_id(row.id.as_str(), |ui| item.show(ui).ran).inner;
                     if ran {

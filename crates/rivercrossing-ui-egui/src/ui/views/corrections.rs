@@ -2,64 +2,60 @@
 
 //! The correction forms and the Crossing Detail dialog.
 
-use craft::egui::{self, Ui};
+use craft::egui::Ui;
+use craft::ui::contract::Show as _;
 
-use super::dialogs::stack_text_field;
-use super::text;
+use super::dialogs::{stack_date_field, stack_text_field, value};
 use crate::ui::state::AppState;
 
 /// Show the edit-crossing form (edit and add modes share it).
-pub(crate) fn edit_crossing(ui: &mut Ui, state: &mut AppState, focused: Option<&str>) {
-    stack_text_field(ui, state, "plate_input", "Plate", focused);
-    stack_text_field(ui, state, "time_picker", "Time (H:MM:SS)", focused);
-    stack_text_field(ui, state, "reason_input", "Reason", focused);
+pub(crate) fn edit_crossing(ui: &mut Ui, state: &mut AppState) {
+    stack_text_field(ui, state, "plate_input", "Plate");
+    stack_text_field(ui, state, "time_picker", "Time (H:MM:SS)");
+    stack_text_field(ui, state, "reason_input", "Reason");
 }
 
 /// Show the manual-deal form.
-pub(crate) fn manual_deal(ui: &mut Ui, state: &mut AppState, focused: Option<&str>) {
-    stack_text_field(ui, state, "plate_input", "Plate", focused);
-    stack_text_field(ui, state, "reason_input", "Reason", focused);
+pub(crate) fn manual_deal(ui: &mut Ui, state: &mut AppState) {
+    stack_text_field(ui, state, "plate_input", "Plate");
+    stack_text_field(ui, state, "reason_input", "Reason");
 }
 
 /// Show the DNF form.
-pub(crate) fn dnf(ui: &mut Ui, state: &mut AppState, focused: Option<&str>) {
-    stack_text_field(ui, state, "plate_input", "Plate", focused);
+pub(crate) fn dnf(ui: &mut Ui, state: &mut AppState) {
+    stack_text_field(ui, state, "plate_input", "Plate");
     ui.push_id("entry_lbl", |ui| {
-        text(ui, "The plate names the rider or entry that becomes DNF.");
+        let _ =
+            craft::ui::display::Text::new("The plate names the rider or entry that becomes DNF.")
+                .show(ui);
     });
-    stack_text_field(ui, state, "reason_input", "Reason", focused);
+    stack_text_field(ui, state, "reason_input", "Reason");
 }
 
 /// Show the void-card form.
-pub(crate) fn void_card(ui: &mut Ui, state: &mut AppState, focused: Option<&str>) {
+pub(crate) fn void_card(ui: &mut Ui, state: &mut AppState) {
     let card = state
         .crossing_detail
         .as_ref()
         .map_or_else(String::new, |detail| detail.model.card.clone());
-    ui.push_id("card_lbl", |ui| text(ui, &card));
+    value(ui, "card_lbl", "Card", card);
     let entry = state
         .crossing_detail
         .as_ref()
         .map_or_else(String::new, |detail| detail.model.rider.clone());
-    ui.push_id("entry_lbl", |ui| text(ui, &entry));
-    stack_text_field(ui, state, "reason_input", "Reason", focused);
+    value(ui, "entry_lbl", "Entry", entry);
+    stack_text_field(ui, state, "reason_input", "Reason");
 }
 
 /// Show the plate prompt.
-pub(crate) fn crossing_number(ui: &mut Ui, state: &mut AppState, focused: Option<&str>) {
-    stack_text_field(ui, state, "number_input", "Plate", focused);
+pub(crate) fn crossing_number(ui: &mut Ui, state: &mut AppState) {
+    stack_text_field(ui, state, "number_input", "Plate");
 }
 
 /// Show the set-start form.
-pub(crate) fn set_start(ui: &mut Ui, state: &mut AppState, focused: Option<&str>) {
-    stack_text_field(ui, state, "start_date_picker", "Date (YYYY-MM-DD)", focused);
-    stack_text_field(
-        ui,
-        state,
-        "start_time_picker",
-        "Start time (H:MM:SS)",
-        focused,
-    );
+pub(crate) fn set_start(ui: &mut Ui, state: &mut AppState) {
+    stack_date_field(ui, state, "start_date_picker", "Start date");
+    stack_text_field(ui, state, "start_time_picker", "Start time (H:MM:SS)");
 }
 
 /// Show the Crossing Detail's nine read-only values.
@@ -78,24 +74,11 @@ pub(crate) fn detail(ui: &mut Ui, state: &mut AppState) {
         ("crossing_card_lbl", "Card", &detail.model.card),
         ("crossing_held_lbl", "Status", &detail.model.held),
     ];
-    egui::Grid::new("crossing_detail_grid")
-        .num_columns(4)
-        .striped(true)
-        .show(ui, |ui| {
-            for chunk in cells.chunks(2) {
-                for (id, caption, value) in chunk {
-                    ui.push_id(*id, |ui| {
-                        ui.vertical(|ui| {
-                            text(ui, caption);
-                            text(ui, value);
-                        });
-                    });
-                }
-                if chunk.len() == 1 {
-                    text(ui, "");
-                    text(ui, "");
-                }
-                ui.end_row();
+    for chunk in cells.chunks(2) {
+        ui.horizontal(|ui| {
+            for (id, caption, text) in chunk {
+                value(ui, id, caption, (*text).clone());
             }
         });
+    }
 }

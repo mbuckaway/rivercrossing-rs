@@ -4,11 +4,13 @@
 
 pub(crate) mod action;
 pub mod app;
+pub(crate) mod appearance;
 pub mod automation;
 pub(crate) mod dialogs;
 pub(crate) mod ids;
 pub(crate) mod logging;
 pub(crate) mod native;
+pub(crate) mod native_menu;
 pub(crate) mod presenters;
 pub(crate) mod publish_job;
 #[cfg_attr(

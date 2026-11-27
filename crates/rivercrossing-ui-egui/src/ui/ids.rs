@@ -290,6 +290,7 @@ pub(crate) const WINDOWS: &[WindowControls] = &[
             "short_lap_choice",
             "lapped_choice",
             "team_stop_choice",
+            "new_ride_btn",
             "gen_riders_btn",
             "check_btn",
             "go_btn",

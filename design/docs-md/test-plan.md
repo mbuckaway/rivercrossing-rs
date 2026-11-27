@@ -1,6 +1,6 @@
 # RiverCrossing-rs — UI test plan
 
-Executable matrix for the EPIC-10 automation harness and the EPIC-12 screen suite. Mechanism and
+Executable matrix for the EPIC-10 automation harness, the EPIC-12 screen suite and the EPIC-15 ArtCraft redesign. Mechanism and
 rationale: [automation](automation.md). Architecture: [architecture](architecture.md) §12.
 Requirement ids: `requirements.md` §10 (R-87…R-92).
 

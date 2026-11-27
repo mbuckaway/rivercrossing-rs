@@ -114,6 +114,74 @@ fn test_every_custom_button_is_a_frozen_control() {
     assert_eq!(stray, Vec::<&'static str>::new());
 }
 
+/// Return the window's listed controls that end in the button suffix.
+fn listed_buttons(window: &str) -> Vec<&'static str> {
+    ids::controls(window).map_or_else(Vec::new, |controls| {
+        controls
+            .iter()
+            .copied()
+            .filter(|control| control.ends_with("_btn"))
+            .collect()
+    })
+}
+
+/// Return the position of *button* in the dialog's visual order.
+fn position(dialog: &super::DialogSpec, button: Button) -> Option<usize> {
+    dialog.buttons.iter().position(|found| *found == button)
+}
+
+/// A window that declares any custom button draws its whole button row from the spec, so every
+/// frozen `_btn` it lists must be declared: the dialog host renders only the declared buttons, and
+/// a listed-but-undeclared id (the `go_btn` hole) would be silent. A window that declares no custom
+/// button draws its extra buttons from its own body view, so its registry buttons are not the
+/// spec's to declare.
+#[test]
+fn test_a_custom_button_window_declares_every_listed_button() {
+    // Act
+    let undeclared: Vec<(&'static str, &'static str)> = DIALOGS
+        .iter()
+        .filter(|dialog| {
+            dialog
+                .buttons
+                .iter()
+                .any(|button| custom_id(*button).is_some())
+        })
+        .flat_map(|dialog| {
+            listed_buttons(dialog.id)
+                .into_iter()
+                .filter(|control| position(dialog, Button::Custom(control)).is_none())
+                .map(move |control| (dialog.id, control))
+        })
+        .collect();
+
+    // Assert
+    assert_eq!(undeclared, Vec::<(&'static str, &'static str)>::new());
+}
+
+#[test]
+fn test_the_simulator_spec_places_new_ride_left_of_generate_riders() {
+    // Act
+    let order = spec("simulation_dlg").map(|dialog| {
+        (
+            position(dialog, Button::Custom("new_ride_btn")),
+            position(dialog, Button::Custom("gen_riders_btn")),
+        )
+    });
+
+    // Assert
+    assert_eq!(order, Some((Some(0), Some(1))));
+}
+
+#[test]
+fn test_the_simulator_default_is_the_go_button() {
+    // Act
+    let found = spec("simulation_dlg")
+        .map(|dialog| (dialog.default, position(dialog, Button::Custom("go_btn"))));
+
+    // Assert
+    assert_eq!(found, Some((Button::Custom("go_btn"), Some(3))));
+}
+
 #[test]
 fn test_every_first_field_is_a_settable_control() {
     // Act

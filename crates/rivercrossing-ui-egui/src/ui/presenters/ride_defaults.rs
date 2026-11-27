@@ -14,17 +14,9 @@
 //! straight through, so the test ride and a hand-opened ride setup cannot
 //! drift apart.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the EPIC-12d views wire these defaults in a later phase; phase 1 unit-tests them"
-    )
-)]
-
 use rivercrossing_ride::{EntryMode, PlateModel, RideConfig, RideConfigParams, Timestamp};
 use rivercrossing_standings::DEFAULT_TIEBREAK_ORDER;
-use time::Date;
+use time::{Date, OffsetDateTime, Time};
 
 #[cfg(test)]
 mod tests;
@@ -58,11 +50,23 @@ const DEFAULT_LAP_KM: f64 = 8.0;
 /// The stored spelling of the jokers mode that spends one budget per ride.
 const JOKERS_TOTAL: &str = "total";
 
+/// The hour of the test ride's planned gun, 24-hour clock.
+const GUN_HOUR: u8 = 10;
+
 /// The oracle's default shoe: eight decks holding one joker each.
 const DEFAULT_DECK_COUNT: i32 = 8;
 
 /// The oracle's default joker count per deck or per shoe.
 const DEFAULT_JOKERS_PER_DECK: i32 = 1;
+
+/// Return the test ride's planned gun on `date`: 10:00, the oracle's start.
+#[must_use]
+pub(crate) fn test_ride_planned_start(date: Date) -> Timestamp {
+    // 10:00 is a valid wall time, so the fallback is unreachable; the unit
+    // test pins the reading so a wrong constant cannot pass.
+    let gun = Time::from_hms(GUN_HOUR, 0, 0).unwrap_or(Time::MIDNIGHT);
+    OffsetDateTime::new_utc(date, gun)
+}
 
 /// Return the next free `"GORBA Test Ride #N"` name.
 ///

@@ -39,13 +39,18 @@ who was not part of the design conversation should be able to build the Rust por
 |---|---|
 | `design/docs-md/requirements.md` | Numbered **R-ids** — the acceptance authority (R-87…R-92 are the Rust automation requirements) |
 | `design/docs-md/spec.md` | Engineering spec — §1–§15b are the Python oracle; §12/§14 describe the Python test/CI stages and point at §16; §16 is the Rust automation mechanism |
-| `design/docs-md/xrc-windows.md` | The Python window inventory and the §15b frozen control-name registry — **implementation truth for UI** |
+| `design/docs-md/xrc-windows.md` | The Python window inventory and §15b frozen control-name registry — **behaviour oracle**; its wx canvas prose is retired |
+| `design/docs-md/ui-contract.md` | The consolidated UI contract (30 windows, 53 actions, controls, flows, gates, parity gaps) |
+| `design/docs-md/visual-style.md` | The ArtCraft design system (tokens, typography, spacing, widget vocabulary, appearance) |
+| `design/docs-md/control-mapping.md` | Frozen §15b id → `craft_ui` widget + accessible label/role |
+| `design/docs-md/screen-specs.md` | Per-window layout, states and interactions for the redesign |
 | `design/docs-md/architecture.md` | The Rust architecture (layered crates, Action registry, persistence, exports, §12 automation) |
 | `design/docs-md/automation.md` | The Rust automation decision (Rune rejected), adopted stack, selector contract, tiers, snapshot policy, parity schema |
 | `design/docs-md/test-plan.md` | The Rust test matrix — flow → tier → mechanism → assertion, golden policy, tier owners/artifacts |
-| `design/docs-md/project-plan.md` · `task-briefs.md` | Rust EPIC plan and per-task briefs |
-| `design/epic-prompts/` | Agent-ready EPIC prompts EPIC-1…14 (load each into a `tdd-rust-writer` agent; EPIC-10 has the documented owner split) |
-| `design/screenshots/` | Python window screenshots — the visual source for the Rust UI |
+| `design/docs-md/project-plan.md` | Rust EPIC plan (Python `task-briefs.md` is historical) |
+| `design/epic-prompts/` | Agent-ready EPIC prompts EPIC-1…15 (load each into a `tdd-rust-writer` agent; EPIC-10 has the documented owner split) |
+| `design/mockups/` | Approved ArtCraft HTML mockups (light/dark) — the visual source for the Rust UI |
+| `design/screenshots/` | Retired Python wx screenshots — historical only |
 | `design/exports/*.html` | Golden results pages; their `race-data` JSON is the export oracle |
 
 `design/docs-md/` is canonical for agents. `design/docs-html/` (if present) is a stale mirror.

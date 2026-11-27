@@ -307,7 +307,7 @@ fn assert_rider_editor_round_trip(client: &mut ControlClient) -> SmokeResult {
     assert_eq!(opened, json!({"ok": true}));
     let tree = client.call("ui.accessTree", json!({}))?;
     assert!(
-        tree_mentions(&tree, "Rider Editor"),
+        tree_mentions(&tree, "Search riders"),
         "the rider editor is open: {tree}"
     );
     let cancelled = client.call("ui.dialog.cancel", json!({}))?;
@@ -318,7 +318,7 @@ fn assert_rider_editor_round_trip(client: &mut ControlClient) -> SmokeResult {
     );
     let after = client.call("ui.accessTree", json!({}))?;
     assert!(
-        !tree_mentions(&after, "Rider Editor"),
+        !tree_mentions(&after, "Search riders"),
         "the editor closed: {after}"
     );
     Ok(())
@@ -330,7 +330,7 @@ fn assert_settings_round_trip(client: &mut ControlClient) -> SmokeResult {
     assert_eq!(opened, json!({"ok": true}));
     let tree = client.call("ui.accessTree", json!({}))?;
     assert!(
-        tree_mentions(&tree, "Settings"),
+        tree_mentions(&tree, "Verbose logging"),
         "the settings dialog is open: {tree}"
     );
     assert!(
@@ -345,7 +345,7 @@ fn assert_settings_round_trip(client: &mut ControlClient) -> SmokeResult {
     );
     let after = client.call("ui.accessTree", json!({}))?;
     assert!(
-        !tree_mentions(&after, "Appearance"),
+        !tree_mentions(&after, "Verbose logging"),
         "the settings dialog closed: {after}"
     );
     Ok(())
@@ -372,7 +372,7 @@ fn assert_results_round_trip(client: &mut ControlClient) -> SmokeResult {
     );
     let after = client.call("ui.accessTree", json!({}))?;
     assert!(
-        !tree_mentions(&after, "Standings"),
+        !tree_mentions(&after, "Place"),
         "the results window closed: {after}"
     );
     Ok(())
@@ -393,12 +393,16 @@ fn assert_native_confirm_cancels(client: &mut ControlClient) -> SmokeResult {
         Some(&json!("cancelled")),
         "the confirmation reports its cancel: {cancelled}"
     );
+    // The access tree is the last rendered pass; the native modal clears on the next frame, so poll
+    // for it to disappear rather than reading one stale tree.
+    for _ in 0..100 {
+        let after = client.call("ui.accessTree", json!({}))?;
+        if !tree_mentions(&after, "Quit RiverCrossing?") {
+            return Ok(());
+        }
+    }
     let after = client.call("ui.accessTree", json!({}))?;
-    assert!(
-        !tree_mentions(&after, "Quit RiverCrossing?"),
-        "the confirmation closed: {after}"
-    );
-    Ok(())
+    Err(format!("the confirmation did not close: {after}").into())
 }
 
 /// Assert `mi_new_ride` answers ok and the settled tree shows the setup dialog.

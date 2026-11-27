@@ -20,6 +20,9 @@ Rust-added R-87…R-92). The Python plan is a reference for *scope*, not a templ
 - **EPIC-10 (UI automation harness) is a prerequisite for the UI EPIC** — it lands the test contract
   (semantic harness, snapshots, live control channel, scenario schema) before any screen is built.
 - **EPIC-14 (CLI + MCP) is new** — beyond the Python app's feature set, added only after 100% parity.
+- **EPIC-15 (ArtCraft UI redesign)** executes the approved design in `ui-contract.md`,
+  `visual-style.md`, `control-mapping.md`, `screen-specs.md` and `design/mockups/`; it preserves the
+  Action registry, the frozen ids and the automation/test contract.
 
 ## EPICs
 
@@ -134,9 +137,11 @@ harness it lands.
 - **R-ids:** R-86.
 
 ### EPIC-12 — egui UI + Action registry (`rivercrossing-ui-egui`)
-- **Scope:** reproduce the Python screens from `design/screenshots/` + `xrc-windows.md` (30 windows);
-  the `Action`/command registry (§15 menu map + §15b frozen ids, 53 unique actions); presenters'
-  decision logic; console, riders/teams editors, results, audit, settings, dialogs; sound (rodio).
+- **Scope:** reproduce the Python *screens and behaviour* (30 windows) from `ui-contract.md`; the
+  `Action`/command registry (§15 menu map + §15b frozen ids, 53 unique actions); presenters' decision
+  logic; console, riders/teams editors, results, audit, settings, dialogs; sound (rodio). The wx visual
+  layer (`design/screenshots/`, the XRC canvas prose) is retired; the ArtCraft look is defined by
+  `visual-style.md` and the approved mockups in `design/mockups/`. **EPIC-15 executes the redesign.**
 - **Delivery — five PRs:** **12a** foundation (`gui-windows.md`, settings in `rivercrossing-store`,
   registry + ids-drift, `DialogStack`, app state + `StoreWorker`, ride setup + `main_frame` console,
   sound, NDJSON logging, theme/zoom, automation completion); **12b** riders/teams editors, add
@@ -176,9 +181,32 @@ harness it lands.
 - **Acceptance:** CLI + MCP execute the same commands as the GUI.
 - **R-ids:** none (new Rust feature, beyond the Python app).
 
+### EPIC-15 — ArtCraft UI redesign
+
+- **Crates:** `rivercrossing-ui-egui` only; the backend/domain crates and the store contract are
+  unchanged.
+- **Scope:** execute the approved design (`ui-contract.md`, `visual-style.md`, `control-mapping.md`,
+  `screen-specs.md`, `design/mockups/`):
+  - Fix the activation/repaint contract — `state.act`/`apply` must request a repaint when it queues
+    deferred work, and `DispatchError` must surface (the "nothing works" defect).
+  - Native macOS menu bar (`craft::menu::mac`); in-window bar on Windows/Linux; quit via File→Quit / ⌘Q.
+  - macOS close hides/minimizes (app keeps running, Dock restores); quit only via the menu.
+  - The `RootEnv` ArtCraft theming hook (mode System/Light/Dark + contrast/density/text size/theme).
+  - The docked-shell view layer per the mapping/specs; flattened gauges.
+  - Parity gaps: implement `new_ride_btn`, render `go_btn` as a real button, single-source the console
+    labels.
+- **Method:** TDD via `tdd-rust-writer`, sequential; functional fixes first (red→green), then the shell
+  and screens. Frozen ids/labels/roles preserved; goldens re-baselined on the Linux golden host.
+- **Acceptance:** `./scripts/validate-rust.sh` green; both Tier B smokes; all 30 goldens re-baselined;
+  the activation fix proven by a red→green test; macOS menu/close verified by a real-window run;
+  drift/spec tests green; coverage ≥90/90 on the enforced crates.
+- **R-ids:** R-02..R-05, R-30..R-38, R-73, R-76, R-81..R-85, R-87..R-92 (unchanged behaviour); no new
+  R-id.
+
 ## R-id coverage
 
 Every Python R-id (R-01…R-86, minus the retired R-53/R-80) is traced to at least one EPIC above;
 R-86 is the last Python id and R-87…R-92 are the Rust-added requirements (EPIC-10, UI automation &
-parity). R-70 (TDD) and R-72 (card vectors) are cross-cutting method requirements enforced across all
+parity). R-64 (REOPENED corrections) lands in EPIC-12/15, R-71 (coverage) is enforced by the gate, and
+R-74 is amended by R-92. R-70 (TDD) and R-72 (card vectors) are cross-cutting method requirements enforced across all
 code EPICs.

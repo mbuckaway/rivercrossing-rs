@@ -2695,6 +2695,15 @@ fn test_open_settings_seeds_the_form() -> Result<(), String> {
         .as_ref()
         .ok_or_else(|| "the form".to_owned())?;
     assert_eq!(form.appearance, state.settings.appearance);
+    assert_eq!(
+        (&form.contrast, &form.density, &form.text_size, &form.theme,),
+        (
+            &state.settings.contrast,
+            &state.settings.density,
+            &state.settings.text_size,
+            &state.settings.theme,
+        )
+    );
     Ok(())
 }
 
@@ -2705,6 +2714,10 @@ fn test_submit_settings_applies_saves_and_closes() -> Result<(), String> {
     state.open_settings();
     if let Some(form) = state.settings_form.as_mut() {
         form.appearance = "dark".to_owned();
+        form.contrast = "high".to_owned();
+        form.density = "comfortable".to_owned();
+        form.text_size = "large".to_owned();
+        form.theme = "craft.studio".to_owned();
         form.sound_on = false;
         form.avg_speed_kmh = 14.5;
     }
@@ -2714,11 +2727,29 @@ fn test_submit_settings_applies_saves_and_closes() -> Result<(), String> {
 
     // Assert
     assert_eq!(result, Ok(()));
-    assert_eq!(state.settings.appearance, "dark");
+    assert_eq!(
+        (
+            state.settings.appearance.as_str(),
+            state.settings.contrast.as_str(),
+            state.settings.density.as_str(),
+            state.settings.text_size.as_str(),
+            state.settings.theme.as_str(),
+        ),
+        ("dark", "high", "comfortable", "large", "craft.studio")
+    );
     assert!(!state.settings.sound_on);
     assert!((state.settings.avg_speed_kmh - 14.5).abs() < f64::EPSILON);
     let (stored, warnings) = rivercrossing_store::load_settings(&state.settings_path);
-    assert_eq!(stored.appearance, "dark");
+    assert_eq!(
+        (
+            stored.appearance.as_str(),
+            stored.contrast.as_str(),
+            stored.density.as_str(),
+            stored.text_size.as_str(),
+            stored.theme.as_str(),
+        ),
+        ("dark", "high", "comfortable", "large", "craft.studio")
+    );
     assert_eq!(warnings.len(), 0);
     assert_eq!(state.dialogs.top(), None);
     Ok(())
@@ -3605,6 +3636,61 @@ fn test_submit_simulation_given_valid_counts_persists_and_queues_the_run() -> Re
     assert!(state.pending_sim.is_some());
     let stored = rivercrossing_store::load_settings(&state.settings_path).0;
     assert_eq!((stored.sim_laps, stored.sim_interval), (2, 15));
+    Ok(())
+}
+
+#[test]
+fn test_create_sim_test_ride_given_known_rides_creates_the_next_one_and_closes()
+-> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    let today = time::Date::from_calendar_date(2026, time::Month::November, 26)
+        .map_err(|error| error.to_string())?;
+    state.set_library_rows(vec![
+        ride_row(1, "GORBA Test Ride #1", RideStatus::Draft),
+        ride_row(2, "GORBA Test Ride #2", RideStatus::Finished),
+    ]);
+    state.open_simulation();
+
+    // Act
+    state.create_sim_test_ride(today)?;
+
+    // Assert
+    let created = state.pending_create.as_ref().map(|config| {
+        (
+            config.name.clone(),
+            config.event_date,
+            config.planned_start.hour(),
+            config.planned_start.minute(),
+            state.dialogs.is_empty(),
+        )
+    });
+    assert_eq!(
+        created,
+        Some(("GORBA Test Ride #3".to_owned(), today, 10, 0, true))
+    );
+    Ok(())
+}
+
+#[test]
+fn test_create_sim_test_ride_given_a_ride_open_refuses() -> Result<(), String> {
+    // Arrange
+    let mut state = empty_state();
+    let today = time::Date::from_calendar_date(2026, time::Month::November, 26)
+        .map_err(|error| error.to_string())?;
+    state.ride = loaded_ride(RidePhase::Draft)?;
+    state.open_simulation();
+
+    // Act
+    let result = state.create_sim_test_ride(today);
+
+    // Assert
+    assert_eq!(result, Err("A ride is already open".to_owned()));
+    assert!(state.pending_create.is_none());
+    assert_eq!(
+        state.dialogs.top().map(|dialog| dialog.id),
+        Some("simulation_dlg")
+    );
     Ok(())
 }
 

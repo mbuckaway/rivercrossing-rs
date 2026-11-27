@@ -255,7 +255,7 @@ fn initial_focus(spec: &DialogSpec) -> Focus {
 }
 
 /// Return the button Enter activates; a destructive dialog activates its cancel button.
-fn primary_button(spec: &DialogSpec) -> Button {
+pub(crate) fn primary_button(spec: &DialogSpec) -> Button {
     if spec.destructive {
         spec.cancel
     } else {

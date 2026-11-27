@@ -3,9 +3,12 @@
 //! The `RiverCrossing` shell app and its eframe entry point.
 //!
 //! The app owns the state the views render, the one store thread, the sound player, the launch log
-//! and the debug control channel. `logic` drains the store replies, persists a submitted ride, runs
-//! the queued commands, answers the native dialogs, plays the queued cues and applies the theme and
-//! zoom; `ui` renders the menu bar, the console and the top dialog.
+//! and the debug control channel. `logic` drives the native menu bar and the documented
+//! accelerators, drains the store replies, persists a submitted ride, runs the queued commands,
+//! answers the native dialogs, plays the queued cues and applies the zoom; `frame_input` hands the
+//! runtime the `ArtCraft` appearance the settings describe; `ui` renders
+//! the menu bar (the in-window bar when no platform bar is installed), the console and the top
+//! dialog.
 
 use std::fmt;
 use std::io::Write;
@@ -16,8 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use craft::dialogs::{FileDialog, Wake};
-use craft::egui::{Context, ThemePreference, Ui, ViewportCommand};
-use craft::ui::runtime::env::RootEnv;
+use craft::egui::{Context, Event, Ui, ViewportCommand};
 use craft::ui::runtime::frame::FrameInput;
 use craft::ui::shell::app::{ShellApp, run as run_shell};
 use craft::ui::shell::embed::CloseDecision;
@@ -25,10 +27,12 @@ use craft::window::restore::Store;
 use serde_json::json;
 use time::OffsetDateTime;
 
+use super::action::enable::RidePhase;
 use super::action::spec::{CommandId, NativeDialog};
 use super::automation::{self, Control, ControlConfig};
 use super::logging::LaunchLog;
 use super::native::{self, NativeDialogs};
+use super::native_menu::NativeBar;
 use super::presenters::simulator;
 use super::publish_job::{self, PublishOutcome, WordPressWriter};
 use super::sound::{SilentBackend, SoundPlayer};
@@ -115,12 +119,14 @@ pub struct RiverCrossingApp {
     sound: SoundPlayer,
     /// This launch's NDJSON log.
     log: Option<LaunchLog>,
-    /// The appearance last applied to the context.
-    applied_appearance: Option<ThemePreference>,
     /// The zoom percentage last applied to the context.
     applied_zoom: Option<u16>,
     /// The native message boxes (R-85).
     native: NativeDialogs,
+    /// The root window's platform menu bar; uninstalled off macOS and in a headless host.
+    menubar: NativeBar,
+    /// Set by a macOS close request: the next pass minimizes the window instead of quitting.
+    minimize_next_frame: bool,
     /// Whether the operator confirmed the quit and the window may close.
     quit_confirmed: bool,
     /// The publish attempt running on its own thread.
@@ -138,9 +144,10 @@ impl fmt::Debug for RiverCrossingApp {
             .field("worker", &self.worker.is_some())
             .field("sound_muted", &self.sound.is_muted())
             .field("log", &self.log.as_ref().map(LaunchLog::path))
-            .field("applied_appearance", &self.applied_appearance)
             .field("applied_zoom", &self.applied_zoom)
             .field("native", &self.native)
+            .field("menubar", &self.menubar.is_installed())
+            .field("minimize_next_frame", &self.minimize_next_frame)
             .field("quit_confirmed", &self.quit_confirmed)
             .field("publish_job", &self.publish_job.is_some())
             .field("sim_job", &self.sim_job.is_some())
@@ -221,9 +228,10 @@ impl RiverCrossingApp {
             worker: None,
             sound,
             log: None,
-            applied_appearance: None,
             applied_zoom: None,
             native,
+            menubar: NativeBar::default(),
+            minimize_next_frame: false,
             quit_confirmed: false,
             publish_job: None,
             sim_job: None,
@@ -910,17 +918,11 @@ impl RiverCrossingApp {
         }
     }
 
-    /// Apply the appearance and the text zoom whenever either setting changes.
-    fn apply_appearance(&mut self, ctx: &Context) {
-        let appearance = match self.state.settings.appearance.as_str() {
-            "light" => ThemePreference::Light,
-            "dark" => ThemePreference::Dark,
-            _ => ThemePreference::System,
-        };
-        if self.applied_appearance != Some(appearance) {
-            ctx.set_theme(appearance);
-            self.applied_appearance = Some(appearance);
-        }
+    /// Apply the text zoom whenever it changes.
+    ///
+    /// The mode, contrast, density, text size and theme reach the runtime through
+    /// [`ShellApp::frame_input`]; the frozen zoom rungs stay a separate axis.
+    fn apply_zoom(&mut self, ctx: &Context) {
         let zoom = self.state.settings.zoom_percent;
         if self.applied_zoom != Some(zoom) {
             let factor = f32::from(zoom.max(10)) / 100.0;
@@ -955,22 +957,28 @@ impl Drop for RiverCrossingApp {
 
 impl ShellApp for RiverCrossingApp {
     fn frame_input(&mut self) -> FrameInput {
-        FrameInput::new(RootEnv::default())
+        FrameInput::new(super::appearance::root_env(&self.state.settings))
     }
 
     fn ui(&mut self, ui: &mut Ui) {
-        views::menu::show(ui, &mut self.state);
-        ui.separator();
-        views::console::show(ui, &mut self.state);
-        views::dialogs::show(ui.ctx(), &mut self.state);
-        views::dialogs::show_native(ui.ctx(), &mut self.state);
+        // The in-window bar is the fallback: a platform menu bar replaces it where one is
+        // installed (macOS). It renders in the console shell's title bar.
+        views::console::show(ui, &mut self.state, !self.menubar.is_installed());
+        views::dialogs::show(ui, &mut self.state);
+        views::dialogs::show_native(ui, &mut self.state);
         self.native.show_pending();
         if let Some(control) = self.control.as_mut() {
             control.ui(&mut self.state, ui.ctx());
         }
+        if activation_consumed(ui.ctx()) {
+            // The activation only queues its effect; the next frame's logic pass runs it, so ask
+            // for that frame rather than waiting for the next input or the scheduled deadline.
+            ui.ctx().request_repaint();
+        }
     }
 
     fn logic(&mut self, ctx: &Context) {
+        self.menubar.drive(ctx, &mut self.state);
         self.answer_native_dialogs();
         self.drain_worker();
         self.drain_pending_store();
@@ -983,7 +991,7 @@ impl ShellApp for RiverCrossingApp {
         self.start_pending_sim();
         self.drain_sim();
         self.play_pending_cues();
-        self.apply_appearance(ctx);
+        self.apply_zoom(ctx);
         let _ = self.state.due_hourly_backup(OffsetDateTime::now_utc());
         self.drain_pending_store();
         if let Some(control) = self.control.as_mut() {
@@ -992,6 +1000,11 @@ impl ShellApp for RiverCrossingApp {
         if std::mem::take(&mut self.state.close_requested) {
             self.quit_confirmed = true;
             ctx.send_viewport_cmd(ViewportCommand::Close);
+        }
+        if std::mem::take(&mut self.minimize_next_frame) {
+            // A macOS close request hides the window. `hold_close` already sent Minimized(false)
+            // and Focus in the pass that held the close, so the minimize goes in this next pass.
+            ctx.send_viewport_cmd(ViewportCommand::Minimized(true));
         }
         self.quit_deadline(ctx);
     }
@@ -1004,12 +1017,21 @@ impl ShellApp for RiverCrossingApp {
         if self.publish_job.is_some() || self.sim_job.is_some() {
             next = next.min(now + JOB_POLL_INTERVAL);
         }
+        if self.state.phase() == RidePhase::Running {
+            next = next.min(now + CLOCK_TICK_INTERVAL);
+        }
         Some(next)
     }
 
     fn close_requested(&mut self) -> CloseDecision {
         if self.quit_confirmed || self.quit_after.is_some() || self.control.is_some() {
             return CloseDecision::Close;
+        }
+        if cfg!(target_os = "macos") {
+            // macOS hides the window instead of quitting: the app keeps running and the Dock
+            // icon brings it back. Quit runs only from File ▸ Exit (⌘Q), which asks its confirm.
+            self.minimize_next_frame = true;
+            return CloseDecision::Hold;
         }
         self.state.request_quit();
         CloseDecision::Hold
@@ -1039,12 +1061,30 @@ pub fn run(quit_after: Option<Duration>, control: Option<ControlConfig>) -> efra
             // The control host cannot press an OS dialog; its confirmations render in-app.
             app.set_native_unavailable();
         }
+        // Install the platform menu bar here, in eframe's creator closure: winit builds its default
+        // menu before this and would replace one installed earlier.
+        app.menubar.install(ctx, &app.state);
         app
     })
 }
 
 /// The pause between two polls of a running job's channel.
 const JOB_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+/// The wall clock's tick: one second, so the console's elapsed and remaining readouts advance while a
+/// ride is live.
+const CLOCK_TICK_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Whether this pass consumed a pointer click or a key press.
+fn activation_consumed(ctx: &Context) -> bool {
+    ctx.input(|input| {
+        input.pointer.any_click()
+            || input
+                .events
+                .iter()
+                .any(|event| matches!(event, Event::Key { pressed: true, .. }))
+    })
+}
 
 /// Return the notice for a failed `open`, or `None` when the handler started.
 fn open_notice(target: &str, opener: &dyn Fn(&str) -> Result<(), String>) -> Option<String> {

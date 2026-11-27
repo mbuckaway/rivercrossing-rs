@@ -91,7 +91,16 @@ fn build_harness(app: &Rc<RefCell<RiverCrossingApp>>) -> Result<Harness<'static>
         return Err(error.into());
     }
     embed::before_input(&harness.ctx, |_| app.borrow_mut().frame_input());
-    harness.run();
+    // The golden frame is a still: turn egui's animation clock off so a dialog or notice that eases
+    // in settles instead of requesting a pass forever.
+    for theme in [craft::egui::Theme::Light, craft::egui::Theme::Dark] {
+        harness
+            .ctx
+            .style_mut_of(theme, |style| style.animation_time = 0.0);
+    }
+    // Several dialogs legitimately repaint (progress, focus), so settle by stepping a fixed number
+    // of frames rather than requiring quiescence. Animation time is off above, so the frame is stable.
+    harness.run_steps(90);
     Ok(harness)
 }
 

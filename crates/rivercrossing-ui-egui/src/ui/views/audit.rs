@@ -2,79 +2,55 @@
 
 //! The audit viewer's search, action filter and rows.
 
-use craft::egui::{self, ComboBox, TextEdit, Ui};
+use craft::egui::Ui;
+use craft::ui::contract::{Bind, Show as _};
+use craft::ui::text::TextField;
 
-use super::text;
+use super::dialogs::{
+    ACTION, ENTRY, REASON, TIME, TableData, TableRow, columns, select_value, table,
+};
 use crate::ui::presenters::audit;
 use crate::ui::state::AppState;
+
+/// The audit rows' visible height before the table scrolls.
+const VISIBLE_ROWS: u16 = 8;
 
 /// Show the audit viewer.
 pub(crate) fn body(ui: &mut Ui, state: &mut AppState) {
     ui.horizontal(|ui| {
         ui.push_id("audit_search", |ui| {
-            ui.add(
-                TextEdit::singleline(&mut state.audit.search)
-                    .hint_text("Search entry")
-                    .desired_width(200.0),
-            )
-            .accessible_name("Search entry");
+            let _ =
+                TextField::search("Search entry", Bind::bound(&mut state.audit.search)).show(ui);
         });
-        ui.push_id("action_choice", |ui| {
-            let current = state.audit.action.clone();
-            let label = label_for(&current);
-            let mut selected = current.clone();
-            ComboBox::from_id_salt("action_choice_combo")
-                .selected_text(label)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut selected,
-                        audit::ALL_ACTIONS.to_owned(),
-                        audit::ALL_ACTIONS,
-                    );
-                    for (label, action) in audit::ACTION_CHOICES {
-                        ui.selectable_value(&mut selected, (*action).to_owned(), *label);
-                    }
-                })
-                .response
-                .accessible_name("Action filter");
-            if selected != current {
-                state.audit.action = selected;
-            }
-        });
+        let mut choices: Vec<(&'static str, &'static str)> =
+            vec![(audit::ALL_ACTIONS, audit::ALL_ACTIONS)];
+        choices.extend(audit::ACTION_CHOICES.iter().copied());
+        let stored = state.audit.action.clone();
+        if let Some(picked) = select_value(ui, "action_choice", "Action filter", &stored, &choices)
+        {
+            picked.clone_into(&mut state.audit.action);
+        }
     });
-    let rows = state.filtered_audit();
-    ui.push_id("audit_list", |ui| {
-        egui::ScrollArea::vertical()
-            .id_salt("audit_list_scroll")
-            .max_height(360.0)
-            .show(ui, |ui| {
-                egui::Grid::new("audit_grid")
-                    .num_columns(4)
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for heading in ["When", "Action", "Entry", "Reason"] {
-                            text(ui, heading);
-                        }
-                        ui.end_row();
-                        for row in &rows {
-                            text(ui, &row.at);
-                            text(ui, &row.action);
-                            text(ui, &row.entry);
-                            text(ui, &row.reason);
-                            ui.end_row();
-                        }
-                    });
-            });
-    });
-}
-
-/// Return the label that the action choice shows for *action*.
-fn label_for(action: &str) -> &str {
-    if action == audit::ALL_ACTIONS {
-        return audit::ALL_ACTIONS;
-    }
-    audit::ACTION_CHOICES
-        .iter()
-        .find(|(_, stored)| *stored == action)
-        .map_or(action, |(label, _)| label)
+    let data = TableData {
+        columns: columns(&[
+            (TIME, "When"),
+            (ACTION, "Action"),
+            (ENTRY, "Entry"),
+            (REASON, "Reason"),
+        ]),
+        rows: state
+            .filtered_audit()
+            .iter()
+            .map(|row| TableRow {
+                label: format!("{} {}", row.at, row.entry),
+                cells: vec![
+                    (TIME, row.at.clone()),
+                    (ACTION, row.action.clone()),
+                    (ENTRY, row.entry.clone()),
+                    (REASON, row.reason.clone()),
+                ],
+            })
+            .collect(),
+    };
+    let _ = table(ui, "audit_list", &data, VISIBLE_ROWS, "No audit rows", None);
 }

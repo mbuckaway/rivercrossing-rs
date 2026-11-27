@@ -2,9 +2,15 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use craft::egui::{Context, RawInput, Theme, Vec2, ViewportCommand, ViewportId};
+use craft::egui::{
+    Context, Event, Key as EguiKey, Modifiers, RawInput, Theme, ThemePreference, Vec2,
+    ViewportCommand, ViewportId,
+};
+use craft::host::target::Os;
+use craft::theme::{ContrastChoice, ModeChoice, Size, TextSize};
 use craft::ui::fonts::{I18nScripts, UiFonts};
 use craft::ui::runtime::access::Role;
 use craft::ui::shell::app::ShellApp;
@@ -18,6 +24,7 @@ use rivercrossing_roster::enums::EntryType;
 use rivercrossing_roster::roster::Roster;
 use rivercrossing_roster::types::{Entry, Rider};
 use rivercrossing_store::Store;
+use rstest::rstest;
 use tempfile::TempDir;
 
 use super::{AppPaths, RiverCrossingApp};
@@ -28,7 +35,10 @@ use crate::ui::action::id::{
     MI_TIME_BOARD, MI_UNDO_CROSSING, MI_ZOOM_100, WX_ID_ABOUT,
 };
 use crate::ui::action::spec::ACTIONS;
-use crate::ui::state::{AppState, ExportPresence, LoadedRide};
+use crate::ui::presenters::console::{
+    PLATE_LABEL, RECORD_LABEL, RIDE_STARTED, START_RIDE_LABEL, STOP_RIDE_LABEL,
+};
+use crate::ui::state::{AppState, ConsoleTab, ExportPresence, LoadedRide};
 use crate::ui::views::menu;
 use crate::ui::worker::StoreWorker;
 
@@ -85,8 +95,8 @@ fn fixture_roster() -> Result<Roster, String> {
     Ok(roster)
 }
 
-/// Build a running ride from a fresh database in *directory*.
-fn loaded_running_ride(directory: &TempDir) -> Result<LoadedRide, String> {
+/// Build a draft ride from a fresh database in *directory*.
+fn loaded_draft_ride(directory: &TempDir) -> Result<LoadedRide, String> {
     let mut store =
         Store::open(directory.path().join("fixture.db")).map_err(|error| error.to_string())?;
     let config = fixture_config()?;
@@ -97,16 +107,22 @@ fn loaded_running_ride(directory: &TempDir) -> Result<LoadedRide, String> {
     store
         .save_roster(ride_id, &roster)
         .map_err(|error| error.to_string())?;
-    let mut engine: RideEngine<Roster, SystemClock> = store
+    let engine: RideEngine<Roster, SystemClock> = store
         .load_engine(ride_id)
         .map_err(|error| error.to_string())?;
-    engine.start(None).map_err(|error| error.to_string())?;
     Ok(LoadedRide {
         ride_id,
         config: engine.config().clone(),
         roster,
         engine,
     })
+}
+
+/// Build a running ride from a fresh database in *directory*.
+fn loaded_running_ride(directory: &TempDir) -> Result<LoadedRide, String> {
+    let mut ride = loaded_draft_ride(directory)?;
+    ride.engine.start(None).map_err(|error| error.to_string())?;
+    Ok(ride)
 }
 
 /// A fixture over a headless app, with the directory kept alive.
@@ -127,10 +143,13 @@ fn headless_app(quit_after: Option<Duration>) -> (Rc<RefCell<RiverCrossingApp>>,
 
 /// Run one logic pass, then apply the worker's replies until the ride is loaded.
 ///
-/// The worker answers the launch's `PreviousSession` first, then the create, then the load.
+/// The worker answers the launch's `PreviousSession`, then its `Rides`, then the startup `Backup`,
+/// then the create's `RideCreated`, then the load's `Ride`: five replies. `logic` drains whichever
+/// are already queued, so the loop reads the rest; a shorter budget loses the load reply whenever
+/// the worker has not answered by the time `logic` runs.
 fn drain_until_ride(app: &Rc<RefCell<RiverCrossingApp>>, ctx: &Context) {
     app.borrow_mut().logic(ctx);
-    for _ in 0..3 {
+    for _ in 0..5 {
         let reply = app.borrow().worker.as_ref().and_then(StoreWorker::recv);
         let Some(reply) = reply else {
             return;
@@ -156,30 +175,101 @@ fn tree_mentions(tree: &AccessTree, needle: &str) -> bool {
 
 #[test]
 fn app_ui_renders_one_frame_without_panicking() {
-    // Arrange
+    // Arrange: the console runs on the craft shell, so the frame needs the installed runtime that the
+    // fixture provides.
     let (app, _directory) = headless_app(None);
-    let ctx = Context::default();
+    let mut fixture = app_fixture(&app);
 
     // Act
-    let output = ctx.run_ui(RawInput::default(), |ui| app.borrow_mut().ui(ui));
-    let rendered_root = output.viewport_output.contains_key(&ViewportId::ROOT);
+    fixture.idle(2);
 
     // Assert
-    assert!(rendered_root);
-    output.drop_without_applying_deltas();
+    assert!(
+        fixture.by_label(PLATE_LABEL).is_some(),
+        "the console rendered its plate field"
+    );
 }
 
-#[test]
-fn app_close_request_holds_and_asks_first() {
+#[rstest]
+#[case::this_platform(Os::current())]
+fn app_close_request_holds_and_asks_first(#[case] os: Os) {
     // Arrange
     let (app, _directory) = headless_app(None);
 
     // Act
     let decision = app.borrow_mut().close_requested();
 
-    // Assert: the window holds while the plain quit confirm is raised.
+    // Assert: the window holds. macOS hides it without a prompt; Windows and Linux raise the quit
+    // confirm.
     assert_eq!(decision, CloseDecision::Hold);
-    assert!(app.borrow().state.pending_native.is_some());
+    assert_eq!(app.borrow().minimize_next_frame, os == Os::Mac);
+    assert_eq!(app.borrow().state.pending_native.is_some(), os != Os::Mac);
+}
+
+#[test]
+fn app_close_request_closes_after_the_quit_is_confirmed() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    app.borrow_mut().quit_confirmed = true;
+
+    // Act
+    let decision = app.borrow_mut().close_requested();
+
+    // Assert
+    assert_eq!(decision, CloseDecision::Close);
+}
+
+#[test]
+fn app_close_request_closes_at_the_quit_deadline() {
+    // Arrange
+    let (app, _directory) = headless_app(Some(Duration::from_secs(60)));
+
+    // Act
+    let decision = app.borrow_mut().close_requested();
+
+    // Assert
+    assert_eq!(decision, CloseDecision::Close);
+}
+
+#[rstest]
+#[case::this_platform(Os::current())]
+fn app_logic_minimizes_the_window_after_a_macos_close(#[case] os: Os) {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let ctx = Context::default();
+    let held = app.borrow_mut().close_requested();
+    assert_eq!(held, CloseDecision::Hold);
+
+    // Act: the next pass after the hold, never the same frame as `hold_close`.
+    let output = ctx.run_logic(&RawInput::default(), |ctx| app.borrow_mut().logic(ctx));
+
+    // Assert
+    let minimized = output
+        .viewport_commands
+        .get(&ViewportId::ROOT)
+        .is_some_and(|commands| commands.contains(&ViewportCommand::Minimized(true)));
+    assert_eq!(minimized, os == Os::Mac);
+}
+
+#[test]
+fn app_logic_minimizes_the_window_once() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let ctx = Context::default();
+    let _held = app.borrow_mut().close_requested();
+    let _first = ctx.run_logic(&RawInput::default(), |ctx| app.borrow_mut().logic(ctx));
+
+    // Act
+    let output = ctx.run_logic(&RawInput::default(), |ctx| app.borrow_mut().logic(ctx));
+
+    // Assert
+    assert!(
+        !output
+            .viewport_commands
+            .get(&ViewportId::ROOT)
+            .is_some_and(|commands| commands.contains(&ViewportCommand::Minimized(true))),
+        "the minimize request is sent once"
+    );
 }
 
 #[test]
@@ -303,21 +393,80 @@ fn test_app_logic_applies_the_saved_zoom() {
 }
 
 #[test]
-fn test_app_logic_applies_the_dark_appearance() {
+fn test_app_frame_input_maps_the_saved_appearance() -> Result<(), Box<dyn std::error::Error>> {
     // Arrange
-    let directory = tempfile::tempdir().expect("a temporary directory");
+    let directory = tempfile::tempdir()?;
     let paths = paths_in(&directory);
     let mut settings = rivercrossing_store::default_settings();
     settings.appearance = "dark".to_owned();
-    rivercrossing_store::save_settings(&settings, &paths.settings).expect("the settings write");
+    rivercrossing_store::save_settings(&settings, &paths.settings)?;
+    let mut app = RiverCrossingApp::headless(None, None, paths);
+
+    // Act
+    let input = app.frame_input();
+
+    // Assert
+    assert_eq!(input.root.mode, ModeChoice::Dark);
+    Ok(())
+}
+
+#[test]
+fn test_app_frame_input_maps_every_appearance_axis() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let paths = paths_in(&directory);
+    let settings = rivercrossing_store::settings::AppSettings {
+        appearance: "light".to_owned(),
+        contrast: "high".to_owned(),
+        density: "comfortable".to_owned(),
+        text_size: "large".to_owned(),
+        theme: "craft.studio".to_owned(),
+        ..rivercrossing_store::default_settings()
+    };
+    rivercrossing_store::save_settings(&settings, &paths.settings)?;
+    let mut app = RiverCrossingApp::headless(None, None, paths);
+
+    // Act
+    let input = app.frame_input();
+
+    // Assert
+    assert_eq!(
+        (
+            input.root.mode,
+            input.root.contrast,
+            input.root.density,
+            input.root.text_size,
+        ),
+        (
+            ModeChoice::Light,
+            ContrastChoice::High,
+            Size::Comfortable,
+            TextSize::Large,
+        )
+    );
+    assert_eq!(input.root.theme_id().as_str(), "craft.studio");
+    Ok(())
+}
+
+#[test]
+fn test_app_logic_leaves_the_egui_theme_to_the_root_env() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Arrange
+    let directory = tempfile::tempdir()?;
+    let paths = paths_in(&directory);
+    let mut settings = rivercrossing_store::default_settings();
+    settings.appearance = "dark".to_owned();
+    rivercrossing_store::save_settings(&settings, &paths.settings)?;
     let app = Rc::new(RefCell::new(RiverCrossingApp::headless(None, None, paths)));
     let ctx = Context::default();
+    ctx.set_theme(ThemePreference::Light);
 
     // Act
     let _output = ctx.run_logic(&RawInput::default(), |ctx| app.borrow_mut().logic(ctx));
 
-    // Assert
-    assert_eq!(ctx.theme(), Theme::Dark);
+    // Assert: the appearance reaches the runtime through `frame_input`, not `ctx.set_theme`.
+    assert_eq!(ctx.theme(), Theme::Light);
+    Ok(())
 }
 
 // ------------------------------------------------------------- the menu
@@ -400,6 +549,50 @@ fn test_the_menu_shows_the_saved_checks_and_zoom() {
     );
 }
 
+// ---------------------------------------------------------- the native menu
+
+#[test]
+fn test_a_headless_app_keeps_the_in_window_menu_bar() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+
+    // Act
+    let installed = app.borrow().menubar.is_installed();
+
+    // Assert: with no platform bar installed, `ui` renders the in-window bar.
+    assert!(
+        !installed,
+        "the headless host installs no platform menu bar"
+    );
+}
+
+#[test]
+fn test_app_logic_runs_a_documented_shortcut() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let ctx = Context::default();
+    let input = RawInput {
+        events: vec![Event::Key {
+            key: EguiKey::F5,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }],
+        ..RawInput::default()
+    };
+
+    // Act
+    let output = ctx.run_ui(input, |ui| app.borrow_mut().logic(ui.ctx()));
+    output.drop_without_applying_deltas();
+
+    // Assert
+    assert_eq!(
+        app.borrow().state.dialogs.top().map(|dialog| dialog.id),
+        Some("results_dlg")
+    );
+}
+
 // ---------------------------------------------------------- the console
 
 #[test]
@@ -423,9 +616,9 @@ fn test_the_console_empty_state_shows_the_zero_clock_and_disables_the_entry() {
     assert_eq!(zeros, 2, "both clocks read zero");
     assert!(tree_mentions(tree, "NO RIDE"), "the status label spells it");
     assert!(tree_mentions(tree, "No crossings yet"));
-    let plate = fixture.by_label("Plate").expect("the plate field");
+    let plate = fixture.by_label(PLATE_LABEL).expect("the plate field");
     assert!(tree.is_disabled_key(plate.node), "the entry is disabled");
-    let record = fixture.by_label("Record").expect("the record button");
+    let record = fixture.by_label(RECORD_LABEL).expect("the record button");
     assert!(
         tree.is_disabled_key(record.node),
         "record follows the entry"
@@ -433,6 +626,91 @@ fn test_the_console_empty_state_shows_the_zero_clock_and_disables_the_entry() {
     assert_eq!(
         violations(fixture.ctx(), fixture.tree()),
         Vec::<String>::new()
+    );
+}
+
+#[test]
+fn test_the_console_status_bar_renders_the_six_count_chips() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    fixture.idle(2);
+
+    // Assert
+    let tree = fixture.tree();
+    assert!(tree_mentions(tree, "Crossings 0"));
+    assert!(tree_mentions(tree, "Cards 0"));
+    assert!(tree_mentions(tree, "On course 0"));
+    assert!(tree_mentions(tree, "Shoe 0/0"));
+    assert!(tree_mentions(tree, "Riders 0"));
+    assert!(tree_mentions(tree, "Teams 0"));
+}
+
+#[test]
+fn test_the_console_review_notebook_opens_the_needs_review_tab() {
+    // Arrange: a running ride with one short-lap crossing, so the review tab has a flagged row.
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let mut ride = loaded_running_ride(&directory).expect("the fixture ride");
+    let _ = ride.engine.record_crossing(PLATE, None);
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+    let tab = fixture
+        .by_label("Needs Review")
+        .expect("the Needs Review tab shows");
+
+    // Act
+    fixture.click(&tab);
+    fixture.idle(1);
+
+    // Assert
+    assert_eq!(app.borrow().state.console_tab, ConsoleTab::NeedsReview);
+    assert!(fixture.by_label("Show held only").is_some());
+    assert!(fixture.by_label("Review…").is_some());
+    assert_eq!(
+        violations(fixture.ctx(), fixture.tree()),
+        Vec::<String>::new()
+    );
+}
+
+#[rstest]
+#[case::library("Ride Library", "ride_library_dlg")]
+#[case::riders("Rider Editor", "rider_editor_dlg")]
+#[case::teams("Team Editor", "team_editor_dlg")]
+#[case::issues("Rider Issues", "rider_issues_dlg")]
+#[case::standings("Standings", "results_dlg")]
+#[case::audit("Audit Trail", "audit_dlg")]
+#[case::settings("Settings", "settings_dlg")]
+fn test_the_console_rail_dispatches_the_action(#[case] label: &str, #[case] dialog: &str) {
+    // Arrange: a running mixed ride with an audit row, so every rail action passes its gate.
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let ride = loaded_running_ride(&directory).expect("the fixture ride");
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    app.borrow_mut().state.audit_row_count = 1;
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+    let rail = fixture.by_label(label).expect("the rail entry shows");
+
+    // Act
+    fixture.click(&rail);
+    fixture.idle(1);
+
+    // Assert
+    assert_eq!(
+        app.borrow().state.dialogs.top().map(|dialog| dialog.id),
+        Some(dialog)
     );
 }
 
@@ -470,14 +748,14 @@ fn test_the_record_button_records_a_typed_plate() {
     app.borrow_mut().state.ride = Some(ride);
     let mut fixture = app_fixture(&app);
     fixture.idle(2);
-    let field = fixture.by_label("Plate").expect("the plate field");
+    let field = fixture.by_label(PLATE_LABEL).expect("the plate field");
     let unfocused = fixture.tree().is_disabled_key(field.node);
     assert!(!unfocused, "a running ride accepts an entry");
 
     // Act
     fixture.click(&field);
     fixture.type_text(PLATE);
-    let record = fixture.by_label("Record").expect("the record button");
+    let record = fixture.by_label(RECORD_LABEL).expect("the record button");
     fixture.click(&record);
     fixture.idle(1);
 
@@ -506,20 +784,7 @@ fn test_the_record_button_records_a_typed_plate() {
 fn test_the_start_button_starts_a_draft_ride() {
     // Arrange
     let directory = tempfile::tempdir().expect("a temporary directory");
-    let mut store = Store::open(directory.path().join("fixture.db")).expect("the fixture store");
-    let config = fixture_config().expect("the fixture config");
-    let ride_id = store.create_ride(&config, Some(SEED)).expect("the ride");
-    let roster = fixture_roster().expect("the fixture roster");
-    store
-        .save_roster(ride_id, &roster)
-        .expect("the roster write");
-    let engine = store.load_engine(ride_id).expect("the ride engine");
-    let ride = LoadedRide {
-        ride_id,
-        config: engine.config().clone(),
-        roster,
-        engine,
-    };
+    let ride = loaded_draft_ride(&directory).expect("the fixture ride");
     let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
         None,
         None,
@@ -528,7 +793,9 @@ fn test_the_start_button_starts_a_draft_ride() {
     app.borrow_mut().state.ride = Some(ride);
     let mut fixture = app_fixture(&app);
     fixture.idle(2);
-    let start = fixture.by_label("Start Ride").expect("the start button");
+    let start = fixture
+        .by_label(START_RIDE_LABEL)
+        .expect("the start button");
 
     // Act: the click queues the action, and a logic pass runs it.
     fixture.click(&start);
@@ -539,11 +806,88 @@ fn test_the_start_button_starts_a_draft_ride() {
     // Assert
     let app_guard = app.borrow();
     let state = &app_guard.state;
-    assert_eq!(
-        state.notice.as_deref(),
-        Some(crate::ui::presenters::console::RIDE_STARTED)
-    );
+    assert_eq!(state.notice.as_deref(), Some(RIDE_STARTED));
     assert_eq!(state.phase(), crate::ui::action::enable::RidePhase::Running);
+}
+
+#[test]
+fn test_a_console_button_click_asks_for_the_next_frame() {
+    // Arrange: a draft ride, so the console's Start Ride button is live.
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let ride = loaded_draft_ride(&directory).expect("the fixture ride");
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+    let start = fixture
+        .by_label(START_RIDE_LABEL)
+        .expect("the start button");
+    let asked = Arc::new(Mutex::new(Vec::new()));
+    let record = Arc::clone(&asked);
+    fixture.ctx().set_repaint_observer(move |info| {
+        record.lock().expect("the repaint log").push(info.delay);
+    });
+
+    // Act: the press is not the click; only the release pass is.
+    fixture.press(&start);
+    asked.lock().expect("the repaint log").clear();
+    fixture.release(&start);
+    let delays = asked.lock().expect("the repaint log").clone();
+    // egui swaps the cause list at the start of each pass, so the release pass's requests are read
+    // after one further frame.
+    fixture.idle(1);
+    let causes = fixture.ctx().repaint_causes();
+
+    // Assert: the click pass asks for the very next frame, from the app itself.
+    //
+    // egui already requests an immediate repaint for any pass that carries an input event, so the
+    // delay alone cannot attribute the request; the cause names the caller, and the app's own
+    // request must be there for the deferred action to be drawn.
+    assert!(
+        delays.contains(&Duration::ZERO),
+        "the click pass asked for {delays:?}"
+    );
+    assert!(
+        causes.iter().any(|cause| cause.file.ends_with("ui/app.rs")),
+        "the app did not ask for the next frame itself: {causes:?}"
+    );
+}
+
+#[test]
+fn test_tick_ticks_the_wall_clock_while_the_ride_runs() {
+    // Arrange
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let ride = loaded_running_ride(&directory).expect("the fixture ride");
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    let now = Instant::now();
+
+    // Act
+    let next = app.borrow_mut().tick(now);
+
+    // Assert: the elapsed and remaining readouts advance once a second.
+    assert_eq!(next, Some(now + Duration::from_secs(1)));
+}
+
+#[test]
+fn test_tick_keeps_the_hourly_deadline_without_a_live_ride() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let now = Instant::now();
+
+    // Act
+    let next = app.borrow_mut().tick(now);
+
+    // Assert
+    assert_eq!(next, Some(super::next_hour_instant(now)));
 }
 
 #[test]
@@ -804,7 +1148,7 @@ fn test_the_stop_button_confirms_through_the_modal() -> Result<(), Box<dyn std::
     app.borrow_mut().state.ride = Some(ride);
     let mut fixture = app_fixture(&app);
     fixture.idle(2);
-    let stop = fixture.by_label("Stop Ride").expect("the stop button");
+    let stop = fixture.by_label(STOP_RIDE_LABEL).expect("the stop button");
 
     // Act: the console button raises the same confirmation.
     fixture.click(&stop);
@@ -1155,13 +1499,53 @@ fn test_a_native_dialog_falls_back_to_the_in_app_modal() -> Result<(), Box<dyn s
     Ok(())
 }
 
-#[test]
-fn test_the_quit_confirm_closes_the_app() {
+/// How the quit confirm is raised: the root window's close button, or File ▸ Exit.
+#[derive(Clone, Copy, Debug)]
+enum QuitRoute {
+    /// The root window's close button.
+    Close,
+    /// The Exit row, which is ⌘Q in the macOS app menu.
+    Menu,
+}
+
+/// Raise the quit confirm through *route* and return the close decision it reports.
+fn raise_quit(
+    app: &Rc<RefCell<RiverCrossingApp>>,
+    route: QuitRoute,
+) -> Result<CloseDecision, String> {
+    match route {
+        QuitRoute::Close => Ok(app.borrow_mut().close_requested()),
+        QuitRoute::Menu => app
+            .borrow_mut()
+            .command("wxID_EXIT")
+            .map(|_| CloseDecision::Hold),
+    }
+}
+
+/// Return how a quit is raised on *os*: the Exit menu row is macOS's one quit entrance.
+///
+/// macOS hides the window on its close button, so its quit confirm is reachable only from
+/// File ▸ Exit (⌘Q); Windows and Linux raise it from the close button itself.
+fn quit_route(os: Os) -> QuitRoute {
+    if os == Os::Mac {
+        QuitRoute::Menu
+    } else {
+        QuitRoute::Close
+    }
+}
+
+#[rstest]
+#[case::this_platform(Os::current())]
+fn test_the_quit_confirm_closes_the_app(#[case] os: Os) -> Result<(), Box<dyn std::error::Error>> {
     // Arrange
     let (app, _directory) = headless_app(None);
     let mut fixture = app_fixture(&app);
-    let held = app.borrow_mut().close_requested();
+    let held = raise_quit(&app, quit_route(os))?;
     assert_eq!(held, CloseDecision::Hold);
+    assert!(
+        app.borrow().state.pending_native.is_some(),
+        "the quit confirm is raised"
+    );
 
     // Act: the headless fallback modal shows the plain confirm, and Quit closes.
     run_logic(&app, &fixture);
@@ -1176,6 +1560,42 @@ fn test_the_quit_confirm_closes_the_app() {
 
     // Assert
     assert!(app.borrow().quit_confirmed);
+    Ok(())
+}
+
+#[test]
+fn test_the_settings_dialog_keeps_the_three_mode_radios() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("wxID_PREFERENCES")?;
+    fixture.idle(2);
+
+    // Act
+    let rendered = ["System", "Light", "Dark"].map(|label| fixture.by_label(label).is_some());
+
+    // Assert
+    assert_eq!(rendered, [true, true, true]);
+    Ok(())
+}
+
+#[test]
+fn test_the_settings_dialog_renders_the_appearance_axes() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    let mut fixture = app_fixture(&app);
+    app.borrow_mut().command("wxID_PREFERENCES")?;
+    fixture.idle(2);
+
+    // Act
+    let rendered = ["Contrast", "Density", "Text size", "Theme"]
+        .map(|label| fixture.by_label(label).is_some());
+
+    // Assert
+    assert_eq!(rendered, [true, true, true, true]);
+    Ok(())
 }
 
 #[test]
@@ -1510,4 +1930,153 @@ fn test_every_action_is_drivable_or_refused_in_every_ride_state() {
             }
         }
     }
+}
+
+// --------------------------------------------------- the simulator dialog
+
+/// The simulator's New Ride button label.
+const NEW_RIDE_LABEL: &str = "New Ride";
+
+/// The simulator's GO button label.
+const GO_LABEL: &str = "GO";
+
+#[test]
+fn test_the_simulation_dialog_offers_new_ride_and_disables_go_with_no_ride() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    app.borrow_mut()
+        .command("mi_simulation")
+        .expect("the simulator dialog");
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    fixture.idle(2);
+
+    // Assert: with no ride, New Ride is the race row's only live action and GO waits for a ride.
+    let tree = fixture.tree();
+    let new_ride = fixture
+        .by_label(NEW_RIDE_LABEL)
+        .expect("the new ride button");
+    let go = fixture.by_label(GO_LABEL).expect("the go button");
+    assert!(
+        !tree.is_disabled_key(new_ride.node),
+        "New Ride is live with no ride"
+    );
+    assert!(tree.is_disabled_key(go.node), "GO needs a ride");
+}
+
+#[test]
+fn test_the_simulation_dialog_disables_new_ride_and_enables_go_with_a_ride() {
+    // Arrange
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let ride = loaded_draft_ride(&directory).expect("the fixture ride");
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    app.borrow_mut()
+        .command("mi_simulation")
+        .expect("the simulator dialog");
+    let mut fixture = app_fixture(&app);
+
+    // Act
+    fixture.idle(2);
+
+    // Assert: with a ride open there is nothing to create, and the race control is live.
+    let tree = fixture.tree();
+    let new_ride = fixture
+        .by_label(NEW_RIDE_LABEL)
+        .expect("the new ride button");
+    let go = fixture.by_label(GO_LABEL).expect("the go button");
+    assert!(
+        tree.is_disabled_key(new_ride.node),
+        "New Ride needs no ride"
+    );
+    assert!(!tree.is_disabled_key(go.node), "GO has a ride");
+}
+
+#[test]
+fn test_the_simulation_new_ride_button_creates_the_test_ride_and_closes() {
+    // Arrange
+    let (app, _directory) = headless_app(None);
+    app.borrow_mut()
+        .command("mi_simulation")
+        .expect("the simulator dialog");
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+    let new_ride = fixture
+        .by_label(NEW_RIDE_LABEL)
+        .expect("the new ride button");
+
+    // Act: the dialog host creates the test ride and closes the simulator.
+    fixture.click(&new_ride);
+
+    // Assert
+    let app_guard = app.borrow();
+    assert!(app_guard.state.dialogs.is_empty());
+    let created = app_guard
+        .state
+        .pending_create
+        .as_ref()
+        .map(|config| config.name.clone());
+    assert_eq!(created, Some("GORBA Test Ride #1".to_owned()));
+}
+
+#[test]
+fn test_the_simulation_enter_key_submits_the_go_button() {
+    // Arrange: a draft ride, so GO is the dialog default and the run validates.
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let ride = loaded_draft_ride(&directory).expect("the fixture ride");
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    app.borrow_mut()
+        .command("mi_simulation")
+        .expect("the simulator dialog");
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+
+    // Act
+    fixture.key(EguiKey::Enter, Modifiers::NONE);
+
+    // Assert
+    assert_eq!(
+        app.borrow().state.dialogs.top().map(|dialog| dialog.id),
+        Some("sim_running_dlg")
+    );
+}
+
+#[test]
+fn test_the_simulation_go_button_starts_the_simulation() {
+    // Arrange: a draft ride, so GO is live and the run validates.
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let ride = loaded_draft_ride(&directory).expect("the fixture ride");
+    let app = Rc::new(RefCell::new(RiverCrossingApp::headless(
+        None,
+        None,
+        paths_in(&directory),
+    )));
+    app.borrow_mut().state.ride = Some(ride);
+    app.borrow_mut()
+        .command("mi_simulation")
+        .expect("the simulator dialog");
+    let mut fixture = app_fixture(&app);
+    fixture.idle(2);
+    let go = fixture.by_label(GO_LABEL).expect("the go button");
+
+    // Act: the dialog host submits the race settings.
+    fixture.click(&go);
+
+    // Assert
+    assert_eq!(
+        app.borrow().state.dialogs.top().map(|dialog| dialog.id),
+        Some("sim_running_dlg")
+    );
+    let laps = app.borrow().state.pending_sim.map(|sim| sim.settings.laps);
+    assert_eq!(laps, Some(1));
 }

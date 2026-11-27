@@ -977,6 +977,7 @@ dependencies = [
  "craft-i18n",
  "craft-imaging",
  "craft-keymap",
+ "craft-menu",
  "craft-pages",
  "craft-platform",
  "craft-print",
@@ -1290,6 +1291,24 @@ dependencies = [
  "craft-host",
  "craft-i18n",
  "craft-xml",
+ "egui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "craft-menu"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=243d68e12d05e89122db6d154924bf1992e10d38#243d68e12d05e89122db6d154924bf1992e10d38"
+dependencies = [
+ "craft-behavior",
+ "craft-host",
+ "craft-i18n",
+ "craft-keymap",
+ "craft-quit",
+ "craft-theme",
+ "craft-ui",
+ "craft-window",
  "egui",
  "serde",
  "serde_json",

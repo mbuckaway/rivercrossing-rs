@@ -7,89 +7,120 @@
 //! `ui.set` and the form's own widgets address the same value. The infobar shows the presenter's
 //! refusal messages and the dialog stays open for the correction.
 
-use craft::egui::{self, DragValue, TextEdit, Ui};
+use craft::egui::Ui;
+use craft::theme::variant::Tone;
+use craft::ui::contract::ShowContainer as _;
+use craft::ui::sections::Section;
 
-use super::text;
+use super::dialogs::{
+    notice, radio_group, stack_date_field, stack_decimal_field, stack_select, stack_text_field,
+    stack_whole_field,
+};
 use crate::ui::state::AppState;
 
-/// The stored `cap_choice` item that means no cap.
-const CAP_DISABLED: &str = "Disabled";
-
-/// The lowest card cap the choice offers.
-const CAP_MIN: u32 = 5;
-
-/// The highest card cap the choice offers.
-const CAP_MAX: u32 = 20;
+/// The `cap_choice` items: no cap, then one per cap in 5..=20.
+const CAP_CHOICES: [(&str, &str); 17] = [
+    ("Disabled", "Disabled"),
+    ("5", "5"),
+    ("6", "6"),
+    ("7", "7"),
+    ("8", "8"),
+    ("9", "9"),
+    ("10", "10"),
+    ("11", "11"),
+    ("12", "12"),
+    ("13", "13"),
+    ("14", "14"),
+    ("15", "15"),
+    ("16", "16"),
+    ("17", "17"),
+    ("18", "18"),
+    ("19", "19"),
+    ("20", "20"),
+];
 
 /// The default lap length in kilometres, matching the presenter's New Ride defaults.
 const DEFAULT_LAP_KM: f64 = 8.0;
 
+/// The default shoe size, matching the presenter's New Ride defaults.
+const DEFAULT_DECKS: f64 = 8.0;
+
+/// The default joker count, matching the presenter's New Ride defaults.
+const DEFAULT_JOKERS: f64 = 1.0;
+
 /// Show the ride-setup form.
-pub(crate) fn body(ui: &mut Ui, state: &mut AppState, focused: Option<&str>) {
-    ui.heading("Ride").accessible_name("Ride");
-    text_field(ui, state, "name_input", focused, "Ride name");
-    text_field(ui, state, "date_picker", focused, "Date (YYYY-MM-DD)");
-    text_field(
-        ui,
-        state,
-        "start_time_picker",
-        focused,
-        "Start time (HH:MM)",
-    );
-    text_field(ui, state, "venue_input", focused, "Venue");
-    text_field(ui, state, "organizer_input", focused, "Organizer");
-    text_field(ui, state, "scorer_input", focused, "Scorer");
-    spin_decimal(
+pub(crate) fn body(ui: &mut Ui, state: &mut AppState) {
+    infobar(ui, state);
+    let _ = Section::fixed("Ride").show(ui, |ui, _| ride_group(ui, state));
+    let _ = Section::fixed("Format").show(ui, |ui, _| format_group(ui, state));
+    let _ = Section::fixed("Shoe").show(ui, |ui, _| shoe_group(ui, state));
+}
+
+/// Show the event identity fields.
+fn ride_group(ui: &mut Ui, state: &mut AppState) {
+    stack_text_field(ui, state, "name_input", "Ride name");
+    stack_date_field(ui, state, "date_picker", "Date");
+    stack_text_field(ui, state, "start_time_picker", "Start time");
+    stack_text_field(ui, state, "venue_input", "Venue");
+    stack_text_field(ui, state, "organizer_input", "Organizer");
+    stack_text_field(ui, state, "scorer_input", "Scorer");
+    stack_decimal_field(
         ui,
         state,
         "lap_km_spin",
-        focused,
         "Lap length (km)",
         DEFAULT_LAP_KM,
         0.1..=100.0,
     );
-    text_field(ui, state, "duration_input", focused, "Duration (H:MM)");
-    text_field(ui, state, "min_lap_input", focused, "Min lap (M:SS)");
-    ui.heading("Cards").accessible_name("Cards");
+    stack_text_field(ui, state, "duration_input", "Duration (H:MM)");
+    stack_text_field(ui, state, "min_lap_input", "Min lap (M:SS)");
+}
+
+/// Show the short-lap, entry and plate-model choices.
+fn format_group(ui: &mut Ui, state: &mut AppState) {
     radio_pair(
         ui,
         state,
+        "Short laps",
         ("hold_short_radio", "Hold short-lap cards for review"),
         ("always_deal_radio", "Always deal cards"),
     );
-    ui.heading("Entries").accessible_name("Entries");
     radio_pair(
         ui,
         state,
+        "Entry mode",
         ("solo_radio", "Solo"),
         ("mixed_radio", "Mixed (teams)"),
     );
-    spin_whole(
-        ui,
-        state,
-        "team_size_spin",
-        focused,
-        "Largest team",
-        4,
-        2..=9,
-    );
+    stack_whole_field(ui, state, "team_size_spin", "Largest team", 4.0, 2.0..=9.0);
     radio_pair(
         ui,
         state,
+        "Plate model",
         ("pooled_radio", "Rider plates (pooled)"),
         ("relay_radio", "Team relay"),
     );
-    ui.heading("Shoe").accessible_name("Shoe");
-    spin_whole(ui, state, "decks_spin", focused, "Decks", 8, 1..=20);
-    spin_whole(ui, state, "jokers_spin", focused, "Jokers", 1, 0..=9);
+}
+
+/// Show the shoe size, the jokers and the card cap.
+fn shoe_group(ui: &mut Ui, state: &mut AppState) {
+    stack_whole_field(ui, state, "decks_spin", "Decks", DEFAULT_DECKS, 1.0..=20.0);
+    stack_whole_field(
+        ui,
+        state,
+        "jokers_spin",
+        "Jokers",
+        DEFAULT_JOKERS,
+        0.0..=9.0,
+    );
     radio_pair(
         ui,
         state,
+        "Jokers counted",
         ("jokers_per_deck_radio", "Jokers per deck"),
         ("jokers_total_radio", "Jokers total"),
     );
-    cap_choice(ui, state, focused);
-    infobar(ui, state);
+    stack_select(ui, state, "cap_choice", "Card cap", &CAP_CHOICES);
 }
 
 /// Show the dialog's refusal messages.
@@ -97,144 +128,32 @@ fn infobar(ui: &mut Ui, state: &AppState) {
     let Some(errors) = &state.setup_errors else {
         return;
     };
-    ui.push_id("setup_infobar", |ui| {
-        text(ui, &errors.join("; "));
-    });
+    notice(ui, "setup_infobar", Tone::Bad, errors.join("; "));
 }
 
-/// Show one text field and write its edit back into the dialog's field map.
-fn text_field(ui: &mut Ui, state: &mut AppState, id: &str, focused: Option<&str>, label: &str) {
-    let mut text = state.dialogs.field(id).unwrap_or_default().to_owned();
-    let response = ui
-        .push_id(id, |ui| {
-            ui.add(
-                TextEdit::singleline(&mut text)
-                    .hint_text(label)
-                    .desired_width(260.0),
-            )
-            .accessible_name(label)
-        })
-        .inner;
-    if focused == Some(id) {
-        super::dialogs::focus_ring(ui, &response);
-    }
-    if response.changed() {
-        let _ = state.dialogs.set_field(id, text);
-    }
-}
-
-/// Show a pair of radios; picking one clears the other.
-fn radio_pair(ui: &mut Ui, state: &mut AppState, first: (&str, &str), second: (&str, &str)) {
-    ui.horizontal(|ui| {
-        for (id, label, other) in [(first.0, first.1, second.0), (second.0, second.1, first.0)] {
-            let selected = state.dialogs.field(id) == Some("true");
-            let clicked = ui
-                .push_id(id, |ui| ui.radio(selected, label).clicked())
-                .inner;
-            if clicked {
-                let _ = state.dialogs.set_field(id, "true");
-                let _ = state.dialogs.set_field(other, "false");
-            }
-        }
-    });
-}
-
-/// Show one whole-number spinner and write its edit back into the dialog's field map.
-fn spin_whole(
+/// Show a pair of radios over two frozen controls; picking one clears the other.
+fn radio_pair(
     ui: &mut Ui,
     state: &mut AppState,
-    id: &str,
-    focused: Option<&str>,
-    label: &str,
-    default: i32,
-    range: std::ops::RangeInclusive<i32>,
+    group: &'static str,
+    first: (&'static str, &'static str),
+    second: (&'static str, &'static str),
 ) {
-    let mut value = state
-        .dialogs
-        .field(id)
-        .and_then(|text| text.parse().ok())
-        .unwrap_or(default);
-    let response = ui
-        .push_id(id, |ui| {
-            ui.add(
-                DragValue::new(&mut value)
-                    .range(range)
-                    .prefix(format!("{label}: ")),
-            )
-            .accessible_name(label)
-        })
-        .inner;
-    if focused == Some(id) {
-        super::dialogs::focus_ring(ui, &response);
+    let picked = u8::from(state.dialogs.field(second.0) == Some("true"));
+    let chosen = radio_group(
+        ui,
+        group,
+        picked,
+        &[(0, first.0, first.1), (1, second.0, second.1)],
+    );
+    if chosen == picked {
+        return;
     }
-    if response.changed() {
-        let _ = state.dialogs.set_field(id, value.to_string());
-    }
+    let _ = state.dialogs.set_field(first.0, bool_word(chosen == 0));
+    let _ = state.dialogs.set_field(second.0, bool_word(chosen == 1));
 }
 
-/// Show one decimal spinner and write its edit back into the dialog's field map.
-fn spin_decimal(
-    ui: &mut Ui,
-    state: &mut AppState,
-    id: &str,
-    focused: Option<&str>,
-    label: &str,
-    default: f64,
-    range: std::ops::RangeInclusive<f64>,
-) {
-    let mut value = state
-        .dialogs
-        .field(id)
-        .and_then(|text| text.parse().ok())
-        .unwrap_or(default);
-    let response = ui
-        .push_id(id, |ui| {
-            ui.add(
-                DragValue::new(&mut value)
-                    .range(range)
-                    .speed(0.1)
-                    .prefix(format!("{label}: ")),
-            )
-            .accessible_name(label)
-        })
-        .inner;
-    if focused == Some(id) {
-        super::dialogs::focus_ring(ui, &response);
-    }
-    if response.changed() {
-        let _ = state.dialogs.set_field(id, value.to_string());
-    }
-}
-
-/// Show the card-cap choice: `Disabled`, then one item per cap in 5..=20.
-fn cap_choice(ui: &mut Ui, state: &mut AppState, focused: Option<&str>) {
-    let current = state
-        .dialogs
-        .field("cap_choice")
-        .unwrap_or(CAP_DISABLED)
-        .to_owned();
-    let mut selected = current.clone();
-    ui.horizontal(|ui| {
-        super::text(ui, "Card cap");
-        let response = ui
-            .push_id("cap_choice", |ui| {
-                egui::ComboBox::from_id_salt("cap_choice")
-                    .selected_text(&selected)
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut selected, CAP_DISABLED.to_owned(), CAP_DISABLED);
-                        for cap in CAP_MIN..=CAP_MAX {
-                            ui.selectable_value(&mut selected, cap.to_string(), cap.to_string());
-                        }
-                    })
-                    .response
-            })
-            .inner;
-        let response = response.accessible_name("Card cap");
-        if focused == Some("cap_choice") {
-            super::dialogs::focus_ring(ui, &response);
-        }
-    });
-    if selected != current {
-        let _ = state.dialogs.set_field("cap_choice", selected);
-    }
+/// Return the stored word of a flag.
+fn bool_word(on: bool) -> &'static str {
+    if on { "true" } else { "false" }
 }

@@ -11,6 +11,7 @@ use crate::ui::action::spec;
 use crate::ui::dialogs::spec::{self as dialog_spec, Button};
 use crate::ui::dialogs::stack::{DialogError, DialogEvent};
 use crate::ui::ids;
+use crate::ui::presenters::console;
 use crate::ui::state::AppState;
 
 /// The automation answer when no dialog is open.
@@ -95,9 +96,9 @@ pub(crate) fn dialog(state: &mut AppState, method: &str, params: &Value) -> Resu
 /// `ui.command`.
 pub(crate) fn action_target(action: &str) -> Option<(&'static str, &'static str)> {
     match action {
-        "mi_start_ride" => Some(("Button", "Start Ride")),
-        "mi_stop_ride" => Some(("Button", "Stop Ride")),
-        "mi_undo_crossing" => Some(("Button", "Undo")),
+        "mi_start_ride" => Some(("Button", console::START_RIDE_LABEL)),
+        "mi_stop_ride" => Some(("Button", console::STOP_RIDE_LABEL)),
+        "mi_undo_crossing" => Some(("Button", console::UNDO_LABEL)),
         _ => None,
     }
 }
@@ -118,16 +119,15 @@ fn action_id(name: &str) -> Option<ActionId> {
 /// A native confirmation is the top dialog while no [`crate::ui::dialogs::stack::DialogStack`]
 /// dialog is open, so the same method confirms it.
 fn confirm(state: &mut AppState) -> Result<Value, String> {
+    if state.pending_native.is_some() && state.confirm_native() {
+        return Ok(json!({
+            "event": "confirmed",
+            "button": "OK",
+            "opener": null,
+        }));
+    }
     if state.dialogs.is_empty() {
-        return if state.confirm_native() {
-            Ok(json!({
-                "event": "confirmed",
-                "button": "OK",
-                "opener": null,
-            }))
-        } else {
-            Err(NO_DIALOG.to_owned())
-        };
+        return Err(NO_DIALOG.to_owned());
     }
     if let Some(outcome) = state.submit_top_form() {
         // The form's OK commits; a refusal keeps it open and returns the message.
@@ -153,16 +153,15 @@ fn confirm(state: &mut AppState) -> Result<Value, String> {
 /// A native confirmation is the top dialog while no [`crate::ui::dialogs::stack::DialogStack`]
 /// dialog is open, so the same method cancels it.
 fn cancel(state: &mut AppState) -> Result<Value, String> {
+    if state.pending_native.is_some() && state.cancel_native() {
+        return Ok(json!({
+            "event": "cancelled",
+            "button": "Cancel",
+            "opener": null,
+        }));
+    }
     if state.dialogs.is_empty() {
-        return if state.cancel_native() {
-            Ok(json!({
-                "event": "cancelled",
-                "button": "Cancel",
-                "opener": null,
-            }))
-        } else {
-            Err(NO_DIALOG.to_owned())
-        };
+        return Err(NO_DIALOG.to_owned());
     }
     match state.dialogs.cancel() {
         Ok(DialogEvent::Cancelled { id, opener }) => Ok(json!({

@@ -2,19 +2,31 @@
 
 //! The results window: the Teams/Solo notebook and the stale-export infobar.
 
-use craft::egui::{self, Ui};
+use std::borrow::Cow;
 
-use super::text;
+use craft::behavior::{DisplayOrder, ItemSource, SelectionChange};
+use craft::egui::Ui;
+use craft::theme::variant::Tone;
+use craft::ui::contract::{CollectionEvent, Show as _, ShowCollection as _};
+use craft::ui::display::Text;
+use craft::ui::tabs::{Tab, TabStrip, TabStripOutput};
+
+use super::dialogs::{
+    HAND, KIND, LAP, NAME, PLACE, PLATE, TOTAL, TableData, TableRow, columns, notice, table,
+};
 use crate::ui::presenters::results::StandingsRowModel;
 use crate::ui::state::AppState;
 use crate::ui::state::exports::ResultsTab;
 
+/// The standings rows' visible height before the table scrolls.
+const VISIBLE_ROWS: u16 = 8;
+
 /// Show the standings notebook.
 pub(crate) fn body(ui: &mut Ui, state: &mut AppState) {
     let headline = state.results_headline();
-    text(ui, &headline);
+    let _ = Text::new(headline).show(ui);
     if let Some(error) = state.results.error.clone() {
-        ui.push_id("results_error", |ui| text(ui, &error));
+        notice(ui, "results_error", Tone::Bad, error);
     }
     let Some(model) = state.results.model.clone() else {
         return;
@@ -23,73 +35,164 @@ pub(crate) fn body(ui: &mut Ui, state: &mut AppState) {
         .ride
         .as_ref()
         .is_some_and(|ride| ride.config.entry_mode == rivercrossing_ride::EntryMode::Solo);
-    ui.push_id("results_notebook", |ui| {
-        if solo_only {
-            ui.push_id("standings_list", |ui| {
-                grid(ui, &model.solo, "standings_grid");
-            });
-            return;
-        }
-        ui.horizontal(|ui| {
-            let tab = &mut state.results.tab;
-            ui.selectable_value(tab, ResultsTab::Teams, "Teams")
-                .on_hover_text("Team standings");
-            ui.selectable_value(tab, ResultsTab::Solo, "Solo")
-                .on_hover_text("Solo standings");
-        });
+    if solo_only {
+        let data = standings(&model.solo);
+        let _ = table(
+            ui,
+            "standings_list",
+            &data,
+            VISIBLE_ROWS,
+            "No standings",
+            None,
+        );
+    } else {
+        notebook(ui, state);
         match state.results.tab {
             ResultsTab::Teams => {
-                ui.push_id("teams_standings_list", |ui| {
-                    grid(ui, &model.teams, "teams_standings_grid");
-                });
+                let data = standings(&model.teams);
+                let _ = table(
+                    ui,
+                    "teams_standings_list",
+                    &data,
+                    VISIBLE_ROWS,
+                    "No standings",
+                    None,
+                );
             }
             ResultsTab::Solo => {
-                ui.push_id("solo_standings_list", |ui| {
-                    grid(ui, &model.solo, "solo_standings_grid");
-                });
+                let data = standings(&model.solo);
+                let _ = table(
+                    ui,
+                    "solo_standings_list",
+                    &data,
+                    VISIBLE_ROWS,
+                    "No standings",
+                    None,
+                );
             }
         }
-    });
+    }
     if model.stale {
-        ui.push_id("stale_infobar", |ui| {
-            text(
-                ui,
-                "A correction landed after the last export; export again.",
-            );
-        });
+        notice(
+            ui,
+            "stale_infobar",
+            Tone::Warn,
+            "A correction landed after the last export; export again.",
+        );
     }
 }
 
-/// Show one section's rows.
-fn grid(ui: &mut Ui, rows: &[StandingsRowModel], salt: &str) {
-    egui::ScrollArea::vertical()
-        .id_salt(format!("{salt}_scroll"))
-        .max_height(320.0)
-        .show(ui, |ui| {
-            egui::Grid::new(salt)
-                .num_columns(9)
-                .striped(true)
-                .show(ui, |ui| {
-                    for heading in [
-                        "Place", "Plate", "Entry", "Type", "Sex", "Laps", "Hand", "Draw", "Total",
-                    ] {
-                        text(ui, heading);
-                    }
-                    ui.end_row();
-                    for row in rows {
-                        text(ui, &place_text(row));
-                        text(ui, &row.plate);
-                        text(ui, &row.name);
-                        text(ui, kind_text(row));
-                        text(ui, row.sex.as_deref().unwrap_or(""));
-                        text(ui, &row.laps.to_string());
-                        text(ui, &row.hand);
-                        text(ui, &row.draw);
-                        text(ui, &duration_text(row.total_time));
-                        ui.end_row();
-                    }
-                });
-        });
+/// Show the Teams/Solo notebook under its frozen id.
+fn notebook(ui: &mut Ui, state: &mut AppState) {
+    let shown = tab_index(state.results.tab);
+    let out = ui
+        .push_id("results_notebook", |ui| {
+            TabStrip::new("Standings notebook")
+                .shown(shown)
+                .show_items(ui, &TABS, &mut |key, _| {
+                    Tab::new(tab_title(*key)).closable(false)
+                })
+        })
+        .inner;
+    if let Some(picked) = tab_pick(&out) {
+        state.results.tab = tab_of(picked);
+    }
+}
+
+/// Return the tab the user picked: a selection change, an activation, or the overflow menu's pick.
+fn tab_pick(out: &TabStripOutput<u8>) -> Option<u8> {
+    out.response
+        .events
+        .iter()
+        .find_map(|event| match event {
+            CollectionEvent::Selection(SelectionChange::Set(keys)) => keys.last().copied(),
+            CollectionEvent::Activate(key) => Some(*key),
+            _ => None,
+        })
+        .or(out.picked)
+}
+
+/// Return the tab key the displayed tab shows.
+fn tab_index(tab: ResultsTab) -> u8 {
+    match tab {
+        ResultsTab::Teams => 0,
+        ResultsTab::Solo => 1,
+    }
+}
+
+/// Return the tab for a picked key.
+fn tab_of(key: u8) -> ResultsTab {
+    if key == 0 {
+        ResultsTab::Teams
+    } else {
+        ResultsTab::Solo
+    }
+}
+
+/// Return a tab's title.
+fn tab_title(key: u8) -> &'static str {
+    if key == 0 { "Teams" } else { "Solo" }
+}
+
+/// The results notebook's two tabs as a keyed collection source.
+#[derive(Clone, Copy, Debug, Default)]
+struct Tabs;
+
+impl DisplayOrder<u8> for Tabs {
+    fn len(&self) -> usize {
+        2
+    }
+
+    fn key(&self, at: usize) -> u8 {
+        u8::from(at != 0)
+    }
+
+    fn index_of(&self, key: &u8) -> Option<usize> {
+        match key {
+            0 => Some(0),
+            1 => Some(1),
+            _ => None,
+        }
+    }
+
+    fn text(&self, at: usize) -> Option<Cow<'_, str>> {
+        Some(Cow::Borrowed(tab_title(u8::from(at != 0))))
+    }
+}
+
+impl ItemSource<u8> for Tabs {}
+
+/// The shared results notebook source.
+const TABS: Tabs = Tabs;
+
+/// Return one section's rows as a table.
+fn standings(rows: &[StandingsRowModel]) -> TableData {
+    TableData {
+        columns: columns(&[
+            (PLACE, "Place"),
+            (PLATE, "Plate"),
+            (NAME, "Entry"),
+            (KIND, "Type"),
+            (LAP, "Laps"),
+            (HAND, "Hand"),
+            (TOTAL, "Total"),
+        ]),
+        rows: rows
+            .iter()
+            .map(|row| TableRow {
+                label: row.name.clone(),
+                cells: vec![
+                    (PLACE, place_text(row)),
+                    (PLATE, row.plate.clone()),
+                    (NAME, row.name.clone()),
+                    (KIND, kind_text(row).to_owned()),
+                    (LAP, row.laps.to_string()),
+                    (HAND, row.hand.clone()),
+                    (TOTAL, duration_text(row.total_time)),
+                ],
+            })
+            .collect(),
+    }
 }
 
 /// Return the Place cell: the number, or the DNS marker.

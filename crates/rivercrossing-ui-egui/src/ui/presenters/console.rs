@@ -5,6 +5,10 @@
 //! Each function returns the notice, cue and field action that the console
 //! view applies. The rules follow the Python oracle's
 //! `ui/presenters/console.py`, and every notice reproduces its copy.
+//!
+//! The selector labels ([`START_RIDE_LABEL`] and its siblings) are the one
+//! source that the console view renders and the automation selector resolves,
+//! so a drawn button and a targeted button cannot carry different names.
 
 use rivercrossing_ride::{Clock, RideEngine, RideError, RideStatus, SystemClock};
 use rivercrossing_roster::roster::Roster;
@@ -17,6 +21,21 @@ mod tests;
 
 /// The notice that a successful start posts.
 pub(crate) const RIDE_STARTED: &str = "Ride started";
+
+/// The rendered text and accessible name of the console's Start button.
+pub(crate) const START_RIDE_LABEL: &str = "Start Ride";
+
+/// The rendered text and accessible name of the console's Stop button.
+pub(crate) const STOP_RIDE_LABEL: &str = "Stop Ride";
+
+/// The rendered text and accessible name of the console's Undo button.
+pub(crate) const UNDO_LABEL: &str = "Undo";
+
+/// The rendered text and accessible name of the console's Record button.
+pub(crate) const RECORD_LABEL: &str = "Record";
+
+/// The accessible name of the console's plate-entry field.
+pub(crate) const PLATE_LABEL: &str = "Plate";
 
 /// What the console does after one entry-field submission.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,17 +93,6 @@ impl EntryOutcome {
     }
 }
 
-/// The console's three button gates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ConsoleGates {
-    /// Whether the Start button is enabled.
-    pub(crate) start: bool,
-    /// Whether the Stop button is enabled.
-    pub(crate) stop: bool,
-    /// Whether the Undo button is enabled.
-    pub(crate) undo: bool,
-}
-
 /// Handle Enter or Record with the plate entry's text.
 ///
 /// A blank text only refocuses the field. A text drawn only from the miss
@@ -134,23 +142,6 @@ pub(crate) fn miss_entered(
         Err(error) => {
             EntryOutcome::refused(format!("Miss not recorded: {}", refusal_message(&error)))
         }
-    }
-}
-
-/// Return the three console gates for *engine*.
-///
-/// Start is enabled in DRAFT, in REOPENED, and in a stopped RUNNING ride,
-/// because continue-after-stop is the resume mechanism. Stop is enabled only
-/// in a live RUNNING ride. Undo needs a RUNNING ride with one crossing.
-#[must_use]
-pub(crate) fn console_gates(engine: &RideEngine<Roster, SystemClock>) -> ConsoleGates {
-    let status = engine.state();
-    let running = status == RideStatus::Running;
-    let stopped = running && engine.stopped();
-    ConsoleGates {
-        start: status == RideStatus::Draft || status == RideStatus::Reopened || stopped,
-        stop: running && !stopped,
-        undo: running && !engine.crossings().is_empty(),
     }
 }
 

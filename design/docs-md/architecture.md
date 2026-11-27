@@ -135,8 +135,8 @@ with no parallel test-only naming.
 
 ## 6. UI skeleton (from the Python screens)
 
-The Rust UI reproduces the Python app's screens, derived from `design/screenshots/`, the
-`xrc-windows.md` window inventory (settling the 23-vs-27 count), and the §15 menu map. The wx
+The Rust UI reproduces the Python app's screens and behaviour, derived from `design/mockups/` and
+`ui-contract.md`, the `xrc-windows.md` behaviour oracle, and the §15 menu map. The wx
 "sizer + frozen name + accelerator table" triple maps to "immediate-mode layout + frozen `egui::Id`
 + `KeyboardShortcut`". The product UX contract (keyboard-first, dialog/destructive/menu/DPI/a11y) is
 unchanged — see `CODINGSTANDARDS-UX-DESKTOP.md`.

@@ -1123,6 +1123,7 @@ The block below is generated from the Rust registry. `src/ui/action/drift.rs` pa
       "short_lap_choice",
       "lapped_choice",
       "team_stop_choice",
+      "new_ride_btn",
       "gen_riders_btn",
       "check_btn",
       "go_btn",
@@ -1182,7 +1183,7 @@ The block below is generated from the Rust registry. `src/ui/action/drift.rs` pa
 | `selftest_dlg` | `selftest_output`, `rerun_btn` | `selftest_dlg.jpg` |
 | `crossing_detail_dlg` | `crossing_rider_lbl`, `crossing_team_lbl`, `crossing_plate_lbl`, `crossing_lap_lbl`, `crossing_time_lbl`, `crossing_lap_time_lbl`, `crossing_total_lbl`, `crossing_card_lbl`, `crossing_held_lbl`, `edit_btn`, `edit_time_btn`, `void_card_btn`, `delete_btn`, `crossing_detail_infobar` | no screenshot |
 | `crossing_number_dlg` | `number_input` | no screenshot |
-| `simulation_dlg` | `riders_spin`, `teams_spin`, `solo_spin`, `laps_spin`, `interval_spin`, `short_lap_choice`, `lapped_choice`, `team_stop_choice`, `gen_riders_btn`, `check_btn`, `go_btn`, `sim_infobar` | no screenshot |
+| `simulation_dlg` | `riders_spin`, `teams_spin`, `solo_spin`, `laps_spin`, `interval_spin`, `short_lap_choice`, `lapped_choice`, `team_stop_choice`, `new_ride_btn`, `gen_riders_btn`, `check_btn`, `go_btn`, `sim_infobar` | no screenshot |
 | `sim_running_dlg` | `sim_status_lbl`, `progress_gauge`, `cancel_btn` | no screenshot |
 | `publish_wordpress_dlg` | `wp_kind_choice`, `wp_url_input`, `wp_username_input`, `wp_password_input`, `wp_title_input`, `wp_slug_input`, `wp_parent_input`, `wp_status_choice` | no screenshot |
 | `publish_running_dlg` | `publish_status_lbl`, `progress_gauge`, `cancel_btn` | no screenshot |

@@ -11,12 +11,12 @@ use pretty_assertions::assert_eq;
 use rivercrossing_cards::JokersMode;
 use rivercrossing_ride::{EntryMode, PlateModel, RideConfig, TieBreak, setup_minimum_violations};
 use rstest::rstest;
-use time::{Date, Month, OffsetDateTime, Time};
+use time::{Date, Month, OffsetDateTime};
 
 use super::{
     DEFAULT_MAX_TEAM_SIZE, DEFAULT_MIN_LAP_S, DEFAULT_ORGANIZER, DEFAULT_PLANNED_DURATION_S,
     DEFAULT_SCORER, DEFAULT_VENUE, TEST_RIDE_NAME_PREFIX, build_test_ride_config,
-    next_test_ride_name,
+    next_test_ride_name, test_ride_planned_start,
 };
 
 /// The identity every builder test hands in, fixed so a failure names a drift.
@@ -50,8 +50,7 @@ fn event_date() -> Result<Date, String> {
 
 /// Return the fixed planned gun that every builder test uses.
 fn planned_start() -> Result<OffsetDateTime, String> {
-    let time = Time::from_hms(10, 0, 0).map_err(|error| error.to_string())?;
-    Ok(OffsetDateTime::new_utc(event_date()?, time))
+    Ok(test_ride_planned_start(event_date()?))
 }
 
 /// Build the test ride's config from the fixed identity.
@@ -199,6 +198,19 @@ fn test_ride_defaults_team_size_constant_is_five() {
 
     // Assert
     assert_eq!(value, expected);
+}
+
+#[test]
+fn test_test_ride_planned_start_is_ten_on_the_event_date() -> Result<(), String> {
+    // Arrange
+    let date = event_date()?;
+
+    // Act
+    let start = test_ride_planned_start(date);
+
+    // Assert
+    assert_eq!((start.date(), start.hour(), start.minute()), (date, 10, 0));
+    Ok(())
 }
 
 // ------------------------------------------- build_test_ride_config

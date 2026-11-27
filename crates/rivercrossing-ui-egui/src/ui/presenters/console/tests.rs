@@ -13,10 +13,7 @@ use rivercrossing_store::Store;
 use rstest::rstest;
 use serde_json::json;
 
-use super::{
-    ConsoleGates, Cue, RIDE_STARTED, console_gates, finish, miss_entered, plate_entered, reopen,
-    start, stop, undo,
-};
+use super::{Cue, RIDE_STARTED, finish, miss_entered, plate_entered, reopen, start, stop, undo};
 
 /// The ride name every fixture uses.
 const RIDE_NAME: &str = "GORBA EPIC 2026";
@@ -27,19 +24,15 @@ const PLATE: &str = "101";
 /// The seed every fixture ride stores.
 const SEED: u64 = 7;
 
-/// A lifecycle state that the gate table walks.
+/// A lifecycle state that the start/stop tables walk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
     /// A new ride that has not started.
     Draft,
     /// A live running ride.
     Running,
-    /// A running ride the operator stopped.
-    RunningStopped,
     /// A finished ride.
     Finished,
-    /// A finished ride reopened for corrections.
-    Reopened,
 }
 
 /// A console action that the stop/reopen table walks.
@@ -138,17 +131,8 @@ fn engine_in(
     let pair = match phase {
         Phase::Draft => None,
         Phase::Running => Some((engine, roster)),
-        Phase::RunningStopped => {
-            engine.stop().map_err(|error| error.to_string())?;
-            Some((engine, roster))
-        }
         Phase::Finished => {
             engine.finish(&[]).map_err(|error| error.to_string())?;
-            Some((engine, roster))
-        }
-        Phase::Reopened => {
-            engine.finish(&[]).map_err(|error| error.to_string())?;
-            engine.reopen().map_err(|error| error.to_string())?;
             Some((engine, roster))
         }
     };
@@ -352,90 +336,6 @@ fn test_plate_entered_given_a_miss_symbol_routes_to_the_miss_flow() -> Result<()
     Ok(())
 }
 
-// ------------------------------------------------------ console gates
-
-#[rstest]
-#[case(
-    Phase::Running,
-    0,
-    ConsoleGates {
-        start: false,
-        stop: true,
-        undo: false,
-    }
-)]
-#[case(
-    Phase::Running,
-    1,
-    ConsoleGates {
-        start: false,
-        stop: true,
-        undo: true,
-    }
-)]
-#[case(
-    Phase::RunningStopped,
-    1,
-    ConsoleGates {
-        start: true,
-        stop: false,
-        undo: true,
-    }
-)]
-#[case(
-    Phase::Finished,
-    1,
-    ConsoleGates {
-        start: false,
-        stop: false,
-        undo: false,
-    }
-)]
-#[case(
-    Phase::Reopened,
-    1,
-    ConsoleGates {
-        start: true,
-        stop: false,
-        undo: false,
-    }
-)]
-fn test_undo_enabled_only_when_running_with_a_crossing(
-    #[case] phase: Phase,
-    #[case] crossings: u32,
-    #[case] expected: ConsoleGates,
-) -> Result<(), String> {
-    // Arrange
-    let (engine, _roster) = engine_in(phase, crossings)?;
-
-    // Act
-    let gates = console_gates(&engine);
-
-    // Assert
-    assert_eq!(gates, expected);
-    Ok(())
-}
-
-#[test]
-fn test_console_gates_on_a_draft_ride_offer_start_alone() -> Result<(), String> {
-    // Arrange
-    let (engine, _roster) = draft_pair()?;
-
-    // Act
-    let gates = console_gates(&engine);
-
-    // Assert
-    assert_eq!(
-        gates,
-        ConsoleGates {
-            start: true,
-            stop: false,
-            undo: false,
-        }
-    );
-    Ok(())
-}
-
 // --------------------------------------------------------------- undo
 
 #[test]
@@ -618,4 +518,22 @@ fn test_rejection_notice_given_an_unknown_reason_names_the_plate() {
 
     // Assert
     assert_eq!(notice, "Plate rejected: mystery_reason");
+}
+
+#[test]
+fn test_the_console_selector_labels_are_the_frozen_strings() {
+    // Act
+    let labels = [
+        super::START_RIDE_LABEL,
+        super::STOP_RIDE_LABEL,
+        super::UNDO_LABEL,
+        super::RECORD_LABEL,
+        super::PLATE_LABEL,
+    ];
+
+    // Assert: the Tier B smoke and the automation selector drive the console by these exact names.
+    assert_eq!(
+        labels,
+        ["Start Ride", "Stop Ride", "Undo", "Record", "Plate"]
+    );
 }

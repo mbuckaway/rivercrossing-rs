@@ -19,6 +19,10 @@ use super::{FormValues, appearance_for_radio, apply, from_settings};
 fn valid_form() -> FormValues {
     FormValues {
         appearance: "dark".to_owned(),
+        contrast: "high".to_owned(),
+        density: "comfortable".to_owned(),
+        text_size: "large".to_owned(),
+        theme: "craft.studio".to_owned(),
         sound_on: false,
         show_total_times: true,
         show_lap_time: false,
@@ -60,10 +64,14 @@ fn decorated_settings() -> AppSettings {
 // --------------------------------------------------------- from_settings
 
 #[test]
-fn test_settings_form_from_settings_given_a_stored_setting_copies_the_six_fields() {
+fn test_settings_form_from_settings_given_a_stored_setting_copies_the_ten_fields() {
     // Arrange
     let settings = AppSettings {
         appearance: "light".to_owned(),
+        contrast: "standard".to_owned(),
+        density: "comfortable".to_owned(),
+        text_size: "small".to_owned(),
+        theme: "craft.soft".to_owned(),
         sound_on: false,
         show_total_times: true,
         show_lap_time: true,
@@ -80,6 +88,10 @@ fn test_settings_form_from_settings_given_a_stored_setting_copies_the_six_fields
         values,
         FormValues {
             appearance: "light".to_owned(),
+            contrast: "standard".to_owned(),
+            density: "comfortable".to_owned(),
+            text_size: "small".to_owned(),
+            theme: "craft.soft".to_owned(),
             sound_on: false,
             show_total_times: true,
             show_lap_time: true,
@@ -90,7 +102,7 @@ fn test_settings_form_from_settings_given_a_stored_setting_copies_the_six_fields
 }
 
 #[test]
-fn test_settings_form_from_settings_given_the_defaults_reads_system_and_sound() {
+fn test_settings_form_from_settings_given_the_defaults_reads_every_axis() {
     // Arrange
     let settings = default_settings();
 
@@ -98,18 +110,38 @@ fn test_settings_form_from_settings_given_the_defaults_reads_system_and_sound() 
     let values = from_settings(&settings);
 
     // Assert
-    assert_eq!(values.appearance, "system");
-    assert_eq!(values.sound_on, true);
-    assert_eq!(values.show_total_times, false);
-    assert_eq!(values.show_lap_time, true);
-    assert_eq!(values.verbose_logging, true);
-    assert_eq!(values.avg_speed_kmh, 12.0);
+    assert_eq!(
+        (
+            values.appearance.as_str(),
+            values.contrast.as_str(),
+            values.density.as_str(),
+            values.text_size.as_str(),
+            values.theme.as_str(),
+            values.sound_on,
+            values.show_total_times,
+            values.show_lap_time,
+            values.verbose_logging,
+            values.avg_speed_kmh,
+        ),
+        (
+            "system",
+            "system",
+            "compact",
+            "medium",
+            "craft.artcraft",
+            true,
+            false,
+            true,
+            true,
+            12.0,
+        )
+    );
 }
 
 // ---------------------------------------------------------------- apply
 
 #[test]
-fn test_settings_form_apply_given_a_valid_form_copies_the_six_fields() {
+fn test_settings_form_apply_given_a_valid_form_copies_the_ten_fields() {
     // Arrange
     let mut settings = default_settings();
 
@@ -118,7 +150,16 @@ fn test_settings_form_apply_given_a_valid_form_copies_the_six_fields() {
 
     // Assert
     assert_eq!(messages, Vec::<String>::new());
-    assert_eq!(settings.appearance, "dark");
+    assert_eq!(
+        (
+            settings.appearance.as_str(),
+            settings.contrast.as_str(),
+            settings.density.as_str(),
+            settings.text_size.as_str(),
+            settings.theme.as_str(),
+        ),
+        ("dark", "high", "comfortable", "large", "craft.studio")
+    );
     assert_eq!(settings.sound_on, false);
     assert_eq!(settings.show_total_times, true);
     assert_eq!(settings.show_lap_time, false);
@@ -193,6 +234,115 @@ fn test_settings_form_apply_given_an_unknown_appearance_refuses_and_keeps_the_st
         vec!["Appearance must be system, light or dark".to_owned()]
     );
     assert_eq!(settings.appearance, "system");
+}
+
+#[rstest]
+#[case("")]
+#[case("System")]
+#[case("max")]
+fn test_settings_form_apply_given_an_unknown_contrast_refuses_and_keeps_the_stored_one(
+    #[case] contrast: &str,
+) {
+    // Arrange
+    let mut settings = AppSettings {
+        contrast: "high".to_owned(),
+        ..default_settings()
+    };
+    let form = FormValues {
+        contrast: contrast.to_owned(),
+        ..valid_form()
+    };
+
+    // Act
+    let messages = apply(&form, &mut settings);
+
+    // Assert
+    assert_eq!(
+        messages,
+        vec!["Contrast must be system, standard or high".to_owned()]
+    );
+    assert_eq!(settings.contrast, "high");
+}
+
+#[rstest]
+#[case("")]
+#[case("Comfortable")]
+#[case("wide")]
+fn test_settings_form_apply_given_an_unknown_density_refuses_and_keeps_the_stored_one(
+    #[case] density: &str,
+) {
+    // Arrange
+    let mut settings = AppSettings {
+        density: "comfortable".to_owned(),
+        ..default_settings()
+    };
+    let form = FormValues {
+        density: density.to_owned(),
+        ..valid_form()
+    };
+
+    // Act
+    let messages = apply(&form, &mut settings);
+
+    // Assert
+    assert_eq!(
+        messages,
+        vec!["Density must be compact or comfortable".to_owned()]
+    );
+    assert_eq!(settings.density, "comfortable");
+}
+
+#[rstest]
+#[case("")]
+#[case("Medium")]
+#[case("huge")]
+fn test_settings_form_apply_given_an_unknown_text_size_refuses_and_keeps_the_stored_one(
+    #[case] text_size: &str,
+) {
+    // Arrange
+    let mut settings = AppSettings {
+        text_size: "large".to_owned(),
+        ..default_settings()
+    };
+    let form = FormValues {
+        text_size: text_size.to_owned(),
+        ..valid_form()
+    };
+
+    // Act
+    let messages = apply(&form, &mut settings);
+
+    // Assert
+    assert_eq!(
+        messages,
+        vec!["Text size must be tiny, small, medium or large".to_owned()]
+    );
+    assert_eq!(settings.text_size, "large");
+}
+
+#[rstest]
+#[case("")]
+#[case("ArtCraft")]
+#[case("craft.nope")]
+fn test_settings_form_apply_given_an_unknown_theme_refuses_and_keeps_the_stored_one(
+    #[case] theme: &str,
+) {
+    // Arrange
+    let mut settings = AppSettings {
+        theme: "craft.studio".to_owned(),
+        ..default_settings()
+    };
+    let form = FormValues {
+        theme: theme.to_owned(),
+        ..valid_form()
+    };
+
+    // Act
+    let messages = apply(&form, &mut settings);
+
+    // Assert
+    assert_eq!(messages, vec!["Theme must be a built-in theme".to_owned()]);
+    assert_eq!(settings.theme, "craft.studio");
 }
 
 #[test]

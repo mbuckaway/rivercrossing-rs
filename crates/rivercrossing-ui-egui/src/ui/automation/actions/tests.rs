@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 
 use super::{action_target, command, dialog, inspect, set};
 use crate::ui::action::spec::{CommandId, NativeDialog};
+use crate::ui::presenters::console;
 use crate::ui::state::{AppState, NativeTask};
 
 // ------------------------------------------------------------- fixtures
@@ -432,6 +433,26 @@ fn test_action_target_maps_the_console_buttons_and_rejects_the_rest(
 
     // Assert
     assert_eq!(target, expected);
+}
+
+#[test]
+fn test_action_target_uses_the_console_presenter_labels() {
+    // Act
+    let pairs = [
+        action_target("mi_start_ride"),
+        action_target("mi_stop_ride"),
+        action_target("mi_undo_crossing"),
+    ];
+
+    // Assert: the automation selector and the console view read one label each.
+    assert_eq!(
+        pairs,
+        [
+            Some(("Button", console::START_RIDE_LABEL)),
+            Some(("Button", console::STOP_RIDE_LABEL)),
+            Some(("Button", console::UNDO_LABEL)),
+        ]
+    );
 }
 
 // ------------------------------------------------------ native confirms
