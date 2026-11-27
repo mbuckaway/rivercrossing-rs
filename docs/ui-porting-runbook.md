@@ -404,7 +404,7 @@ the library's 1.0 type factor with the roomier spacing preset.
 
 ## Reviewing a screen against the mockup
 
-1. **Build the debug app**: `cargo build -p rivercrossing --locked`. The release binary ignores
+1. **Build the debug app**: `cargo build -p rivercrossing --locked` (the bin is `target/debug/RiverCrossing`). The release binary ignores
    `--control`, so the review always uses the debug build.
 2. **Capture**: `python3 tools/ui-review/capture.py --recipe tools/ui-review/recipes/<screen>.json`
    (or `--all`). The script launches the app with a generated 64-hex token, authenticates, runs the

@@ -29,10 +29,12 @@ time = { workspace = true }
 uuid = { workspace = true }
 
 # macOS window presentation the eframe builder cannot express: AppKit puts a window tab bar on the
-# root window unless its tabbing mode is disallowed (`ui/macos.rs`).
+# root window unless its tabbing mode is disallowed, and names the application menu after the
+# process unless the installed menu is retitled (`ui/macos.rs`).
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6.4", default-features = false, features = ["std"] }
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSWindow"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSMenu", "NSMenuItem", "NSWindow"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString"] }
 
 [dev-dependencies]
 craft = { workspace = true, features = ["ui-testing"] }

@@ -20,7 +20,9 @@ serde_json = { workspace = true }
 workspace = true
 
 [[bin]]
-name = "rivercrossing"
+# macOS names the application menu after the executable, so the product's capital-R spelling is the
+# binary name; the package stays `rivercrossing`.
+name = "RiverCrossing"
 path = "src/main.rs"
 
 [[test]]

@@ -8,6 +8,7 @@ channel, takes screenshots, and copies them out of `target/control/` into
 
 ```bash
 cargo build -p rivercrossing --locked          # debug: the release build ignores --control
+target/debug/RiverCrossing                     # the bin is capitalised for the macOS app menu
 python3 tools/ui-review/capture.py --all
 python3 tools/ui-review/capture.py --recipe tools/ui-review/recipes/settings.json
 ```

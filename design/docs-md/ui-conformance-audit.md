@@ -12,7 +12,7 @@ golden records what was built, not what was approved.
 
 | Step | Detail |
 |---|---|
-| App capture | `target/debug/rivercrossing --control 0 --control-token <hex>`, driven over the R-88 control channel (`ui.screenshot`), PNG at 2960×1500 px (1480×750 pt @2×). No screen-recording permission involved, no JPEG artefacts. |
+| App capture | `target/debug/RiverCrossing --control 0 --control-token <hex>`, driven over the R-88 control channel (`ui.screenshot`), PNG at 2960×1500 px (1480×750 pt @2×). No screen-recording permission involved, no JPEG artefacts. |
 | Live state used | `ui.accessTree` (198 nodes, 65 named) to locate controls; `ui.command mi_new_ride` to open dialogs; `ui.click` + `ui.key` to drive them. |
 | Mockup render | `design/mockups/index.html` served over HTTP, headless Chromium at 1450×872 CSS px, section activated, both themes. |
 | Code inspection | `crates/rivercrossing-ui-egui/src/ui/views/*.rs` (17 modules), `ui/appearance.rs`, `ui/window.rs`, craft-libs `243d68e` `crates/window/src/policy.rs`. |
@@ -29,7 +29,7 @@ Artifacts in `design/screenshots/current-ui/`:
 Reproduce a capture:
 
 ```bash
-./target/debug/rivercrossing --control 0 --control-token $(openssl rand -hex 32) &
+./target/debug/RiverCrossing --control 0 --control-token $(openssl rand -hex 32) &
 # then, per connection: {"id":1,"method":"auth","params":{"token":"<hex>"}}
 # {"id":2,"method":"ui.screenshot","params":{"path":"console.png"}}   → target/control/console.png
 ```

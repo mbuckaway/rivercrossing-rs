@@ -50,6 +50,10 @@ impl NativeBar {
         let options = MacOptions::default().window_list(false);
         self.handle = install_with(ctx, &layout(state).bar, options);
         if self.handle.is_some() {
+            #[cfg(target_os = "macos")]
+            {
+                let _ = super::macos::retitle_app_menu(APP_NAME);
+            }
             return;
         }
         // winit's default Quit ends the process without asking; the minimal app menu asks first.
@@ -59,6 +63,10 @@ impl NativeBar {
                 "warning: the app menu did not install: {error}"
             )
             .ok();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = super::macos::retitle_app_menu(APP_NAME);
         }
     }
 
@@ -86,6 +94,12 @@ impl NativeBar {
         }
         // `sync` compares the fresh layout with the last one, so only a change reaches AppKit.
         native.sync(layout(state));
+        // AppKit names the application menu after the process and can overwrite the installed
+        // title; the call is a no-op once the title matches.
+        #[cfg(target_os = "macos")]
+        {
+            let _ = super::macos::retitle_app_menu(APP_NAME);
+        }
     }
 }
 

@@ -53,7 +53,7 @@ type SmokeResult = Result<(), Box<dyn std::error::Error>>;
 
 /// Spawn the built binary with the debug quit seam armed and its stderr captured.
 fn spawn_smoke_process() -> io::Result<Child> {
-    Command::new(env!("CARGO_BIN_EXE_rivercrossing"))
+    Command::new(env!("CARGO_BIN_EXE_RiverCrossing"))
         .env("RIVERCROSSING_SMOKE_QUIT_AFTER_MS", QUIT_AFTER_MS)
         .stderr(Stdio::piped())
         .spawn()
@@ -112,7 +112,7 @@ fn spawn_control_process(workspace: &Path) -> io::Result<Child> {
     // Keep the smoke's settings, logs and database under the workspace, in fresh directories.
     std::fs::create_dir_all(workspace.join("target/control/config"))?;
     std::fs::create_dir_all(workspace.join("target/control/data"))?;
-    Command::new(env!("CARGO_BIN_EXE_rivercrossing"))
+    Command::new(env!("CARGO_BIN_EXE_RiverCrossing"))
         .args(["--control", "0", "--control-token", CONTROL_TOKEN])
         .current_dir(workspace)
         .env("XDG_CONFIG_HOME", workspace.join("target/control/config"))

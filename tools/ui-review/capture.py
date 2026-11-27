@@ -34,7 +34,7 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-DEFAULT_BIN = REPO / "target" / "debug" / "rivercrossing"
+DEFAULT_BIN = REPO / "target" / "debug" / "RiverCrossing"
 DEFAULT_OUT = REPO / "design" / "screenshots" / "review"
 RECIPES = Path(__file__).resolve().parent / "recipes"
 LISTEN = re.compile(r"control server listening on ([0-9.]+):(\d+)")

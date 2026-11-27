@@ -20,3 +20,31 @@ pub(crate) fn disallow_window_tabs() {
         window.setTabbingMode(NSWindowTabbingMode::Disallowed);
     }
 }
+
+/// Rename the application menu to `name`.
+///
+/// `AppKit` names the first menu after `NSProcessInfo.processName` — the executable,
+/// `rivercrossing` — and overwrites the title a menu bar is installed with. The app is
+/// `RiverCrossing`, so the title is set back after installation. Returns whether the title differed
+/// and was corrected; the driver calls it once per pass, which is two cheap `AppKit` reads when the
+/// title already matches.
+pub(crate) fn retitle_app_menu(name: &str) -> bool {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+    use objc2_foundation::NSString;
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        return false;
+    };
+    let Some(menu) = NSApplication::sharedApplication(mtm).mainMenu() else {
+        return false;
+    };
+    let Some(item) = menu.itemAtIndex(0) else {
+        return false;
+    };
+    if item.title().to_string() == name {
+        return false;
+    }
+    item.setTitle(&NSString::from_str(name));
+    true
+}
