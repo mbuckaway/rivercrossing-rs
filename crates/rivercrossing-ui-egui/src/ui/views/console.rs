@@ -295,26 +295,65 @@ fn rail(ui: &mut Ui, state: &mut AppState) {
         for (id, label, icon) in RAIL {
             let on = state.implemented(id) && enabled(id, &gate);
             ui.push_id(id.as_str(), |ui| {
-                // A fixed-width cell, so the label lays out at the rail's width instead of at
-                // whatever the slot measured on the first pass (which elides it to an ellipsis).
-                let row = vec2(RAIL_WIDTH, ui.spacing().interact_size.y);
-                let clicked = ui
-                    .allocate_ui_with_layout(row, Layout::top_down(Align::Center), |ui| {
-                        Button::new(label)
-                            .icon(IconSpec::svg(IconId::new(icon)))
-                            .variant(Variant::GHOST)
-                            .enabled(on)
-                            .show(ui)
-                            .clicked()
-                    })
-                    .inner;
-                if clicked {
+                if rail_entry(ui, label, icon, on) {
                     let _ = state.act(id);
                 }
             });
         }
     });
 }
+
+/// Show one rail entry: the icon over its word, in a cell of its own.
+///
+/// The design stacks them (`design/mockups/index.html`, `.app-rail`), which a craft `Button` cannot
+/// do — it puts the icon beside the label. The cell keeps the button's contract by hand: it senses
+/// a click, fills under the pointer, and reports itself to assistive technology as a button named
+/// by its word.
+fn rail_entry(ui: &mut Ui, label: &'static str, icon: &'static str, enabled: bool) -> bool {
+    let env = Env::of(ui);
+    let pad = env.tokens.space.pad.regular;
+    let sense = if enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(vec2(RAIL_WIDTH, RAIL_ENTRY_HEIGHT), sense);
+    if enabled && response.hovered() {
+        let fill = Color32::from(Srgba::from(env.tokens.color.state.hover));
+        let corners = UiTokens::corner(env.tokens.shape.radius.control);
+        ui.painter().rect_filled(rect.shrink(2.0), corners, fill);
+    }
+    let icon_rect = craft::egui::Rect::from_center_size(
+        craft::egui::pos2(rect.center().x, rect.top() + pad + 8.0),
+        craft::egui::Vec2::splat(16.0),
+    );
+    ui.scope_builder(UiBuilder::new().max_rect(icon_rect), |ui| {
+        let _ = craft::ui::display::Icon::new(IconSpec::svg(IconId::new(icon))).show(ui);
+    });
+    let caption = craft::egui::Rect::from_min_max(
+        craft::egui::pos2(rect.left(), icon_rect.bottom() + 2.0),
+        rect.max,
+    );
+    ui.scope_builder(
+        UiBuilder::new()
+            .max_rect(caption)
+            .layout(Layout::top_down(Align::Center)),
+        |ui| {
+            let shade = if enabled { Shade::Normal } else { Shade::Muted };
+            let _ = Text::new(label)
+                .role(TypeRole::Caption)
+                .shade(shade)
+                .show(ui);
+        },
+    );
+    response.widget_info(|| {
+        craft::egui::WidgetInfo::labeled(craft::egui::WidgetType::Button, enabled, label)
+    });
+    enabled && response.clicked()
+}
+
+/// The height of one rail entry: the icon, a gap, and its word.
+const RAIL_ENTRY_HEIGHT: f32 = 54.0;
 
 // ----------------------------------------------------------------- status bar
 
